@@ -1,0 +1,38 @@
+[package]
+name = "resonance-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web.workspace = true
+actix-cors.workspace = true
+actix-files.workspace = true
+actix-ws.workspace = true
+actix-rt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+lofty.workspace = true
+notify.workspace = true
+walkdir.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+regex.workspace = true
+futures.workspace = true
+log.workspace = true
+env_logger.workspace = true
+dotenvy.workspace = true
+rayon.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
+rusqlite.workspace = true
+image.workspace = true
+base64.workspace = true
+reqwest.workspace = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

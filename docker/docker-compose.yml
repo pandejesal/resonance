@@ -1,0 +1,27 @@
+services:
+  resonance:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: resonance
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - resonance-data:/app/data
+      - /path/to/your/music:/music:ro
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=/app/data/resonance.db
+      - HOST=0.0.0.0
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  resonance-data:
+    driver: local

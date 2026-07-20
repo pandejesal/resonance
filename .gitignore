@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+target/
+
+# Build outputs
+dist/
+*.exe
+*.pdb
+
+# Environment
+.env
+.env.local
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

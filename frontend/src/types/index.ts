@@ -1,0 +1,175 @@
+export interface Track {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  album_artist?: string;
+  genre?: string;
+  year?: number;
+  track_number?: number;
+  disc_number?: number;
+  duration_ms: number;
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  file_modified?: string;
+  format: string;
+  sample_rate?: number;
+  bit_depth?: number;
+  bitrate?: number;
+  channels?: number;
+  codec?: string;
+  composer?: string;
+  lyricist?: string;
+  mood?: string;
+  bpm?: number;
+  rating?: number;
+  play_count: number;
+  skip_count: number;
+  last_played?: string;
+  date_added: string;
+  has_artwork: boolean;
+  artwork_hash?: string;
+  lyrics?: string;
+  comment?: string;
+  grouping?: string;
+  copyright?: string;
+  custom_tags?: string;
+  folder: string;
+  library_id: string;
+  fingerprint?: string;
+}
+
+export interface Album {
+  id: string;
+  title: string;
+  artist: string;
+  year?: number;
+  genre?: string;
+  track_count: number;
+  total_duration_ms: number;
+  has_artwork: boolean;
+  artwork_hash?: string;
+  date_added: string;
+  library_id: string;
+}
+
+export interface Artist {
+  id: string;
+  name: string;
+  album_count: number;
+  track_count: number;
+  total_duration_ms: number;
+  has_artwork: boolean;
+  artwork_hash?: string;
+  date_added: string;
+  library_id: string;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  description?: string;
+  is_smart: boolean;
+  smart_filter?: string;
+  parent_id?: string;
+  sort_order: number;
+  track_count: number;
+  total_duration_ms: number;
+  created_at: string;
+  updated_at: string;
+  library_id: string;
+}
+
+export interface Library {
+  id: string;
+  name: string;
+  path: string;
+  is_scanning: boolean;
+  track_count: number;
+  last_scan?: string;
+  created_at: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+export interface SearchResults {
+  tracks: Track[];
+  albums: Album[];
+  artists: Artist[];
+  total: number;
+}
+
+export interface ScanProgress {
+  files_found: number;
+  files_processed: number;
+  files_skipped: number;
+  errors: number;
+  is_scanning: boolean;
+}
+
+export interface QueryParams {
+  page?: number;
+  per_page?: number;
+  sort?: string;
+  order?: string;
+  search?: string;
+  artist?: string;
+  album?: string;
+  genre?: string;
+  year?: number;
+  folder?: string;
+  mood?: string;
+  min_rating?: number;
+  library_id?: string;
+}
+
+export interface Stats {
+  total_tracks: number;
+  total_albums: number;
+  total_artists: number;
+  total_duration_ms: number;
+  total_size_bytes: number;
+  top_artists: { name: string; track_count: number }[];
+  recently_played: Track[];
+  most_played: Track[];
+}
+
+export type ViewMode = 'grid' | 'list';
+export type SortField = 'title' | 'artist' | 'album' | 'year' | 'date_added' | 'duration_ms' | 'play_count' | 'rating';
+export type SortOrder = 'ASC' | 'DESC';
+export type Theme = 'dark' | 'light' | 'amoled';
+export type RepeatMode = 'off' | 'all' | 'one';
+
+export interface QueueItem {
+  track: Track;
+  addedAt: number;
+}
+
+export interface PlayerState {
+  currentTrack: Track | null;
+  queue: QueueItem[];
+  queueIndex: number;
+  isPlaying: boolean;
+  volume: number;
+  progress: number;
+  duration: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
+  crossfade: boolean;
+  crossfadeDuration: number;
+  audioInfo: {
+    format: string;
+    codec: string;
+    sampleRate: number;
+    bitDepth?: number;
+    bitrate: number;
+    channels: number;
+  } | null;
+}
