@@ -4,7 +4,12 @@ import { api } from '../lib/api';
 import { useUIStore, usePlayerStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
-import type { Library, ScanProgress } from '../types';
+import type { Library, ScanProgress, ScrobblingConfig } from '../types';
+
+const DEFAULT_SCROBBLE_CONFIG: ScrobblingConfig = {
+  lastfm: { enabled: false, api_key: null, api_secret: null, session_key: null, username: null },
+  listenbrainz: { enabled: false, token: null },
+};
 
 export default function SettingsPage() {
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -19,12 +24,18 @@ export default function SettingsPage() {
     crossfade, toggleCrossfade, crossfadeDuration, setCrossfadeDuration,
     gapless, toggleGapless,
   } = usePlayerStore();
+  const [scrobblingConfig, setScrobblingConfig] = useState<ScrobblingConfig>(DEFAULT_SCROBBLE_CONFIG);
+  const [scrobblingSaving, setScrobblingSaving] = useState(false);
 
   useEffect(() => {
     api.libraries.list()
       .then(setLibraries)
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    api.settings.getScrobbling()
+      .then(setScrobblingConfig)
+      .catch(console.error);
   }, []);
 
   const handleAdd = async () => {
@@ -69,6 +80,32 @@ export default function SettingsPage() {
       setLibraries(libraries.filter((l) => l.id !== id));
     } catch (e) {
       console.error('Failed to delete library:', e);
+    }
+  };
+
+  const handleScrobbleToggle = (service: 'lastfm' | 'listenbrainz') => {
+    setScrobblingConfig((prev) => ({
+      ...prev,
+      [service]: { ...prev[service], enabled: !prev[service].enabled },
+    }));
+  };
+
+  const handleScrobbleChange = (service: 'lastfm' | 'listenbrainz', field: string, value: string) => {
+    setScrobblingConfig((prev) => ({
+      ...prev,
+      [service]: { ...prev[service], [field]: value },
+    }));
+  };
+
+  const handleSaveScrobbling = async () => {
+    setScrobblingSaving(true);
+    try {
+      const result = await api.settings.updateScrobbling(scrobblingConfig);
+      setScrobblingConfig(result.config);
+    } catch (e) {
+      console.error('Failed to save scrobbling settings:', e);
+    } finally {
+      setScrobblingSaving(false);
     }
   };
 
@@ -322,6 +359,113 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Scrobbling */}
+      <section>
+        <h2 className="text-lg font-semibold text-primary mb-4">Scrobbling</h2>
+        <div className="space-y-4">
+          {/* Last.fm */}
+          <div className="surface-card p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-primary">Last.fm</p>
+                <p className="text-xs text-tertiary">Track your listening habits</p>
+              </div>
+              <button
+                onClick={() => handleScrobbleToggle('lastfm')}
+                className={cn(
+                  'relative w-11 h-6 rounded-full transition-colors',
+                  scrobblingConfig.lastfm.enabled ? 'bg-brand-600' : 'bg-surface-3'
+                )}
+              >
+                <div
+                  className={cn(
+                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                    scrobblingConfig.lastfm.enabled ? 'translate-x-5.5' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+
+            {scrobblingConfig.lastfm.enabled && (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={scrobblingConfig.lastfm.api_key || ''}
+                  onChange={(e) => handleScrobbleChange('lastfm', 'api_key', e.target.value)}
+                  placeholder="API Key"
+                  className="input-field"
+                />
+                <input
+                  type="password"
+                  value={scrobblingConfig.lastfm.api_secret || ''}
+                  onChange={(e) => handleScrobbleChange('lastfm', 'api_secret', e.target.value)}
+                  placeholder="API Secret"
+                  className="input-field"
+                />
+                <input
+                  type="password"
+                  value={scrobblingConfig.lastfm.session_key || ''}
+                  onChange={(e) => handleScrobbleChange('lastfm', 'session_key', e.target.value)}
+                  placeholder="Session Key"
+                  className="input-field"
+                />
+                <p className="text-xs text-tertiary">
+                  Get your API key at last.fm/api/account/create. Session key obtained via web auth flow.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ListenBrainz */}
+          <div className="surface-card p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-primary">ListenBrainz</p>
+                <p className="text-xs text-tertiary">Open source music tracking</p>
+              </div>
+              <button
+                onClick={() => handleScrobbleToggle('listenbrainz')}
+                className={cn(
+                  'relative w-11 h-6 rounded-full transition-colors',
+                  scrobblingConfig.listenbrainz.enabled ? 'bg-brand-600' : 'bg-surface-3'
+                )}
+              >
+                <div
+                  className={cn(
+                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                    scrobblingConfig.listenbrainz.enabled ? 'translate-x-5.5' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+
+            {scrobblingConfig.listenbrainz.enabled && (
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  value={scrobblingConfig.listenbrainz.token || ''}
+                  onChange={(e) => handleScrobbleChange('listenbrainz', 'token', e.target.value)}
+                  placeholder="User Token"
+                  className="input-field"
+                />
+                <p className="text-xs text-tertiary">
+                  Get your token at listenbrainz.org/settings
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Save button */}
+          <button
+            onClick={handleSaveScrobbling}
+            disabled={scrobblingSaving}
+            className="btn-primary disabled:opacity-50"
+          >
+            {scrobblingSaving ? 'Saving...' : 'Save Scrobbling Settings'}
+          </button>
         </div>
       </section>
 

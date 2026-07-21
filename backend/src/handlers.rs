@@ -3,6 +3,7 @@ use actix_web::http::header::{HeaderName, HeaderValue};
 use sqlx::SqlitePool;
 use crate::models::*;
 use crate::scanner::Scanner;
+use crate::scrobble::{self, ScrobbleService};
 use std::sync::Arc;
 use parking_lot::Mutex;
 use std::path::PathBuf;
@@ -380,6 +381,13 @@ pub async fn play_track(
 ) -> HttpResponse {
     let id = path.into_inner();
 
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await
+        .ok()
+        .flatten();
+
     sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
         .bind(&id)
         .execute(&data.db)
@@ -391,6 +399,23 @@ pub async fn play_track(
         .execute(&data.db)
         .await
         .ok();
+
+    if let Some(track) = track {
+        let db = data.db.clone();
+        let track_id = track.id.clone();
+        let artist = track.artist.clone();
+        let title = track.title.clone();
+        let album = track.album.clone();
+        let timestamp = chrono::Utc::now().timestamp();
+
+        tokio::spawn(async move {
+            let service = ScrobbleService::new();
+            service.update_now_playing(&db, &artist, &title, &album).await;
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            service.scrobble(&db, &track_id, &artist, &title, &album, timestamp).await;
+            service.retry_pending_scrobbles(&db).await;
+        });
+    }
 
     HttpResponse::Ok().json(serde_json::json!({"success": true}))
 }
@@ -1374,5 +1399,62 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({
         "current": path_str,
         "entries": entries,
+    }))
+}
+
+pub async fn get_scrobbling_settings(data: web::Data<AppState>) -> HttpResponse {
+    let config = scrobble::get_scrobbling_config(&data.db).await;
+    HttpResponse::Ok().json(config)
+}
+
+pub async fn update_scrobbling_settings(
+    data: web::Data<AppState>,
+    body: web::Json<UpdateScrobblingRequest>,
+) -> HttpResponse {
+    let mut config = scrobble::get_scrobbling_config(&data.db).await;
+
+    if let Some(ref lastfm) = body.lastfm {
+        config.lastfm = lastfm.clone();
+    }
+    if let Some(ref listenbrainz) = body.listenbrainz {
+        config.listenbrainz = listenbrainz.clone();
+    }
+
+    scrobble::save_scrobbling_config(&data.db, &config).await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "config": config,
+    }))
+}
+
+pub async fn test_scrobbling(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let service = query.get("service").map(|s| s.as_str()).unwrap_or("all");
+    let config = scrobble::get_scrobbling_config(&data.db).await;
+    let mut results = serde_json::Map::new();
+
+    if service == "all" || service == "lastfm" {
+        let connected = config.lastfm.enabled
+            && config.lastfm.api_key.is_some()
+            && config.lastfm.session_key.is_some();
+        results.insert("lastfm".to_string(), serde_json::json!({
+            "connected": connected,
+            "username": config.lastfm.username,
+        }));
+    }
+
+    if service == "all" || service == "listenbrainz" {
+        let connected = config.listenbrainz.enabled && config.listenbrainz.token.is_some();
+        results.insert("listenbrainz".to_string(), serde_json::json!({
+            "connected": connected,
+        }));
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "services": results,
     }))
 }

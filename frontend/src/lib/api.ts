@@ -9,6 +9,7 @@ import type {
   ScanProgress,
   Stats,
   QueryParams,
+  ScrobblingConfig,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -161,5 +162,19 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+  },
+
+  settings: {
+    getScrobbling: () => fetchJson<ScrobblingConfig>('/settings/scrobbling'),
+    updateScrobbling: (data: Partial<ScrobblingConfig>) =>
+      fetchJson<{ success: boolean; config: ScrobblingConfig }>('/settings/scrobbling', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    testScrobbling: (service: string = 'all') =>
+      fetchJson<{ success: boolean; services: Record<string, { connected: boolean; username?: string }> }>(
+        `/settings/scrobbling/test?service=${service}`,
+        { method: 'POST' }
+      ),
   },
 };

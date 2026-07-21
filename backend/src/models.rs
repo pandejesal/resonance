@@ -256,6 +256,39 @@ pub struct WSMessage {
     pub data: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScrobblingConfig {
+    pub lastfm: LastfmConfig,
+    pub listenbrainz: ListenbrainzConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastfmConfig {
+    pub enabled: bool,
+    pub api_key: Option<String>,
+    pub api_secret: Option<String>,
+    pub session_key: Option<String>,
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListenbrainzConfig {
+    pub enabled: bool,
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateScrobblingRequest {
+    pub lastfm: Option<LastfmConfig>,
+    pub listenbrainz: Option<ListenbrainzConfig>,
+}
+
+#[derive(Debug, Deserialize, FromRow)]
+pub struct SettingRow {
+    pub key: String,
+    pub value: String,
+}
+
 impl Track {
     pub fn new(file_path: String, library_id: String) -> Self {
         let path = std::path::Path::new(&file_path);

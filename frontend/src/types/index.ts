@@ -152,6 +152,20 @@ export interface QueueItem {
   addedAt: number;
 }
 
+export interface ScrobblingConfig {
+  lastfm: {
+    enabled: boolean;
+    api_key: string | null;
+    api_secret: string | null;
+    session_key: string | null;
+    username: string | null;
+  };
+  listenbrainz: {
+    enabled: boolean;
+    token: string | null;
+  };
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   queue: QueueItem[];
