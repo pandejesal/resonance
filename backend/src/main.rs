@@ -4,6 +4,7 @@ mod scanner;
 mod handlers;
 mod scrobble;
 mod lyrics;
+mod updater;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, middleware};
@@ -66,6 +67,11 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting Resonance server on {}:{}", host, port);
 
+    let db_for_updater = database.pool.clone();
+    tokio::spawn(async move {
+        updater::start_background_check(db_for_updater).await;
+    });
+
     HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
@@ -117,6 +123,11 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tracks/{id}/lyrics", web::get().to(handlers::get_lyrics))
             .route("/api/tracks/{id}/lyrics", web::put().to(handlers::update_lyrics))
             .route("/api/tracks/{id}/lyrics/fetch", web::post().to(handlers::fetch_lyrics))
+            .route("/api/updater/status", web::get().to(handlers::get_updater_status))
+            .route("/api/updater/check", web::post().to(handlers::check_for_updates))
+            .route("/api/updater/update", web::post().to(handlers::apply_update))
+            .route("/api/updater/config", web::get().to(handlers::get_updater_config))
+            .route("/api/updater/config", web::put().to(handlers::update_updater_config))
             .service(static_files)
     })
     .bind((host.as_str(), port))?

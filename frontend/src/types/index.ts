@@ -176,6 +176,22 @@ export interface LyricsData {
   synced: string | null;
 }
 
+export interface UpdateStatus {
+  current_version: string;
+  current_commit: string;
+  latest_version: string;
+  latest_commit: string;
+  update_available: boolean;
+  last_checked: string;
+  docker_socket: boolean;
+}
+
+export interface UpdaterConfig {
+  auto_check: boolean;
+  check_interval_hours: number;
+  docker_socket: boolean;
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   queue: QueueItem[];

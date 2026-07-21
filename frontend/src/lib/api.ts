@@ -11,6 +11,8 @@ import type {
   QueryParams,
   ScrobblingConfig,
   LyricsData,
+  UpdateStatus,
+  UpdaterConfig,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -185,5 +187,17 @@ export const api = {
         `/settings/scrobbling/test?service=${service}`,
         { method: 'POST' }
       ),
+  },
+
+  updater: {
+    getStatus: () => fetchJson<UpdateStatus>('/updater/status'),
+    check: () => fetchJson<UpdateStatus>('/updater/check', { method: 'POST' }),
+    update: () => fetchJson<{ success: boolean; message: string }>('/updater/update', { method: 'POST' }),
+    getConfig: () => fetchJson<UpdaterConfig>('/updater/config'),
+    updateConfig: (data: UpdaterConfig) =>
+      fetchJson<{ success: boolean; config: UpdaterConfig }>('/updater/config', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
 };

@@ -17,6 +17,8 @@ services:
       #   Windows:  C:\Users\YOU:/music:ro
       #   Linux:    /home/YOU:/music:ro
       - C:\Users\DELL\Music:/music:ro
+      # Docker socket for auto-updates (optional, security risk):
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - RUST_LOG=info
       - DATABASE_URL=/app/data/resonance.db

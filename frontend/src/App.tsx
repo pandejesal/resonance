@@ -7,6 +7,7 @@ import MiniPlayer from './components/MiniPlayer';
 import NowPlaying from './components/NowPlaying';
 import QueuePanel from './components/QueuePanel';
 import SearchModal from './components/SearchModal';
+import UpdateBanner from './components/UpdateBanner';
 import HomePage from './pages/HomePage';
 import LibraryPage from './pages/LibraryPage';
 import AlbumsPage from './pages/AlbumsPage';
@@ -30,6 +31,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-surface-0">
+        <UpdateBanner />
         <Sidebar />
 
         <div className="lg:ml-64 min-h-screen pb-20">

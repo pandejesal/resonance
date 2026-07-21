@@ -5,6 +5,7 @@ use crate::models::*;
 use crate::scanner::Scanner;
 use crate::scrobble::{self, ScrobbleService};
 use crate::lyrics;
+use crate::updater;
 use std::sync::Arc;
 use parking_lot::Mutex;
 use std::path::PathBuf;
@@ -1574,4 +1575,47 @@ pub async fn fetch_lyrics(
             }))
         }
     }
+}
+
+pub async fn get_updater_status(data: web::Data<AppState>) -> HttpResponse {
+    let status = updater::get_updater_status(&data.db).await;
+    HttpResponse::Ok().json(status)
+}
+
+pub async fn check_for_updates(data: web::Data<AppState>) -> HttpResponse {
+    match updater::check_for_updates(&data.db).await {
+        Ok(status) => HttpResponse::Ok().json(status),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": e,
+        })),
+    }
+}
+
+pub async fn apply_update(data: web::Data<AppState>) -> HttpResponse {
+    match updater::apply_update(&data.db).await {
+        Ok(message) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "message": message,
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": e,
+        })),
+    }
+}
+
+pub async fn get_updater_config(data: web::Data<AppState>) -> HttpResponse {
+    let config = updater::get_updater_config(&data.db).await;
+    HttpResponse::Ok().json(config)
+}
+
+pub async fn update_updater_config(
+    data: web::Data<AppState>,
+    body: web::Json<updater::UpdaterConfig>,
+) -> HttpResponse {
+    updater::save_updater_config(&data.db, &body).await;
+    let config = updater::get_updater_config(&data.db).await;
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "config": config,
+    }))
 }

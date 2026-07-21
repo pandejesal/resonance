@@ -4,11 +4,17 @@ import { api } from '../lib/api';
 import { useUIStore, usePlayerStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
-import type { Library, ScanProgress, ScrobblingConfig } from '../types';
+import type { Library, ScanProgress, ScrobblingConfig, UpdateStatus, UpdaterConfig } from '../types';
 
 const DEFAULT_SCROBBLE_CONFIG: ScrobblingConfig = {
   lastfm: { enabled: false, api_key: null, api_secret: null, session_key: null, username: null },
   listenbrainz: { enabled: false, token: null },
+};
+
+const DEFAULT_UPDATER_CONFIG: UpdaterConfig = {
+  auto_check: false,
+  check_interval_hours: 6,
+  docker_socket: false,
 };
 
 export default function SettingsPage() {
@@ -26,6 +32,11 @@ export default function SettingsPage() {
   } = usePlayerStore();
   const [scrobblingConfig, setScrobblingConfig] = useState<ScrobblingConfig>(DEFAULT_SCROBBLE_CONFIG);
   const [scrobblingSaving, setScrobblingSaving] = useState(false);
+  const [updaterStatus, setUpdaterStatus] = useState<UpdateStatus | null>(null);
+  const [updaterConfig, setUpdaterConfig] = useState<UpdaterConfig>(DEFAULT_UPDATER_CONFIG);
+  const [updaterChecking, setUpdaterChecking] = useState(false);
+  const [updaterUpdating, setUpdaterUpdating] = useState(false);
+  const [updaterMessage, setUpdaterMessage] = useState('');
 
   useEffect(() => {
     api.libraries.list()
@@ -35,6 +46,14 @@ export default function SettingsPage() {
 
     api.settings.getScrobbling()
       .then(setScrobblingConfig)
+      .catch(console.error);
+
+    api.updater.getStatus()
+      .then(setUpdaterStatus)
+      .catch(console.error);
+
+    api.updater.getConfig()
+      .then(setUpdaterConfig)
       .catch(console.error);
   }, []);
 
@@ -106,6 +125,63 @@ export default function SettingsPage() {
       console.error('Failed to save scrobbling settings:', e);
     } finally {
       setScrobblingSaving(false);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    setUpdaterChecking(true);
+    setUpdaterMessage('');
+    try {
+      const result = await api.updater.check();
+      setUpdaterStatus(result);
+      if (result.update_available) {
+        setUpdaterMessage(`Update available: v${result.latest_version}`);
+      } else {
+        setUpdaterMessage('Already up to date');
+      }
+    } catch (e) {
+      setUpdaterMessage('Error checking for updates');
+    } finally {
+      setUpdaterChecking(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    setUpdaterUpdating(true);
+    setUpdaterMessage('');
+    try {
+      const result = await api.updater.update();
+      setUpdaterMessage(result.message);
+      setTimeout(() => window.location.reload(), 3000);
+    } catch (e: any) {
+      setUpdaterMessage(e.message || 'Update failed');
+    } finally {
+      setUpdaterUpdating(false);
+    }
+  };
+
+  const handleUpdaterConfigChange = async (field: keyof UpdaterConfig) => {
+    const newConfig = {
+      ...updaterConfig,
+      [field]: !updaterConfig[field],
+    };
+    setUpdaterConfig(newConfig);
+    try {
+      const result = await api.updater.updateConfig(newConfig);
+      setUpdaterConfig(result.config);
+    } catch (e) {
+      console.error('Failed to update updater config:', e);
+    }
+  };
+
+  const handleUpdaterIntervalChange = async (hours: number) => {
+    const newConfig = { ...updaterConfig, check_interval_hours: hours };
+    setUpdaterConfig(newConfig);
+    try {
+      const result = await api.updater.updateConfig(newConfig);
+      setUpdaterConfig(result.config);
+    } catch (e) {
+      console.error('Failed to update updater config:', e);
     }
   };
 
@@ -466,6 +542,124 @@ export default function SettingsPage() {
           >
             {scrobblingSaving ? 'Saving...' : 'Save Scrobbling Settings'}
           </button>
+        </div>
+      </section>
+
+      {/* Updater */}
+      <section>
+        <h2 className="text-lg font-semibold text-primary mb-4">Updates</h2>
+        <div className="surface-card p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-primary">Current Version</p>
+              <p className="text-xs text-tertiary">v{updaterStatus?.current_version || '0.1.0'}</p>
+            </div>
+            {updaterStatus?.update_available && (
+              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-lg font-medium">
+                Update Available
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-primary">Auto-check for updates</p>
+              <p className="text-xs text-tertiary">Periodically check GitHub for new versions</p>
+            </div>
+            <button
+              onClick={() => handleUpdaterConfigChange('auto_check')}
+              className={cn(
+                'relative w-11 h-6 rounded-full transition-colors',
+                updaterConfig.auto_check ? 'bg-brand-600' : 'bg-surface-3'
+              )}
+            >
+              <div
+                className={cn(
+                  'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                  updaterConfig.auto_check ? 'translate-x-5.5' : 'translate-x-0.5'
+                )}
+              />
+            </button>
+          </div>
+
+          {updaterConfig.auto_check && (
+            <div>
+              <p className="text-sm text-secondary mb-2">Check Interval</p>
+              <div className="flex gap-2">
+                {[1, 6, 12, 24, 168].map((hours) => (
+                  <button
+                    key={hours}
+                    onClick={() => handleUpdaterIntervalChange(hours)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                      updaterConfig.check_interval_hours === hours
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-surface-2 text-secondary hover:text-primary'
+                    )}
+                  >
+                    {hours === 1 ? '1h' : hours === 6 ? '6h' : hours === 12 ? '12h' : hours === 24 ? '24h' : 'Weekly'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-primary">Docker socket mounted</p>
+              <p className="text-xs text-tertiary">Enable automatic updates (requires /var/run/docker.sock)</p>
+            </div>
+            <button
+              onClick={() => handleUpdaterConfigChange('docker_socket')}
+              className={cn(
+                'relative w-11 h-6 rounded-full transition-colors',
+                updaterConfig.docker_socket ? 'bg-brand-600' : 'bg-surface-3'
+              )}
+            >
+              <div
+                className={cn(
+                  'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                  updaterConfig.docker_socket ? 'translate-x-5.5' : 'translate-x-0.5'
+                )}
+              />
+            </button>
+          </div>
+
+          {updaterStatus?.last_checked && (
+            <p className="text-xs text-tertiary">
+              Last checked: {new Date(updaterStatus.last_checked).toLocaleString()}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleCheckForUpdates}
+              disabled={updaterChecking}
+              className="btn-secondary disabled:opacity-50"
+            >
+              {updaterChecking ? 'Checking...' : 'Check Now'}
+            </button>
+            {updaterStatus?.update_available && updaterStatus?.docker_socket && (
+              <button
+                onClick={handleApplyUpdate}
+                disabled={updaterUpdating}
+                className="btn-primary disabled:opacity-50"
+              >
+                {updaterUpdating ? 'Updating...' : 'Update Now'}
+              </button>
+            )}
+          </div>
+
+          {updaterMessage && (
+            <p className={cn(
+              'text-sm',
+              updaterMessage.includes('Error') || updaterMessage.includes('failed')
+                ? 'text-red-400'
+                : 'text-green-400'
+            )}>
+              {updaterMessage}
+            </p>
+          )}
         </div>
       </section>
 
