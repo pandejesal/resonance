@@ -4,7 +4,8 @@ mod scanner;
 mod handlers;
 
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer, middleware};
+use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, middleware};
+use actix_web::dev::Service;
 use handlers::AppState;
 use scanner::Scanner;
 use std::sync::Arc;
@@ -71,6 +72,11 @@ async fn main() -> std::io::Result<()> {
             .allow_any_header()
             .max_age(3600);
 
+        let static_files = actix_files::Files::new("/", "./static")
+            .index_file("index.html")
+            .default_handler(actix_files::NamedFile::open("./static/index.html")
+                .expect("index.html not found"));
+
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
@@ -97,7 +103,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/playlists/{id}", web::delete().to(handlers::delete_playlist))
             .route("/api/playlists/{id}/tracks", web::get().to(handlers::get_playlist_tracks))
             .route("/api/playlists/{id}/tracks", web::post().to(handlers::add_track_to_playlist))
-            .service(actix_files::Files::new("/", "./static").index_file("index.html"))
+            .service(static_files)
     })
     .bind((host.as_str(), port))?
     .run()
