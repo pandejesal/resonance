@@ -166,6 +166,16 @@ export interface ScrobblingConfig {
   };
 }
 
+export interface LyricsLine {
+  timeMs: number;
+  text: string;
+}
+
+export interface LyricsData {
+  plain: string;
+  synced: string | null;
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   queue: QueueItem[];

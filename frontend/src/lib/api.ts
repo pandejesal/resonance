@@ -10,6 +10,7 @@ import type {
   Stats,
   QueryParams,
   ScrobblingConfig,
+  LyricsData,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -69,6 +70,14 @@ export const api = {
       fetchJson(`/tracks/${id}/play`, { method: 'POST' }),
     streamUrl: (id: string) => `${BASE_URL}/tracks/${id}/stream`,
     artworkUrl: (id: string) => `${BASE_URL}/tracks/${id}/artwork`,
+    getLyrics: (id: string) => fetchJson<LyricsData>(`/tracks/${id}/lyrics`),
+    fetchLyrics: (id: string) =>
+      fetchJson<LyricsData>(`/tracks/${id}/lyrics/fetch`, { method: 'POST' }),
+    updateLyrics: (id: string, lyrics: string) =>
+      fetchJson(`/tracks/${id}/lyrics`, {
+        method: 'PUT',
+        body: JSON.stringify({ lyrics }),
+      }),
   },
 
   albums: {

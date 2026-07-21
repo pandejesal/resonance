@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore, useUIStore } from '../stores';
 import { getArtworkUrl } from '../lib/utils';
 import { audioEngine } from '../lib/audio-engine';
+import LyricsPanel from './LyricsPanel';
 
 const BAR_COUNT = 40;
 
@@ -135,19 +136,25 @@ export default function NowPlaying() {
               {currentTrack.bitrate && <span>{currentTrack.bitrate}kbps</span>}
             </div>
 
-            {/* Audio visualization */}
-            <div className="w-full h-12 flex items-end justify-center gap-[2px] mb-4">
-              {bars.map((height, i) => (
-                <motion.div
-                  key={i}
-                  className="w-[3px] rounded-full bg-brand-500/60"
-                  animate={{
-                    height: isPlaying ? `${height}%` : '8%',
-                  }}
-                  transition={{ duration: 0.05 }}
-                />
-              ))}
-            </div>
+            {/* Audio visualization or Lyrics */}
+            {lyricsOpen ? (
+              <div className="w-full mb-4">
+                <LyricsPanel />
+              </div>
+            ) : (
+              <div className="w-full h-12 flex items-end justify-center gap-[2px] mb-4">
+                {bars.map((height, i) => (
+                  <motion.div
+                    key={i}
+                    className="w-[3px] rounded-full bg-brand-500/60"
+                    animate={{
+                      height: isPlaying ? `${height}%` : '8%',
+                    }}
+                    transition={{ duration: 0.05 }}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Progress bar */}
             <div className="w-full mb-4">

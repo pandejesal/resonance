@@ -3,6 +3,7 @@ mod db;
 mod scanner;
 mod handlers;
 mod scrobble;
+mod lyrics;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, middleware};
@@ -113,6 +114,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/settings/scrobbling", web::get().to(handlers::get_scrobbling_settings))
             .route("/api/settings/scrobbling", web::put().to(handlers::update_scrobbling_settings))
             .route("/api/settings/scrobbling/test", web::post().to(handlers::test_scrobbling))
+            .route("/api/tracks/{id}/lyrics", web::get().to(handlers::get_lyrics))
+            .route("/api/tracks/{id}/lyrics", web::put().to(handlers::update_lyrics))
+            .route("/api/tracks/{id}/lyrics/fetch", web::post().to(handlers::fetch_lyrics))
             .service(static_files)
     })
     .bind((host.as_str(), port))?

@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 use crate::models::*;
 use crate::scanner::Scanner;
 use crate::scrobble::{self, ScrobbleService};
+use crate::lyrics;
 use std::sync::Arc;
 use parking_lot::Mutex;
 use std::path::PathBuf;
@@ -1457,4 +1458,120 @@ pub async fn test_scrobbling(
         "success": true,
         "services": results,
     }))
+}
+
+pub async fn get_lyrics(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await;
+
+    match track {
+        Ok(Some(track)) => {
+            let lyrics_content = track.lyrics.unwrap_or_default();
+            let synced = if lyrics::is_lrc(&lyrics_content) {
+                Some(lyrics_content.clone())
+            } else {
+                None
+            };
+            let plain = if lyrics::is_lrc(&lyrics_content) {
+                lyrics::extract_plain_from_lrc(&lyrics_content)
+            } else {
+                lyrics_content
+            };
+            HttpResponse::Ok().json(serde_json::json!({
+                "plain": plain,
+                "synced": synced,
+            }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"})),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpdateLyricsRequest {
+    pub lyrics: String,
+}
+
+pub async fn update_lyrics(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<UpdateLyricsRequest>,
+) -> HttpResponse {
+    let id = path.into_inner();
+
+    let result = sqlx::query("UPDATE tracks SET lyrics = ? WHERE id = ?")
+        .bind(&body.lyrics)
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to update lyrics"})),
+    }
+}
+
+pub async fn fetch_lyrics(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await;
+
+    let track = match track {
+        Ok(Some(t)) => t,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+        Err(_) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"})),
+    };
+
+    let client = reqwest::Client::new();
+    let result = lyrics::fetch_from_lrclib(
+        &client,
+        &track.artist,
+        &track.title,
+        &track.album,
+        track.duration_ms,
+    )
+    .await;
+
+    match result {
+        Some(lyrics_result) => {
+            let content = lyrics_result.synced.unwrap_or(lyrics_result.plain);
+            let _ = sqlx::query("UPDATE tracks SET lyrics = ? WHERE id = ?")
+                .bind(&content)
+                .bind(&id)
+                .execute(&data.db)
+                .await;
+
+            let has_synced = lyrics::is_lrc(&content);
+            let plain = if has_synced {
+                lyrics::extract_plain_from_lrc(&content)
+            } else {
+                content.clone()
+            };
+            let synced = if has_synced { Some(content) } else { None };
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "plain": plain,
+                "synced": synced,
+            }))
+        }
+        None => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "plain": "",
+                "synced": null,
+            }))
+        }
+    }
 }
