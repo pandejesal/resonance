@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { useUIStore } from '../stores';
 import { cn } from '../lib/utils';
+import FileBrowser from '../components/FileBrowser';
 import type { Library, ScanProgress } from '../types';
 
 export default function SettingsPage() {
@@ -12,6 +13,7 @@ export default function SettingsPage() {
   const [newName, setNewName] = useState('');
   const [newPath, setNewPath] = useState('');
   const [scanProgress, setScanProgress] = useState<Record<string, ScanProgress>>({});
+  const [showBrowser, setShowBrowser] = useState(false);
   const { theme, setTheme } = useUIStore();
 
   useEffect(() => {
@@ -101,13 +103,28 @@ export default function SettingsPage() {
               className="input-field mb-3"
               autoFocus
             />
-            <input
-              type="text"
-              value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
-              placeholder="Path to music folder (e.g., /home/user/Music)"
-              className="input-field mb-3"
-            />
+            <div className="mb-3">
+              <label className="block text-xs text-secondary mb-1">Music folder path</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPath}
+                  onChange={(e) => setNewPath(e.target.value)}
+                  placeholder="Click Browse to select folder"
+                  className="input-field flex-1"
+                  readOnly
+                />
+                <button
+                  onClick={() => setShowBrowser(true)}
+                  className="btn-secondary px-4 flex items-center gap-2 shrink-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  Browse
+                </button>
+              </div>
+            </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => { setShowAdd(false); setNewName(''); setNewPath(''); }}
@@ -241,6 +258,12 @@ export default function SettingsPage() {
           </p>
         </div>
       </section>
+
+      <FileBrowser
+        isOpen={showBrowser}
+        onClose={() => setShowBrowser(false)}
+        onSelect={(path) => setNewPath(path)}
+      />
     </div>
   );
 }

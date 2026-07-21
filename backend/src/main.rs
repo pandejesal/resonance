@@ -103,6 +103,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/playlists/{id}", web::delete().to(handlers::delete_playlist))
             .route("/api/playlists/{id}/tracks", web::get().to(handlers::get_playlist_tracks))
             .route("/api/playlists/{id}/tracks", web::post().to(handlers::add_track_to_playlist))
+            .route("/api/browse", web::get().to(handlers::browse_directory))
             .service(static_files)
     })
     .bind((host.as_str(), port))?

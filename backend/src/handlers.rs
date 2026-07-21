@@ -5,6 +5,7 @@ use crate::models::*;
 use crate::scanner::Scanner;
 use std::sync::Arc;
 use parking_lot::Mutex;
+use std::path::PathBuf;
 
 pub struct AppState {
     pub db: SqlitePool,
@@ -814,4 +815,68 @@ fn get_mime_type(format: &str) -> &str {
         "dsf" | "dff" => "audio/dsd",
         _ => "application/octet-stream",
     }
+}
+
+#[derive(serde::Deserialize)]
+pub struct BrowseQuery {
+    pub path: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct BrowseEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+}
+
+pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
+    let path_str = query.path.as_deref().unwrap_or("/");
+
+    let path = PathBuf::from(path_str);
+    if !path.is_dir() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Path is not a directory"}));
+    }
+
+    let mut entries: Vec<BrowseEntry> = Vec::new();
+
+    // Add parent directory link
+    if let Some(parent) = path.parent() {
+        entries.push(BrowseEntry {
+            name: "..".to_string(),
+            path: parent.to_string_lossy().to_string(),
+            is_dir: true,
+        });
+    }
+
+    if let Ok(read_dir) = std::fs::read_dir(&path) {
+        for entry in read_dir.flatten() {
+            let metadata = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip hidden files
+            if name.starts_with('.') {
+                continue;
+            }
+
+            if metadata.is_dir() {
+                let entry_path = entry.path().to_string_lossy().to_string();
+                entries.push(BrowseEntry {
+                    name,
+                    path: entry_path,
+                    is_dir: true,
+                });
+            }
+        }
+    }
+
+    // Sort directories alphabetically
+    entries[1..].sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "current": path_str,
+        "entries": entries,
+    }))
 }

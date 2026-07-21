@@ -111,6 +111,11 @@ export const api = {
   folders: () => fetchJson<string[]>('/folders'),
   stats: () => fetchJson<Stats>('/stats'),
 
+  browse: (path?: string) => {
+    const query = path ? `?path=${encodeURIComponent(path)}` : '';
+    return fetchJson<{ current: string; entries: { name: string; path: string; is_dir: boolean }[] }>(`/browse${query}`);
+  },
+
   playlists: {
     list: (libraryId?: string) => {
       const params = libraryId ? `?library_id=${libraryId}` : '';
