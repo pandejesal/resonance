@@ -1,0 +1,258 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.1.0)'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Copy Frontend to Static
+        run: xcopy /E /I /Q frontend\dist static
+
+      - name: Build Backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Package
+        run: |
+          mkdir release
+          copy target\release\resonance-backend.exe release\
+          xcopy /E /I /Q static release\static
+          xcopy /E /I /Q backend\migrations release\migrations
+          copy scripts\install-windows.ps1 release\
+          copy VERSION release\
+          Compress-Archive -Path release\* -DestinationPath resonance-windows-x64.zip
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: resonance-windows-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: linux-cargo-
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Copy Frontend to Static
+        run: cp -r frontend/dist static
+
+      - name: Build Backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Package
+        run: |
+          mkdir -p release
+          cp target/release/resonance-backend release/
+          cp -r static release/static
+          cp -r backend/migrations release/migrations
+          cp scripts/install-linux.sh release/
+          cp VERSION release/
+          tar -czf resonance-linux-x64.tar.gz -C release .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: resonance-linux-x64.tar.gz
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: macos-cargo-
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Copy Frontend to Static
+        run: cp -r frontend/dist static
+
+      - name: Build Backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Package
+        run: |
+          mkdir -p release
+          cp target/release/resonance-backend release/
+          cp -r static release/static
+          cp -r backend/migrations release/migrations
+          cp scripts/install-macos.sh release/
+          cp VERSION release/
+          tar -czf resonance-macos-x64.tar.gz -C release .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64
+          path: resonance-macos-x64.tar.gz
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package Android Installer
+        run: |
+          mkdir -p release
+          cp scripts/install-android.sh release/
+          cp VERSION release/
+          tar -czf resonance-android.tar.gz -C release .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: resonance-android.tar.gz
+
+  release:
+    needs: [build-windows, build-linux, build-macos, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List Artifacts
+        run: find artifacts -type f
+
+      - name: Determine Tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Resonance ${{ steps.tag.outputs.tag }}
+          body: |
+            ## Resonance ${{ steps.tag.outputs.tag }}
+
+            A self-hosted music archival system with bit-perfect playback.
+
+            ### Downloads
+
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | **Windows** | `resonance-windows-x64.zip` | Extract and run `install-windows.ps1` in PowerShell |
+            | **Linux** | `resonance-linux-x64.tar.gz` | Extract and run `bash install-linux.sh` |
+            | **macOS** | `resonance-macos-x64.tar.gz` | Extract and run `bash install-macos.sh` |
+            | **Android** | `resonance-android.tar.gz` | Extract and run `install-android.sh` in Termux |
+            | **iOS** | PWA | See [iOS Setup Guide](scripts/install-ios.md) |
+            | **Docker** | `docker compose -f docker/docker-compose.yml up -d` | See README |
+
+            ### Quick Start (Docker)
+            ```bash
+            git clone https://github.com/pandejesal/resonance.git
+            cd resonance
+            docker compose -f docker/docker-compose.yml up -d
+            ```
+            Open http://localhost:8080
+
+            ### Features
+            - Bit-perfect audio playback with Web Audio API
+            - 10-band equalizer with presets
+            - Gapless playback and crossfade
+            - Scrobbling (Last.fm, ListenBrainz)
+            - Synced lyrics (LRCLIB)
+            - Import from Spotify, YouTube Music, Apple Music, SoundCloud
+            - Auto-updater
+            - Dark/Light/AMOLED themes
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+          draft: false
+          prerelease: false
