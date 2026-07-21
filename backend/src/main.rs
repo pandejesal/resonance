@@ -4,8 +4,7 @@ mod scanner;
 mod handlers;
 
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, middleware};
-use actix_web::dev::Service;
+use actix_web::{web, App, HttpServer, middleware};
 use handlers::AppState;
 use scanner::Scanner;
 use std::sync::Arc;
@@ -103,6 +102,12 @@ async fn main() -> std::io::Result<()> {
             .route("/api/playlists/{id}", web::delete().to(handlers::delete_playlist))
             .route("/api/playlists/{id}/tracks", web::get().to(handlers::get_playlist_tracks))
             .route("/api/playlists/{id}/tracks", web::post().to(handlers::add_track_to_playlist))
+            .route("/api/playlists/{id}/shuffle", web::post().to(handlers::shuffle_playlist))
+            .route("/api/playlists/{id}/sort", web::post().to(handlers::sort_playlist))
+            .route("/api/playlists/{id}/dedupe", web::post().to(handlers::dedupe_playlist))
+            .route("/api/playlists/{id}/stats", web::get().to(handlers::playlist_stats))
+            .route("/api/playlists/{id}/share", web::post().to(handlers::share_playlist))
+            .route("/api/playlists/generate", web::post().to(handlers::generate_playlist))
             .route("/api/browse", web::get().to(handlers::browse_directory))
             .service(static_files)
     })

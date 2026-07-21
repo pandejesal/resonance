@@ -16,6 +16,7 @@ import FoldersPage from './pages/FoldersPage';
 import PlaylistsPage from './pages/PlaylistsPage';
 import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
+import PlaylistToolsPage from './pages/PlaylistToolsPage';
 import { cn } from './lib/utils';
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="/folders" element={<FoldersPage />} />
               <Route path="/playlists" element={<PlaylistsPage />} />
               <Route path="/stats" element={<StatsPage />} />
+              <Route path="/tools" element={<PlaylistToolsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>
           </main>

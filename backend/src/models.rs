@@ -206,6 +206,50 @@ pub struct CreateLibraryRequest {
     pub path: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ShufflePlaylistRequest {
+    pub mode: Option<String>, // "random", "smart", "no-consecutive-artist"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SortPlaylistRequest {
+    pub sort_by: String, // "title", "artist", "album", "duration", "year", "date_added", "play_count", "random"
+    pub order: Option<String>, // "asc" or "desc"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DedupePlaylistRequest {
+    pub strategy: Option<String>, // "exact", "title_artist", "fingerprint"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GeneratePlaylistRequest {
+    pub name: String,
+    pub source: String, // "library", "genre", "artist", "mood", "recently_played", "unplayed", "top_rated"
+    pub source_value: Option<String>, // genre name, artist name, mood value, etc.
+    pub count: Option<i32>,
+    pub exclude_explicit: Option<bool>,
+    pub min_rating: Option<i32>,
+    pub min_duration_ms: Option<i64>,
+    pub max_duration_ms: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SharePlaylistRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub include_metadata: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlaylistToolResult {
+    pub success: bool,
+    pub message: String,
+    pub playlist_id: Option<String>,
+    pub affected_tracks: Option<i32>,
+    pub details: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WSMessage {
     pub msg_type: String,

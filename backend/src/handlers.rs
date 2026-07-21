@@ -6,6 +6,8 @@ use crate::scanner::Scanner;
 use std::sync::Arc;
 use parking_lot::Mutex;
 use std::path::PathBuf;
+use rand::seq::SliceRandom;
+use rand::Rng;
 
 pub struct AppState {
     pub db: SqlitePool,
@@ -814,6 +816,500 @@ fn get_mime_type(format: &str) -> &str {
         "m4a" | "m4b" | "mp4" => "audio/mp4",
         "dsf" | "dff" => "audio/dsd",
         _ => "application/octet-stream",
+    }
+}
+
+// ── Playlist Tools ────────────────────────────────────────────────
+
+pub async fn shuffle_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<ShufflePlaylistRequest>,
+) -> HttpResponse {
+    let playlist_id = path.into_inner();
+    let mode = body.mode.as_deref().unwrap_or("smart");
+
+    let tracks = get_playlist_track_ids(&data.db, &playlist_id).await;
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let shuffled = match mode {
+        "random" => {
+            let mut rng = rand::thread_rng();
+            let mut ids: Vec<String> = tracks.into_iter().map(|t| t.0).collect();
+            ids.shuffle(&mut rng);
+            ids
+        }
+        "no-consecutive-artist" => {
+            let mut rng = rand::thread_rng();
+            let mut track_ids: Vec<String> = tracks.into_iter().map(|t| t.0).collect();
+            let mut result = Vec::new();
+
+            while !track_ids.is_empty() {
+                if result.is_empty() {
+                    let idx = rng.gen_range(0..track_ids.len());
+                    result.push(track_ids.remove(idx));
+                } else {
+                    let last_artist = get_artist_for_track(&data.db, result.last().unwrap()).await;
+                    let mut valid: Vec<usize> = Vec::new();
+                    for (i, id) in track_ids.iter().enumerate() {
+                        let artist = get_artist_for_track(&data.db, id).await;
+                        if artist != last_artist {
+                            valid.push(i);
+                        }
+                    }
+                    if valid.is_empty() {
+                        let idx = rng.gen_range(0..track_ids.len());
+                        result.push(track_ids.remove(idx));
+                    } else {
+                        let pick = valid[rng.gen_range(0..valid.len())];
+                        result.push(track_ids.remove(pick));
+                    }
+                }
+            }
+            result
+        }
+        _ => {
+            // "smart" shuffle: interleave high and low play-count tracks
+            let mut by_play: Vec<(String, i32)> = tracks;
+            by_play.sort_by(|a, b| b.1.cmp(&a.1));
+            let mut result = Vec::new();
+            let mut low = by_play.len() / 2;
+            let mut high = 0;
+            let mut toggle = true;
+            while high < by_play.len() / 2 || low < by_play.len() {
+                if toggle && high < by_play.len() / 2 {
+                    result.push(by_play[high].0.clone());
+                    high += 1;
+                } else if low < by_play.len() {
+                    result.push(by_play[low].0.clone());
+                    low += 1;
+                } else if high < by_play.len() / 2 {
+                    result.push(by_play[high].0.clone());
+                    high += 1;
+                }
+                toggle = !toggle;
+            }
+            result
+        }
+    };
+
+    let count = shuffled.len() as i32;
+    save_playlist_order(&data.db, &playlist_id, &shuffled).await;
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Shuffled {} tracks using '{}' mode", count, mode),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(count),
+        details: Some(serde_json::json!({"mode": mode, "tracks_shuffled": count})),
+    })
+}
+
+pub async fn sort_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<SortPlaylistRequest>,
+) -> HttpResponse {
+    let playlist_id = path.into_inner();
+
+    let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let order = body.order.as_deref().unwrap_or("asc");
+    let mut sorted = tracks;
+    match body.sort_by.as_str() {
+        "title" => sorted.sort_by(|a, b| cmp_with_order(&a.title, &b.title, order)),
+        "artist" => sorted.sort_by(|a, b| cmp_with_order(&a.artist, &b.artist, order)),
+        "album" => sorted.sort_by(|a, b| cmp_with_order(&a.album, &b.album, order)),
+        "duration" => sorted.sort_by(|a, b| cmp_with_order_num(a.duration_ms, b.duration_ms, order)),
+        "year" => sorted.sort_by(|a, b| cmp_with_order_opt(a.year, b.year, order)),
+        "date_added" => sorted.sort_by(|a, b| cmp_with_order(&a.date_added, &b.date_added, order)),
+        "play_count" => sorted.sort_by(|a, b| cmp_with_order_num(a.play_count as i64, b.play_count as i64, order)),
+        "rating" => sorted.sort_by(|a, b| cmp_with_order_opt(a.rating, b.rating, order)),
+        "genre" => sorted.sort_by(|a, b| {
+            let ga = a.genre.as_deref().unwrap_or("");
+            let gb = b.genre.as_deref().unwrap_or("");
+            cmp_with_order(ga, gb, order)
+        }),
+        "random" => {
+            let mut rng = rand::thread_rng();
+            sorted.shuffle(&mut rng);
+        }
+        _ => {}
+    }
+
+    let ids: Vec<String> = sorted.into_iter().map(|t| t.id).collect();
+    let count = ids.len() as i32;
+    save_playlist_order(&data.db, &playlist_id, &ids).await;
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Sorted {} tracks by {}", count, body.sort_by),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(count),
+        details: Some(serde_json::json!({"sort_by": body.sort_by, "order": order, "tracks_sorted": count})),
+    })
+}
+
+pub async fn dedupe_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<DedupePlaylistRequest>,
+) -> HttpResponse {
+    let playlist_id = path.into_inner();
+    let strategy = body.strategy.as_deref().unwrap_or("title_artist");
+
+    let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let before_count = tracks.len();
+    let mut seen = std::collections::HashSet::new();
+    let mut unique_ids = Vec::new();
+    let mut duplicates = Vec::new();
+
+    for track in &tracks {
+        let key = match strategy {
+            "exact" => format!("{}:{}", track.file_path, track.title),
+            "fingerprint" => track.fingerprint.clone().unwrap_or_else(|| format!("{}:{}", track.title, track.artist)),
+            _ => format!("{}:{}", track.title.to_lowercase(), track.artist.to_lowercase()),
+        };
+        if seen.insert(key) {
+            unique_ids.push(track.id.clone());
+        } else {
+            duplicates.push(track.title.clone());
+        }
+    }
+
+    let removed = before_count - unique_ids.len();
+    save_playlist_order(&data.db, &playlist_id, &unique_ids).await;
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Removed {} duplicate tracks", removed),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(removed as i32),
+        details: Some(serde_json::json!({
+            "strategy": strategy,
+            "before": before_count,
+            "after": unique_ids.len(),
+            "removed": removed,
+            "duplicate_titles": duplicates,
+        })),
+    })
+}
+
+pub async fn generate_playlist(
+    data: web::Data<AppState>,
+    body: web::Json<GeneratePlaylistRequest>,
+) -> HttpResponse {
+    let count = body.count.unwrap_or(20).min(100);
+
+    let mut where_clauses = vec!["1=1".to_string()];
+
+    match body.source.as_str() {
+        "genre" => {
+            if let Some(ref genre) = body.source_value {
+                where_clauses.push(format!("genre = '{}'", genre.replace('\'', "''")));
+            }
+        }
+        "artist" => {
+            if let Some(ref artist) = body.source_value {
+                where_clauses.push(format!("artist LIKE '%{}%'", artist.replace('\'', "''")));
+            }
+        }
+        "mood" => {
+            if let Some(ref mood) = body.source_value {
+                where_clauses.push(format!("mood = '{}'", mood.replace('\'', "''")));
+            }
+        }
+        "recently_played" => {
+            where_clauses.push("last_played IS NOT NULL".to_string());
+            where_clauses.push("last_played != ''".to_string());
+        }
+        "unplayed" => {
+            where_clauses.push("play_count = 0".to_string());
+        }
+        "top_rated" => {
+            where_clauses.push("rating IS NOT NULL".to_string());
+            where_clauses.push("rating >= 4".to_string());
+        }
+        _ => {} // "library" - no extra filter
+    }
+
+    if let Some(min_dur) = body.min_duration_ms {
+        where_clauses.push(format!("duration_ms >= {}", min_dur));
+    }
+    if let Some(max_dur) = body.max_duration_ms {
+        where_clauses.push(format!("duration_ms <= {}", max_dur));
+    }
+    if let Some(min_rating) = body.min_rating {
+        where_clauses.push(format!("rating >= {}", min_rating));
+    }
+
+    let where_str = where_clauses.join(" AND ");
+    let sql = format!(
+        "SELECT * FROM tracks WHERE {} ORDER BY RANDOM() LIMIT {}",
+        where_str, count
+    );
+
+    let tracks = sqlx::query_as::<_, Track>(&sql)
+        .fetch_all(&data.db)
+        .await
+        .unwrap_or_default();
+
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "No tracks match the specified criteria".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    // Create the playlist
+    let id = uuid::Uuid::new_v4().to_string();
+    let _ = sqlx::query(
+        "INSERT INTO playlists (id, name, description, library_id) VALUES (?, ?, ?, '')"
+    )
+    .bind(&id)
+    .bind(&body.name)
+    .bind(format!("Auto-generated from: {}", body.source))
+    .execute(&data.db)
+    .await;
+
+    let track_ids: Vec<String> = tracks.iter().map(|t| t.id.clone()).collect();
+    save_playlist_order(&data.db, &id, &track_ids).await;
+
+    let total_duration: i64 = tracks.iter().map(|t| t.duration_ms).sum();
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Generated '{}' with {} tracks", body.name, tracks.len()),
+        playlist_id: Some(id),
+        affected_tracks: Some(tracks.len() as i32),
+        details: Some(serde_json::json!({
+            "name": body.name,
+            "source": body.source,
+            "track_count": tracks.len(),
+            "total_duration_ms": total_duration,
+        })),
+    })
+}
+
+pub async fn share_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<SharePlaylistRequest>,
+) -> HttpResponse {
+    let playlist_id = path.into_inner();
+
+    let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let include_meta = body.include_metadata.unwrap_or(true);
+
+    let playlist_data = serde_json::json!({
+        "name": body.name,
+        "description": body.description,
+        "track_count": tracks.len(),
+        "tracks": tracks.iter().map(|t| {
+            let mut obj = serde_json::json!({
+                "title": t.title,
+                "artist": t.artist,
+                "album": t.album,
+                "duration_ms": t.duration_ms,
+            });
+            if include_meta {
+                obj["genre"] = serde_json::json!(t.genre);
+                obj["year"] = serde_json::json!(t.year);
+                obj["format"] = serde_json::json!(t.format);
+            }
+            obj
+        }).collect::<Vec<_>>(),
+    });
+
+    let encoded = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        playlist_data.to_string().as_bytes(),
+    );
+
+    let share_url = format!("resonance://playlist/{}", encoded);
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Created shareable playlist with {} tracks", tracks.len()),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(tracks.len() as i32),
+        details: Some(serde_json::json!({
+            "share_url": share_url,
+            "track_count": tracks.len(),
+            "total_duration_ms": tracks.iter().map(|t| t.duration_ms).sum::<i64>(),
+        })),
+    })
+}
+
+pub async fn playlist_stats(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let playlist_id = path.into_inner();
+    let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
+
+    if tracks.is_empty() {
+        return HttpResponse::NotFound().json(serde_json::json!({"error": "Playlist not found"}));
+    }
+
+    let total_duration: i64 = tracks.iter().map(|t| t.duration_ms).sum();
+    let total_size: i64 = tracks.iter().map(|t| t.file_size).sum();
+
+    let mut artists: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut albums: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut genres: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut formats: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut avg_rating = 0.0;
+    let mut rated_count = 0;
+
+    for track in &tracks {
+        *artists.entry(track.artist.clone()).or_insert(0) += 1;
+        *albums.entry(track.album.clone()).or_insert(0) += 1;
+        if let Some(ref g) = track.genre {
+            if !g.is_empty() {
+                *genres.entry(g.clone()).or_insert(0) += 1;
+            }
+        }
+        *formats.entry(track.format.clone()).or_insert(0) += 1;
+        if let Some(r) = track.rating {
+            avg_rating += r as f64;
+            rated_count += 1;
+        }
+    }
+
+    if rated_count > 0 {
+        avg_rating /= rated_count as f64;
+    }
+
+    let mut top_artists: Vec<_> = artists.into_iter().collect();
+    top_artists.sort_by(|a, b| b.1.cmp(&a.1));
+    top_artists.truncate(5);
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "track_count": tracks.len(),
+        "total_duration_ms": total_duration,
+        "total_size_bytes": total_size,
+        "avg_rating": (avg_rating * 10.0).round() / 10.0,
+        "unique_artists": top_artists.len(),
+        "unique_albums": albums.len(),
+        "top_artists": top_artists,
+        "genres": genres,
+        "formats": formats,
+    }))
+}
+
+// ── Helper functions ──────────────────────────────────────────────
+
+async fn get_playlist_track_ids(db: &SqlitePool, playlist_id: &str) -> Vec<(String, i32)> {
+    sqlx::query_as::<_, (String, i32)>(
+        "SELECT track_id, 0 FROM playlist_tracks WHERE playlist_id = ? ORDER BY position"
+    )
+    .bind(playlist_id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default()
+}
+
+async fn get_playlist_tracks_full(db: &SqlitePool, playlist_id: &str) -> Vec<Track> {
+    sqlx::query_as::<_, Track>(
+        "SELECT t.* FROM tracks t JOIN playlist_tracks pt ON t.id = pt.track_id WHERE pt.playlist_id = ? ORDER BY pt.position"
+    )
+    .bind(playlist_id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default()
+}
+
+async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> String {
+    sqlx::query_scalar::<_, String>("SELECT artist FROM tracks WHERE id = ?")
+        .bind(track_id)
+        .fetch_one(db)
+        .await
+        .unwrap_or_default()
+}
+
+async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[String]) {
+    let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
+        .bind(playlist_id)
+        .execute(db)
+        .await;
+
+    for (i, track_id) in track_ids.iter().enumerate() {
+        let _ = sqlx::query(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES (?, ?, ?, datetime('now'))"
+        )
+        .bind(playlist_id)
+        .bind(track_id)
+        .bind(i as i32)
+        .execute(db)
+        .await;
+    }
+
+    let _ = sqlx::query("UPDATE playlists SET track_count = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(track_ids.len() as i32)
+        .bind(playlist_id)
+        .execute(db)
+        .await;
+}
+
+fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {
+    if order == "desc" {
+        b.to_lowercase().cmp(&a.to_lowercase())
+    } else {
+        a.to_lowercase().cmp(&b.to_lowercase())
+    }
+}
+
+fn cmp_with_order_num(a: i64, b: i64, order: &str) -> std::cmp::Ordering {
+    if order == "desc" { b.cmp(&a) } else { a.cmp(&b) }
+}
+
+fn cmp_with_order_opt(a: Option<i32>, b: Option<i32>, order: &str) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(x), Some(y)) => if order == "desc" { y.cmp(&x) } else { x.cmp(&y) },
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
     }
 }
 

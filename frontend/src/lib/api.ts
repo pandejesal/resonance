@@ -134,5 +134,32 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ track_id: trackId, position }),
       }),
+    shuffle: (id: string, mode?: string) =>
+      fetchJson<{ success: boolean; message: string; affected_tracks?: number; details?: any }>(`/playlists/${id}/shuffle`, {
+        method: 'POST',
+        body: JSON.stringify({ mode }),
+      }),
+    sort: (id: string, sortBy: string, order?: string) =>
+      fetchJson<{ success: boolean; message: string; affected_tracks?: number; details?: any }>(`/playlists/${id}/sort`, {
+        method: 'POST',
+        body: JSON.stringify({ sort_by: sortBy, order }),
+      }),
+    dedupe: (id: string, strategy?: string) =>
+      fetchJson<{ success: boolean; message: string; affected_tracks?: number; details?: any }>(`/playlists/${id}/dedupe`, {
+        method: 'POST',
+        body: JSON.stringify({ strategy }),
+      }),
+    stats: (id: string) =>
+      fetchJson<any>(`/playlists/${id}/stats`),
+    share: (id: string, name: string, description?: string) =>
+      fetchJson<{ success: boolean; message: string; details?: any }>(`/playlists/${id}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ name, description, include_metadata: true }),
+      }),
+    generate: (data: { name: string; source: string; source_value?: string; count?: number; min_rating?: number; min_duration_ms?: number; max_duration_ms?: number }) =>
+      fetchJson<{ success: boolean; message: string; playlist_id?: string; affected_tracks?: number }>(`/playlists/generate`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 };
