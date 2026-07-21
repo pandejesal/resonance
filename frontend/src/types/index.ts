@@ -192,6 +192,46 @@ export interface UpdaterConfig {
   docker_socket: boolean;
 }
 
+export interface ImportTrack {
+  title: string;
+  artist: string;
+  album?: string;
+  duration_ms?: number;
+  platform_id?: string;
+}
+
+export interface MatchedTrack {
+  import_track: ImportTrack;
+  track_id: string;
+  match_type: string;
+  confidence: number;
+}
+
+export interface ImportPreview {
+  platform: string;
+  playlist_name: string;
+  total_tracks: number;
+  matched: MatchedTrack[];
+  unmatched: ImportTrack[];
+}
+
+export interface ImportFormat {
+  id: string;
+  name: string;
+  description: string;
+  extensions: string[];
+  example: string;
+}
+
+export interface ImportConfirmTrack {
+  title: string;
+  artist: string;
+  album?: string;
+  duration_ms?: number;
+  platform_id?: string;
+  track_id?: string;
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   queue: QueueItem[];

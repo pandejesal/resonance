@@ -256,6 +256,29 @@ pub struct WSMessage {
     pub data: serde_json::Value,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ImportPreviewRequest {
+    pub platform: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportConfirmRequest {
+    pub platform: String,
+    pub playlist_name: String,
+    pub tracks: Vec<ImportConfirmTrack>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportConfirmTrack {
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub platform_id: Option<String>,
+    pub track_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrobblingConfig {
     pub lastfm: LastfmConfig,

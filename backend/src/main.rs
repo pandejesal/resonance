@@ -5,6 +5,7 @@ mod handlers;
 mod scrobble;
 mod lyrics;
 mod updater;
+mod importer;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, middleware};
@@ -128,6 +129,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/updater/update", web::post().to(handlers::apply_update))
             .route("/api/updater/config", web::get().to(handlers::get_updater_config))
             .route("/api/updater/config", web::put().to(handlers::update_updater_config))
+            .route("/api/import/preview", web::post().to(handlers::preview_import))
+            .route("/api/import/confirm", web::post().to(handlers::confirm_import))
+            .route("/api/import/formats", web::get().to(handlers::get_import_formats))
             .service(static_files)
     })
     .bind((host.as_str(), port))?

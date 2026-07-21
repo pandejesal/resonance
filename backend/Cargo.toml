@@ -32,6 +32,7 @@ base64.workspace = true
 reqwest.workspace = true
 rand.workspace = true
 urlencoding.workspace = true
+roxmltree.workspace = true
 
 [profile.release]
 opt-level = 3

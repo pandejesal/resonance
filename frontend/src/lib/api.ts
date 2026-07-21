@@ -13,6 +13,9 @@ import type {
   LyricsData,
   UpdateStatus,
   UpdaterConfig,
+  ImportPreview,
+  ImportFormat,
+  ImportConfirmTrack,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -198,6 +201,20 @@ export const api = {
       fetchJson<{ success: boolean; config: UpdaterConfig }>('/updater/config', {
         method: 'PUT',
         body: JSON.stringify(data),
+      }),
+  },
+
+  import: {
+    formats: () => fetchJson<{ formats: ImportFormat[] }>('/import/formats'),
+    preview: (platform: string, content: string) =>
+      fetchJson<ImportPreview>('/import/preview', {
+        method: 'POST',
+        body: JSON.stringify({ platform, content }),
+      }),
+    confirm: (platform: string, playlistName: string, tracks: ImportConfirmTrack[]) =>
+      fetchJson<{ success: boolean; playlist_id: string; tracks_added: number }>('/import/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ platform, playlist_name: playlistName, tracks }),
       }),
   },
 };

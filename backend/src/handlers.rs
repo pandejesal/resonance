@@ -1619,3 +1619,142 @@ pub async fn update_updater_config(
         "config": config,
     }))
 }
+
+pub async fn preview_import(
+    data: web::Data<AppState>,
+    body: web::Json<ImportPreviewRequest>,
+) -> HttpResponse {
+    let mut preview = match body.platform.as_str() {
+        "spotify" => match crate::importer::parse_spotify(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "youtube_music" => match crate::importer::parse_youtube_music(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "apple_music" => match crate::importer::parse_apple_music(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "soundcloud" => match crate::importer::parse_soundcloud(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "m3u" => match crate::importer::parse_m3u(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "xspf" => match crate::importer::parse_xspf(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        _ => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Unsupported platform"})),
+    };
+
+    crate::importer::match_tracks(&data.db, &mut preview).await;
+    HttpResponse::Ok().json(preview)
+}
+
+pub async fn confirm_import(
+    data: web::Data<AppState>,
+    body: web::Json<ImportConfirmRequest>,
+) -> HttpResponse {
+    let playlist_id = uuid::Uuid::new_v4().to_string();
+
+    let result = sqlx::query(
+        "INSERT INTO playlists (id, name, description, is_smart, smart_filter, parent_id, library_id, source_platform) VALUES (?, ?, NULL, FALSE, NULL, NULL, '', ?)"
+    )
+    .bind(&playlist_id)
+    .bind(&body.playlist_name)
+    .bind(&body.platform)
+    .execute(&data.db)
+    .await;
+
+    if let Err(e) = result {
+        return HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}));
+    }
+
+    let mut added = 0;
+    for (pos, track) in body.tracks.iter().enumerate() {
+        let track_id = if let Some(id) = &track.track_id {
+            id.clone()
+        } else {
+            continue;
+        };
+
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)"
+        )
+        .bind(&playlist_id)
+        .bind(&track_id)
+        .bind(pos as i32)
+        .execute(&data.db)
+        .await;
+
+        added += 1;
+    }
+
+    let _ = sqlx::query(
+        "UPDATE playlists SET track_count = ? WHERE id = ?"
+    )
+    .bind(added)
+    .bind(&playlist_id)
+    .execute(&data.db)
+    .await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "playlist_id": playlist_id,
+        "tracks_added": added,
+    }))
+}
+
+pub async fn get_import_formats() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "formats": [
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "description": "Export from Spotify account data (JSON)",
+                "extensions": ["json"],
+                "example": "Go to Spotify Privacy > Account Data > Download. Look for 'YourPlaylists' or playlist JSON files."
+            },
+            {
+                "id": "youtube_music",
+                "name": "YouTube Music",
+                "description": "Export from Google Takeout (JSON)",
+                "extensions": ["json"],
+                "example": "Go to Google Takeout > YouTube and YouTube Music > Export. Select 'playlists' and download the ZIP."
+            },
+            {
+                "id": "apple_music",
+                "name": "Apple Music",
+                "description": "Apple Music playlist export (JSON)",
+                "extensions": ["json"],
+                "example": "Use a third-party tool or export from Music app XML library."
+            },
+            {
+                "id": "soundcloud",
+                "name": "SoundCloud",
+                "description": "SoundCloud likes/playlists export (JSON)",
+                "extensions": ["json"],
+                "example": "Export from SoundCloud or use a third-party tool to export your likes."
+            },
+            {
+                "id": "m3u",
+                "name": "M3U/M3U8",
+                "description": "Standard M3U playlist format",
+                "extensions": ["m3u", "m3u8"],
+                "example": "Most music players can export to M3U format."
+            },
+            {
+                "id": "xspf",
+                "name": "XSPF",
+                "description": "XML Shareable Playlist Format",
+                "extensions": ["xspf"],
+                "example": "VLC, Clementine, and other players support XSPF export."
+            }
+        ]
+    }))
+}
