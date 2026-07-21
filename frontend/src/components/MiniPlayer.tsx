@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { usePlayerStore, useUIStore } from '../stores';
 import { getArtworkUrl, formatDuration } from '../lib/utils';
+import { audioEngine } from '../lib/audio-engine';
 
 export default function MiniPlayer() {
   const {
@@ -16,6 +17,8 @@ export default function MiniPlayer() {
     setDuration,
     setIsPlaying,
     setAudio,
+    eqEnabled,
+    eqBands,
   } = usePlayerStore();
   const { toggleNowPlaying, toggleQueue, queueOpen } = useUIStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -36,7 +39,13 @@ export default function MiniPlayer() {
       });
 
       audio.addEventListener('ended', () => {
-        usePlayerStore.getState().next();
+        const state = usePlayerStore.getState();
+        if (state.repeat === 'one') {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+        } else {
+          state.next();
+        }
       });
 
       audio.addEventListener('play', () => setIsPlaying(true));
@@ -50,6 +59,13 @@ export default function MiniPlayer() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (audioEngine.isReady) {
+      audioEngine.setEQEnabled(eqEnabled);
+      eqBands.forEach((gain, i) => audioEngine.setEQBand(i, gain));
+    }
+  }, [eqEnabled, eqBands]);
 
   if (!currentTrack) return null;
 

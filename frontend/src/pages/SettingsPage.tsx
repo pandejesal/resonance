@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import { useUIStore } from '../stores';
+import { useUIStore, usePlayerStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
 import type { Library, ScanProgress } from '../types';
@@ -15,6 +15,10 @@ export default function SettingsPage() {
   const [scanProgress, setScanProgress] = useState<Record<string, ScanProgress>>({});
   const [showBrowser, setShowBrowser] = useState(false);
   const { theme, setTheme } = useUIStore();
+  const {
+    crossfade, toggleCrossfade, crossfadeDuration, setCrossfadeDuration,
+    gapless, toggleGapless,
+  } = usePlayerStore();
 
   useEffect(() => {
     api.libraries.list()
@@ -245,6 +249,79 @@ export default function SettingsPage() {
               </button>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Playback */}
+      <section>
+        <h2 className="text-lg font-semibold text-primary mb-4">Playback</h2>
+        <div className="surface-card p-4 space-y-4">
+          {/* Gapless */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-primary">Gapless Playback</p>
+              <p className="text-xs text-tertiary">No silence between tracks</p>
+            </div>
+            <button
+              onClick={toggleGapless}
+              className={cn(
+                'relative w-11 h-6 rounded-full transition-colors',
+                gapless ? 'bg-brand-600' : 'bg-surface-3'
+              )}
+            >
+              <div
+                className={cn(
+                  'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                  gapless ? 'translate-x-5.5' : 'translate-x-0.5'
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Crossfade */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-primary">Crossfade</p>
+              <p className="text-xs text-tertiary">Fade between tracks (disables gapless)</p>
+            </div>
+            <button
+              onClick={toggleCrossfade}
+              className={cn(
+                'relative w-11 h-6 rounded-full transition-colors',
+                crossfade ? 'bg-brand-600' : 'bg-surface-3'
+              )}
+            >
+              <div
+                className={cn(
+                  'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                  crossfade ? 'translate-x-5.5' : 'translate-x-0.5'
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Crossfade duration */}
+          {crossfade && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-secondary">Crossfade Duration</p>
+                <span className="text-sm text-primary font-mono">{crossfadeDuration}s</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={12}
+                step={1}
+                value={crossfadeDuration}
+                onChange={(e) => setCrossfadeDuration(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-surface-3 rounded-full appearance-none cursor-pointer accent-brand-500"
+              />
+              <div className="flex justify-between text-xs text-tertiary mt-1">
+                <span>1s</span>
+                <span>12s</span>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

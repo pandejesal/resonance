@@ -1,12 +1,58 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore, useUIStore } from '../stores';
 import { getArtworkUrl } from '../lib/utils';
+import { audioEngine } from '../lib/audio-engine';
+
+const BAR_COUNT = 40;
 
 export default function NowPlaying() {
   const { currentTrack, isPlaying, progress, duration, next, previous, togglePlay, seek } = usePlayerStore();
   const { nowPlayingOpen, toggleNowPlaying, lyricsOpen, toggleLyrics } = useUIStore();
   const [artworkError, setArtworkError] = useState(false);
+  const [bars, setBars] = useState<number[]>(new Array(BAR_COUNT).fill(10));
+  const rafRef = useRef<number>(0);
+
+  const animate = useCallback(() => {
+    if (!audioEngine.isReady) {
+      setBars((prev) => prev.map(() => 10 + Math.random() * 20));
+      rafRef.current = requestAnimationFrame(animate);
+      return;
+    }
+
+    const data = audioEngine.getFrequencyData();
+    if (data.length === 0) {
+      rafRef.current = requestAnimationFrame(animate);
+      return;
+    }
+
+    const binCount = data.length;
+    const barsPerBin = Math.max(1, Math.floor(binCount / BAR_COUNT));
+    const newBars: number[] = [];
+
+    for (let i = 0; i < BAR_COUNT; i++) {
+      let sum = 0;
+      const start = i * barsPerBin;
+      for (let j = start; j < start + barsPerBin && j < binCount; j++) {
+        sum += data[j];
+      }
+      const avg = sum / barsPerBin;
+      const height = Math.max(8, (avg / 255) * 100);
+      newBars.push(height);
+    }
+
+    setBars(newBars);
+    rafRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying && nowPlayingOpen) {
+      rafRef.current = requestAnimationFrame(animate);
+    }
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isPlaying, nowPlayingOpen, animate]);
 
   if (!currentTrack) return null;
 
@@ -89,23 +135,16 @@ export default function NowPlaying() {
               {currentTrack.bitrate && <span>{currentTrack.bitrate}kbps</span>}
             </div>
 
-            {/* Waveform visualization */}
+            {/* Audio visualization */}
             <div className="w-full h-12 flex items-end justify-center gap-[2px] mb-4">
-              {Array.from({ length: 40 }).map((_, i) => (
+              {bars.map((height, i) => (
                 <motion.div
                   key={i}
                   className="w-[3px] rounded-full bg-brand-500/60"
                   animate={{
-                    height: isPlaying
-                      ? `${20 + Math.random() * 80}%`
-                      : '20%',
+                    height: isPlaying ? `${height}%` : '8%',
                   }}
-                  transition={{
-                    duration: 0.3 + Math.random() * 0.4,
-                    repeat: isPlaying ? Infinity : 0,
-                    repeatType: 'reverse',
-                    ease: 'easeInOut',
-                  }}
+                  transition={{ duration: 0.05 }}
                 />
               ))}
             </div>

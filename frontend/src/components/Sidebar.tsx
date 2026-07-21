@@ -14,6 +14,7 @@ const navItems = [
   { path: '/playlists', label: 'Playlists', icon: PlaylistsIcon },
   { path: '/stats', label: 'Statistics', icon: StatsIcon },
   { path: '/tools', label: 'Music Tools', icon: ToolsIcon },
+  { path: '/equalizer', label: 'Equalizer', icon: EqualizerIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -162,6 +163,14 @@ function ToolsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  );
+}
+
+function EqualizerIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
     </svg>
   );
 }
