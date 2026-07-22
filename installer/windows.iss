@@ -5,7 +5,7 @@
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "Resonance"
 #define MyAppURL "https://github.com/pandejesal/resonance"
-#define MyAppExeName "resonance.exe"
+#define MyAppExeName "resonance.bat"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -38,7 +38,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\release\resonance-backend.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\release\static\*"; DestDir: "{app}\static"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\release\migrations\*"; DestDir: "{app}\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "release\VERSION"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\release\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 Name: "{app}\data"
