@@ -65,13 +65,16 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or_else(|_| "8080".to_string())
         .parse()
         .expect("PORT must be a number");
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "./static".to_string());
 
-    info!("Starting Resonance server on {}:{}", host, port);
+    info!("Starting Resonance server on {}:{} (static: {})", host, port, static_dir);
 
     let db_for_updater = database.pool.clone();
     tokio::spawn(async move {
         updater::start_background_check(db_for_updater).await;
     });
+
+    let static_dir_for_server = static_dir.clone();
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -80,9 +83,10 @@ async fn main() -> std::io::Result<()> {
             .allow_any_header()
             .max_age(3600);
 
-        let static_files = actix_files::Files::new("/", "./static")
+        let index_path = format!("{}/index.html", static_dir_for_server);
+        let static_files = actix_files::Files::new("/", &static_dir_for_server)
             .index_file("index.html")
-            .default_handler(actix_files::NamedFile::open("./static/index.html")
+            .default_handler(actix_files::NamedFile::open(&index_path)
                 .expect("index.html not found"));
 
         App::new()

@@ -1,0 +1,43 @@
+name: Resonance
+options:
+  bundleIdPrefix: com.pandejesal
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    INFOPLIST_FILE: App/Info.plist
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    PROVISIONING_PROFILE_SPECIFIER: ""
+
+targets:
+  Resonance:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    resources:
+      - path: App/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pandejesal.resonance
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+    preBuildScripts: []
+    postBuildScripts:
+      - name: "Copy Backend Binary"
+        script: |
+          if [ -f "${SRCROOT}/backend/resonance-backend" ]; then
+            cp "${SRCROOT}/backend/resonance-backend" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_NAME}.app/"
+          fi
+          if [ -d "${SRCROOT}/backend/static" ]; then
+            cp -r "${SRCROOT}/backend/static" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_NAME}.app/"
+          fi
