@@ -19,6 +19,9 @@ settings:
     CODE_SIGNING_REQUIRED: "NO"
     CODE_SIGNING_ALLOWED: "NO"
     PROVISIONING_PROFILE_SPECIFIER: ""
+    SWIFT_OBJC_BRIDGING_HEADER: "App/Resonance-Bridging-Header.h"
+    OTHER_LDFLAGS: ["-L$(SRCROOT)/backend", "-lresonance_backend", "-ldl", "-lm"]
+    LIBRARY_SEARCH_PATHS: ["$(SRCROOT)/backend"]
 
 targets:
   Resonance:
@@ -35,11 +38,8 @@ targets:
         GENERATE_INFOPLIST_FILE: false
     preBuildScripts: []
     postBuildScripts:
-      - name: "Copy Backend Binary"
+      - name: "Copy Backend Assets"
         script: |
-          if [ -f "${SRCROOT}/backend/resonance-backend" ]; then
-            cp "${SRCROOT}/backend/resonance-backend" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_NAME}.app/"
-          fi
           if [ -d "${SRCROOT}/backend/static" ]; then
             cp -r "${SRCROOT}/backend/static" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_NAME}.app/"
           fi

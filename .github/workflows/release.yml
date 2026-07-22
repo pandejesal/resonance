@@ -333,7 +333,7 @@ jobs:
       - name: Prepare iOS Build Assets
         run: |
           mkdir -p frontend/ios/App/backend
-          cp target/aarch64-apple-ios/release/resonance-backend frontend/ios/App/backend/
+          cp target/aarch64-apple-ios/release/libresonance_backend.a frontend/ios/App/backend/
           cp -r frontend/dist frontend/ios/App/backend/static
           cp -r backend/migrations frontend/ios/App/backend/migrations
 

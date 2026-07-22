@@ -3,6 +3,9 @@ name = "resonance-backend"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["staticlib", "lib"]
+
 [dependencies]
 actix-web.workspace = true
 actix-cors.workspace = true
