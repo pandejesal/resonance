@@ -320,9 +320,12 @@ jobs:
           npm run build
 
       - name: Build Backend for iOS
-        env:
-          SDKROOT: iphoneos
         run: |
+          IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          export SDKROOT="$IOS_SDK"
+          export IPHONEOS_DEPLOYMENT_TARGET="15.0"
+          export CC_aarch64_apple_ios="$(xcrun --sdk iphoneos -find clang)"
+          export AR_aarch64_apple_ios="$(xcrun --sdk iphoneos -find ar)"
           cargo build --release --target aarch64-apple-ios -p resonance-backend
 
       - name: Prepare iOS Build Assets
