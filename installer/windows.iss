@@ -35,9 +35,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "release\resonance-backend.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "release\static\*"; DestDir: "{app}\static"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "release\migrations\*"; DestDir: "{app}\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\release\resonance-backend.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\release\static\*"; DestDir: "{app}\static"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\release\migrations\*"; DestDir: "{app}\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "release\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]

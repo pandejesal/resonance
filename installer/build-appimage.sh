@@ -70,12 +70,49 @@ if command -v rsvg-convert &>/dev/null; then
 elif command -v convert &>/dev/null; then
   convert frontend/public/favicon.svg -resize 256x256 "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png"
 else
-  # Create a simple placeholder icon
-  echo "Warning: No SVG converter found. Using placeholder icon."
+  # Use Python + cairosvg or create a minimal PNG as placeholder
+  echo "Warning: No SVG converter found. Using Python fallback."
+  python3 -c "
+import struct, zlib
+# Create a minimal 256x256 blue PNG as placeholder
+width, height = 256, 256
+def create_png(w, h):
+    def chunk(ctype, data):
+        c = ctype + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    raw = b''
+    for y in range(h):
+        raw += b'\x00'  # filter byte
+        for x in range(w):
+            raw += b'\x3b\x82\xf6'  # blue pixel
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+with open('$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png', 'wb') as f:
+    f.write(create_png(256, 256))
+" 2>/dev/null || echo "Could not create icon"
 fi
 
-# Copy icon to AppDir root
-cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png" "$APPDIR/resonance.png" 2>/dev/null || true
+# Copy icon to AppDir root (copy from the icon dir)
+if [ -f "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png" ]; then
+  cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png" "$APPDIR/resonance.png"
+else
+  # Last resort: create via Python directly to AppDir root
+  python3 -c "
+import struct, zlib
+width, height = 256, 256
+def create_png(w, h):
+    def chunk(ctype, data):
+        c = ctype + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    raw = b''
+    for y in range(h):
+        raw += b'\x00'
+        for x in range(w):
+            raw += b'\x3b\x82\xf6'
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+with open('$APPDIR/resonance.png', 'wb') as f:
+    f.write(create_png(256, 256))
+" 2>/dev/null || echo "Could not create icon"
+fi
 
 # Create .desktop file
 cat > "$APPDIR/usr/share/applications/resonance.desktop" <<'DESKTOP'
