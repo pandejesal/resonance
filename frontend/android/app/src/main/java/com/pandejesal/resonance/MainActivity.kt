@@ -24,7 +24,7 @@ class MainActivity : AppCompatActivity() {
         webView.settings.allowFileAccess = true
         webView.settings.allowContentAccess = true
         webView.settings.mediaPlaybackRequiresUserGesture = false
-        webView.settings.cacheMode = WebSettingsCompat.LOAD_DEFAULT
+        webView.settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
 
         if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
             WebSettingsCompat.setForceDark(webView.settings, WebSettingsCompat.FORCE_DARK_AUTO)
