@@ -349,26 +349,24 @@ jobs:
             -project Resonance.xcodeproj \
             -scheme Resonance \
             -configuration Release \
-            -archivePath build/Resonance.xcarchive \
+            -derivedDataPath build \
             -destination "generic/platform=iOS" \
             -allowProvisioningUpdates \
-            archive
+            build
 
-      - name: Export Unsigned IPA
+      - name: Create Unsigned IPA
         run: |
           cd frontend/ios/App
-          mkdir -p build/ipa
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/Resonance.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath build/ipa
+          mkdir -p build/ipa/Payload
+          cp -r build/Build/Products/Release-iphoneos/Resonance.app build/ipa/Payload/
+          cd build/ipa
+          zip -r ../resonance-ios.ipa Payload/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
-          path: frontend/ios/App/build/ipa/*.ipa
+          path: frontend/ios/App/build/resonance-ios.ipa
 
   release:
     needs: [build-windows, build-linux, build-macos, build-android-apk, build-ios-ipa]
