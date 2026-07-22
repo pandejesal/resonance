@@ -27,6 +27,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -49,7 +52,7 @@ jobs:
       - name: Build Backend
         run: cargo build --release -p resonance-backend
 
-      - name: Package
+      - name: Package Portable
         run: |
           mkdir release
           copy target\release\resonance-backend.exe release\
@@ -59,11 +62,22 @@ jobs:
           copy VERSION release\
           Compress-Archive -Path release\* -DestinationPath resonance-windows-x64.zip
 
-      - name: Upload Artifact
+      - name: Build Installer
+        run: |
+          mkdir installer_output
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\windows.iss
+
+      - name: Upload Portable
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
           path: resonance-windows-x64.zip
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: installer_output/resonance-*-setup.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -79,7 +93,7 @@ jobs:
           node-version: '20'
 
       - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libfuse2
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -103,7 +117,7 @@ jobs:
       - name: Build Backend
         run: cargo build --release -p resonance-backend
 
-      - name: Package
+      - name: Package Portable
         run: |
           mkdir -p release
           cp target/release/resonance-backend release/
@@ -113,11 +127,22 @@ jobs:
           cp VERSION release/
           tar -czf resonance-linux-x64.tar.gz -C release .
 
-      - name: Upload Artifact
+      - name: Build AppImage
+        run: |
+          chmod +x installer/build-appimage.sh
+          bash installer/build-appimage.sh
+
+      - name: Upload Portable
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
           path: resonance-linux-x64.tar.gz
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: resonance-*-x86_64.AppImage
 
   build-macos:
     runs-on: macos-latest
@@ -131,6 +156,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Install create-dmg
+        run: brew install create-dmg
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -154,7 +182,7 @@ jobs:
       - name: Build Backend
         run: cargo build --release -p resonance-backend
 
-      - name: Package
+      - name: Package Portable
         run: |
           mkdir -p release
           cp target/release/resonance-backend release/
@@ -164,11 +192,23 @@ jobs:
           cp VERSION release/
           tar -czf resonance-macos-x64.tar.gz -C release .
 
-      - name: Upload Artifact
+      - name: Build DMG
+        run: |
+          mkdir -p release
+          chmod +x installer/build-dmg.sh
+          bash installer/build-dmg.sh
+
+      - name: Upload Portable
         uses: actions/upload-artifact@v4
         with:
           name: macos-x64
           path: resonance-macos-x64.tar.gz
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: resonance-*-macos.dmg
 
   build-android:
     runs-on: ubuntu-latest
@@ -223,18 +263,25 @@ jobs:
 
             A self-hosted music archival system with bit-perfect playback.
 
-            ### Downloads
+            ### Quick Install (Recommended)
+
+            | Platform | Installer | Description |
+            |----------|-----------|-------------|
+            | **Windows** | `resonance-*-setup.exe` | Double-click installer with wizard |
+            | **macOS** | `resonance-*-macos.dmg` | Drag-to-Applications disk image |
+            | **Linux** | `resonance-*-x86_64.AppImage` | Universal portable app (chmod +x, run) |
+            | **Android** | Termux + `install-android.sh` | See [Android Setup](scripts/install-android.sh) |
+            | **iOS** | PWA | See [iOS Setup Guide](scripts/install-ios.md) |
+
+            ### Portable Downloads
 
             | Platform | File | Description |
             |----------|------|-------------|
-            | **Windows** | `resonance-windows-x64.zip` | Extract and run `install-windows.ps1` in PowerShell |
+            | **Windows** | `resonance-windows-x64.zip` | Extract and run `install-windows.ps1` |
             | **Linux** | `resonance-linux-x64.tar.gz` | Extract and run `bash install-linux.sh` |
             | **macOS** | `resonance-macos-x64.tar.gz` | Extract and run `bash install-macos.sh` |
-            | **Android** | `resonance-android.tar.gz` | Extract and run `install-android.sh` in Termux |
-            | **iOS** | PWA | See [iOS Setup Guide](scripts/install-ios.md) |
-            | **Docker** | `docker compose -f docker/docker-compose.yml up -d` | See README |
 
-            ### Quick Start (Docker)
+            ### Docker
             ```bash
             git clone https://github.com/pandejesal/resonance.git
             cd resonance
@@ -254,5 +301,8 @@ jobs:
           files: |
             artifacts/**/*.zip
             artifacts/**/*.tar.gz
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.AppImage
           draft: false
           prerelease: false
