@@ -270,11 +270,13 @@ jobs:
           cp -r backend/migrations frontend/android/app/src/main/assets/migrations
           chmod +x frontend/android/app/src/main/assets/resonance-backend
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build Android APK
         run: |
           cd frontend/android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -319,10 +321,8 @@ jobs:
 
       - name: Build Backend for iOS
         env:
-          IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+          SDKROOT: iphoneos
         run: |
-          export CFLAGS="-mios-version-min=15.0"
-          export CC=$(xcrun -sdk iphoneos -find clang)
           cargo build --release --target aarch64-apple-ios -p resonance-backend
 
       - name: Prepare iOS Build Assets
