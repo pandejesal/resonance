@@ -272,11 +272,13 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
 
       - name: Build Android APK
         run: |
           cd frontend/android
-          gradle assembleDebug
+          gradle assembleDebug --no-configuration-cache
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -344,7 +346,7 @@ jobs:
         run: |
           cd frontend/ios/App
           xcodebuild \
-            -project App.xcodeproj \
+            -project Resonance.xcodeproj \
             -scheme Resonance \
             -configuration Release \
             -archivePath build/Resonance.xcarchive \
