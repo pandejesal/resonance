@@ -247,7 +247,7 @@ pub mod android {
                     .route("/api/import/formats", web::get().to(handlers::get_import_formats))
                     .service(static_files)
             })
-            .bind((host.as_str(), port));
+            .bind((host.as_str(), port as u16));
             match server {
                 Ok(srv) => {
                     if let Err(e) = srv.run().await {
