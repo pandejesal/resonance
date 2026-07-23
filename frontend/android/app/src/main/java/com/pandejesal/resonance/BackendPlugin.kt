@@ -51,13 +51,13 @@ class BackendPlugin(private val context: Context) {
 
                 if (success) {
                     Log.i(TAG, "Server started on port $PORT")
-                    Thread.sleep(1000)
+                    Thread.sleep(2000)
                     onReady()
                 } else {
                     Log.e(TAG, "Server failed to start")
                     onError("Server failed to start")
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Error: ${e.message}", e)
                 onError(e.message ?: "Unknown error")
             } finally {
