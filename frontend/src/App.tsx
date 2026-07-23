@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useUIStore } from './stores';
+import { useUIStore, usePlayerStore } from './stores';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MiniPlayer from './components/MiniPlayer';
@@ -20,10 +20,10 @@ import SettingsPage from './pages/SettingsPage';
 import PlaylistToolsPage from './pages/PlaylistToolsPage';
 import EqualizerPage from './pages/EqualizerPage';
 import ImportPage from './pages/ImportPage';
-import { cn } from './lib/utils';
 
 export default function App() {
   const { theme } = useUIStore();
+  const { currentTrack } = usePlayerStore();
 
   useEffect(() => {
     document.documentElement.className = theme === 'dark' ? '' : theme;
@@ -31,32 +31,35 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-surface-0">
+      <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">
         <UpdateBanner />
-        <Sidebar />
 
-        <div className="lg:ml-64 min-h-screen pb-20">
-          <Header />
+        <div className="flex flex-1 min-h-0">
+          <Sidebar />
 
-          <main className="p-4 md:p-6 max-w-screen-2xl mx-auto">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/library" element={<LibraryPage />} />
-              <Route path="/albums" element={<AlbumsPage />} />
-              <Route path="/artists" element={<ArtistsPage />} />
-              <Route path="/genres" element={<GenresPage />} />
-              <Route path="/folders" element={<FoldersPage />} />
-              <Route path="/playlists" element={<PlaylistsPage />} />
-              <Route path="/stats" element={<StatsPage />} />
-              <Route path="/tools" element={<PlaylistToolsPage />} />
-              <Route path="/equalizer" element={<EqualizerPage />} />
-              <Route path="/import" element={<ImportPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Routes>
-          </main>
+          <div className="flex-1 flex flex-col min-h-0 lg:ml-64">
+            <Header />
+
+            <main className="flex-1 overflow-y-auto p-4 md:p-6 max-w-screen-2xl mx-auto w-full">
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/library" element={<LibraryPage />} />
+                <Route path="/albums" element={<AlbumsPage />} />
+                <Route path="/artists" element={<ArtistsPage />} />
+                <Route path="/genres" element={<GenresPage />} />
+                <Route path="/folders" element={<FoldersPage />} />
+                <Route path="/playlists" element={<PlaylistsPage />} />
+                <Route path="/stats" element={<StatsPage />} />
+                <Route path="/tools" element={<PlaylistToolsPage />} />
+                <Route path="/equalizer" element={<EqualizerPage />} />
+                <Route path="/import" element={<ImportPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </main>
+          </div>
         </div>
 
-        <MiniPlayer />
+        {currentTrack && <MiniPlayer />}
         <NowPlaying />
         <QueuePanel />
         <SearchModal />

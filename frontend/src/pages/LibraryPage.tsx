@@ -1,40 +1,84 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { usePlayerStore, useUIStore } from '../stores';
 import { formatDuration, cn } from '../lib/utils';
 import TrackList from '../components/TrackList';
-import type { Track, PaginatedResponse } from '../types';
+import type { Track } from '../types';
 
 export default function LibraryPage() {
-  const [data, setData] = useState<PaginatedResponse<Track> | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [sort, setSort] = useState<string>('date_added');
   const [order, setOrder] = useState<string>('DESC');
   const [filter, setFilter] = useState<string>('');
   const { viewMode } = useUIStore();
+  const observerRef = useRef<HTMLDivElement>(null);
+  const filterTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const loadTracks = useCallback(async () => {
-    setLoading(true);
+  const loadTracks = useCallback(async (pageNum: number, reset: boolean) => {
+    if (pageNum === 1) setLoading(true);
+    else setLoadingMore(true);
+
     try {
       const result = await api.tracks.list({
-        page,
+        page: pageNum,
         per_page: 50,
         sort,
         order: order as 'ASC' | 'DESC',
         search: filter || undefined,
       });
-      setData(result);
+      if (reset) {
+        setTracks(result.items);
+      } else {
+        setTracks((prev) => [...prev, ...result.items]);
+      }
+      setTotalPages(result.total_pages);
+      setTotal(result.total);
     } catch (e) {
       console.error('Failed to load tracks:', e);
     }
     setLoading(false);
-  }, [page, sort, order, filter]);
+    setLoadingMore(false);
+  }, [sort, order, filter]);
 
   useEffect(() => {
-    loadTracks();
+    setTracks([]);
+    setPage(1);
+    loadTracks(1, true);
   }, [loadTracks]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading && !loadingMore && page < totalPages) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          loadTracks(nextPage, false);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerRef.current) {
+      observer.observe(observerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [page, totalPages, loading, loadingMore, loadTracks]);
+
+  const handleFilterChange = (value: string) => {
+    setFilter(value);
+    if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+    filterTimeoutRef.current = setTimeout(() => {
+      setTracks([]);
+      setPage(1);
+    }, 300);
+  };
 
   return (
     <div className="space-y-4">
@@ -43,7 +87,7 @@ export default function LibraryPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary">Library</h1>
           <p className="text-sm text-secondary">
-            {data ? `${data.total} tracks` : 'Loading...'}
+            {total > 0 ? `${total} tracks` : 'Loading...'}
           </p>
         </div>
 
@@ -56,7 +100,7 @@ export default function LibraryPage() {
             <input
               type="text"
               value={filter}
-              onChange={(e) => { setFilter(e.target.value); setPage(1); }}
+              onChange={(e) => handleFilterChange(e.target.value)}
               placeholder="Filter tracks..."
               className="input-field pl-9 w-48"
             />
@@ -96,35 +140,29 @@ export default function LibraryPage() {
       </div>
 
       {/* Tracks */}
-      {loading && !data ? (
+      {loading && tracks.length === 0 ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : data && data.items.length > 0 ? (
+      ) : tracks.length > 0 ? (
         <>
-          <TrackList tracks={data.items} />
+          <TrackList tracks={tracks} />
 
-          {/* Pagination */}
-          {data.total_pages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-secondary">
-                Page {page} of {data.total_pages}
-              </span>
-              <button
-                onClick={() => setPage(Math.min(data.total_pages, page + 1))}
-                disabled={page === data.total_pages}
-                className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
-              >
-                Next
-              </button>
+          {/* Infinite scroll sentinel */}
+          <div ref={observerRef} className="h-4" />
+
+          {/* Loading more indicator */}
+          {loadingMore && (
+            <div className="flex items-center justify-center py-4">
+              <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
             </div>
+          )}
+
+          {/* End of list */}
+          {!loadingMore && page >= totalPages && tracks.length > 0 && (
+            <p className="text-center text-sm text-tertiary py-4">
+              All {total} tracks loaded
+            </p>
           )}
         </>
       ) : (
