@@ -13,8 +13,8 @@ class BackendPlugin(private val context: Context) {
         private const val STATIC_DIR = "static"
         private const val HOST = "127.0.0.1"
         private const val PORT = "8080"
-        private const val STARTUP_TIMEOUT_MS = 15000L
-        private const val POLL_INTERVAL_MS = 200L
+        private const val STARTUP_TIMEOUT_MS = 20000L
+        private const val POLL_INTERVAL_MS = 500L
     }
 
     private var backendProcess: Process? = null
@@ -34,28 +34,20 @@ class BackendPlugin(private val context: Context) {
                 val assetBytes = try {
                     context.assets.open(BACKEND_BINARY).use { it.readBytes() }
                 } catch (e: Exception) {
-                    onError("Backend binary not found in app assets. The APK may be corrupted. Please reinstall.")
+                    onError("Backend binary not found in APK assets. The APK may be corrupted.")
                     return@Thread
                 }
 
                 FileOutputStream(backendBinaryFile).use { it.write(assetBytes) }
-                Log.i(TAG, "Copied backend binary (${assetBytes.size} bytes)")
-
                 backendBinaryFile.setExecutable(true, false)
-
-                val stat = backendBinaryFile.setReadable(true, false)
-                Log.i(TAG, "Binary permissions set: executable=${backendBinaryFile.canExecute()}, readable=${backendBinaryFile.canRead()}")
+                Log.i(TAG, "Backend binary: ${assetBytes.size} bytes, executable=${backendBinaryFile.canExecute()}")
 
                 copyAssetDir(STATIC_DIR, File(backendDir, STATIC_DIR))
 
                 val dbPath = File(dbDir, "resonance.db").absolutePath
                 val staticPath = File(backendDir, STATIC_DIR).absolutePath
 
-                Log.i(TAG, "Starting backend: db=$dbPath, static=$staticPath")
-
-                val processBuilder = ProcessBuilder(
-                    backendBinaryFile.absolutePath
-                )
+                val processBuilder = ProcessBuilder(backendBinaryFile.absolutePath)
                 processBuilder.directory(backendDir)
                 processBuilder.environment()["DATABASE_URL"] = "sqlite:$dbPath"
                 processBuilder.environment()["HOST"] = HOST
@@ -66,19 +58,36 @@ class BackendPlugin(private val context: Context) {
                 val logFile = File(backendDir, "backend.log")
                 processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
 
+                Log.i(TAG, "Starting: ${backendBinaryFile.absolutePath}")
+                Log.i(TAG, "Args: DATABASE_URL=sqlite:$dbPath HOST=$HOST PORT=$PORT STATIC_DIR=$staticPath")
+
                 backendProcess = processBuilder.start()
-                Log.i(TAG, "Backend process started (PID: ${getPid(backendProcess!!)})")
+                val pid = getPid(backendProcess!!)
+                Log.i(TAG, "Process started (PID: $pid)")
+
+                Thread.sleep(1000)
+
+                if (backendProcess != null && !backendProcess!!.isAlive) {
+                    val exitCode = backendProcess?.exitValue() ?: -1
+                    val logContent = readFileTail(logFile, 30)
+                    val errorMsg = "Binary exited with code $exitCode\n\n$logContent"
+                    Log.e(TAG, errorMsg)
+                    onError(errorMsg)
+                    return@Thread
+                }
 
                 val serverReady = waitForServer(HOST, PORT.toInt(), STARTUP_TIMEOUT_MS)
                 if (serverReady) {
-                    Log.i(TAG, "Backend server ready on $HOST:$PORT")
+                    Log.i(TAG, "Server ready")
                     onReady()
                 } else {
-                    val logContent = readFileTail(logFile, 20)
-                    val errorMsg = if (logContent.isNotBlank()) {
-                        "Backend failed to start. Log:\n$logContent"
+                    val logContent = readFileTail(logFile, 30)
+                    val processAlive = backendProcess?.isAlive ?: false
+                    val errorMsg = if (!processAlive) {
+                        val exitCode = backendProcess?.exitValue() ?: -1
+                        "Binary crashed (exit code $exitCode)\n\n$logContent"
                     } else {
-                        "Backend server failed to start within ${STARTUP_TIMEOUT_MS / 1000}s. The binary may not be compatible with this device."
+                        "Server did not respond within ${STARTUP_TIMEOUT_MS / 1000}s\n\n$logContent"
                     }
                     Log.e(TAG, errorMsg)
                     backendProcess?.destroyForcibly()
@@ -86,22 +95,16 @@ class BackendPlugin(private val context: Context) {
                     onError(errorMsg)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start backend", e)
+                Log.e(TAG, "Exception", e)
                 backendProcess?.destroyForcibly()
                 backendProcess = null
-                onError("Failed to start backend: ${e.message}")
+                onError("Exception: ${e.javaClass.simpleName}: ${e.message}")
             }
         }.start()
     }
 
     fun stopBackend() {
-        backendProcess?.let { process ->
-            Log.i(TAG, "Stopping backend process")
-            process.destroyForcibly()
-            try {
-                process.waitFor()
-            } catch (_: Exception) {}
-        }
+        backendProcess?.destroyForcibly()
         backendProcess = null
     }
 
@@ -118,18 +121,12 @@ class BackendPlugin(private val context: Context) {
                 } else {
                     try {
                         context.assets.open(subAsset).use { input ->
-                            FileOutputStream(destFile).use { output ->
-                                input.copyTo(output)
-                            }
+                            FileOutputStream(destFile).use { output -> input.copyTo(output) }
                         }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to copy asset: $subAsset")
-                    }
+                    } catch (_: Exception) {}
                 }
             }
-        } catch (e: IOException) {
-            Log.w(TAG, "Asset dir not found: $assetDir")
-        }
+        } catch (_: Exception) {}
     }
 
     private fun waitForServer(host: String, port: Int, timeoutMs: Long): Boolean {
@@ -138,10 +135,7 @@ class BackendPlugin(private val context: Context) {
             try {
                 Socket(host, port).use { return true }
             } catch (_: Exception) {
-                if (backendProcess != null && !backendProcess!!.isAlive) {
-                    Log.e(TAG, "Backend process exited prematurely with code: ${backendProcess?.exitValue()}")
-                    return false
-                }
+                if (backendProcess != null && !backendProcess!!.isAlive) return false
                 Thread.sleep(POLL_INTERVAL_MS)
             }
         }
@@ -149,13 +143,10 @@ class BackendPlugin(private val context: Context) {
     }
 
     private fun readFileTail(file: File, maxLines: Int): String {
-        if (!file.exists()) return ""
+        if (!file.exists()) return "(no log file)"
         return try {
-            val lines = file.readLines()
-            lines.takeLast(maxLines).joinToString("\n")
-        } catch (e: Exception) {
-            ""
-        }
+            file.readLines().takeLast(maxLines).joinToString("\n")
+        } catch (_: Exception) { "" }
     }
 
     private fun getPid(process: Process): Int {
@@ -163,8 +154,6 @@ class BackendPlugin(private val context: Context) {
             val pidField = process.javaClass.getDeclaredField("pid")
             pidField.isAccessible = true
             pidField.getInt(process)
-        } catch (_: Exception) {
-            -1
-        }
+        } catch (_: Exception) { -1 }
     }
 }
