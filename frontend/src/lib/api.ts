@@ -18,6 +18,7 @@ import type {
   ImportConfirmTrack,
   DeviceTrack,
   DeviceScanResult,
+  TransferPlatform,
 } from '../types';
 
 const BASE_URL = '/api';
