@@ -3,8 +3,10 @@ package com.pandejesal.resonance
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -27,6 +29,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var backendPlugin: BackendPlugin
+    private var mediaReceiver: BroadcastReceiver? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +61,27 @@ class MainActivity : AppCompatActivity() {
 
         backendPlugin = BackendPlugin(this)
         tryStartBackend()
+
+        mediaReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val command = intent?.getStringExtra("command") ?: return
+                val js = when (command) {
+                    "com.pandejesal.resonance.PLAY" -> "if(window.__mediaCommand) window.__mediaCommand('play')"
+                    "com.pandejesal.resonance.PAUSE" -> "if(window.__mediaCommand) window.__mediaCommand('pause')"
+                    "com.pandejesal.resonance.NEXT" -> "if(window.__mediaCommand) window.__mediaCommand('next')"
+                    "com.pandejesal.resonance.PREV" -> "if(window.__mediaCommand) window.__mediaCommand('prev')"
+                    "com.pandejesal.resonance.STOP" -> "if(window.__mediaCommand) window.__mediaCommand('stop')"
+                    else -> null
+                }
+                js?.let { webView.post { webView.evaluateJavascript(it, null) } }
+            }
+        }
+        val filter = IntentFilter("com.pandejesal.resonance.MEDIA_COMMAND")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mediaReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(mediaReceiver, filter)
+        }
     }
 
     private fun requestPermissions() {
@@ -71,6 +95,10 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_AUDIO")
                 != PackageManager.PERMISSION_GRANTED) {
                 perms.add("android.permission.READ_MEDIA_AUDIO")
+            }
+            if (ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS")
+                != PackageManager.PERMISSION_GRANTED) {
+                perms.add("android.permission.POST_NOTIFICATIONS")
             }
         }
         if (perms.isNotEmpty()) {
@@ -193,7 +221,16 @@ function retry(){
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Keep WebView alive for background audio - don't let it pause
+    }
+
     override fun onDestroy() {
+        mediaReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        stopService(Intent(this, MediaSessionService::class.java))
         backendPlugin.stopBackend()
         webView.destroy()
         super.onDestroy()
@@ -248,6 +285,28 @@ function retry(){
         @JavascriptInterface
         fun getExternalStoragePath(): String {
             return android.os.Environment.getExternalStorageDirectory().absolutePath
+        }
+
+        @JavascriptInterface
+        fun updatePlaybackState(
+            title: String,
+            artist: String,
+            album: String,
+            artworkUrl: String,
+            isPlaying: Boolean,
+            positionMs: Long,
+            durationMs: Long
+        ) {
+            val intent = Intent(context, MediaSessionService::class.java).apply {
+                putExtra("title", title)
+                putExtra("artist", artist)
+                putExtra("album", album)
+                putExtra("artwork_url", artworkUrl)
+                putExtra("is_playing", isPlaying)
+                putExtra("position", positionMs)
+                putExtra("duration", durationMs)
+            }
+            ContextCompat.startForegroundService(context, intent)
         }
 
         @JavascriptInterface

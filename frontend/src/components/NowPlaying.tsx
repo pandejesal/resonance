@@ -1,18 +1,22 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import { usePlayerStore, useUIStore } from '../stores';
-import { getArtworkUrl } from '../lib/utils';
+import { getArtworkUrl, formatDuration } from '../lib/utils';
 import { audioEngine } from '../lib/audio-engine';
 import LyricsPanel from './LyricsPanel';
 
 const BAR_COUNT = 40;
 
 export default function NowPlaying() {
-  const { currentTrack, isPlaying, progress, duration, next, previous, togglePlay, seek } = usePlayerStore();
+  const {
+    currentTrack, isPlaying, progress, duration, next, previous,
+    togglePlay, seek, shuffle, repeat, toggleShuffle, cycleRepeat,
+  } = usePlayerStore();
   const { nowPlayingOpen, toggleNowPlaying, lyricsOpen, toggleLyrics } = useUIStore();
   const [artworkError, setArtworkError] = useState(false);
   const [bars, setBars] = useState<number[]>(new Array(BAR_COUNT).fill(10));
   const rafRef = useRef<number>(0);
+  const y = useMotionValue(0);
 
   const animate = useCallback(() => {
     if (!audioEngine.isReady) {
@@ -55,6 +59,28 @@ export default function NowPlaying() {
     };
   }, [isPlaying, nowPlayingOpen, animate]);
 
+  // Sync playback state to Android native MediaSession
+  useEffect(() => {
+    if (!(window as any).AndroidBridge || !currentTrack) return;
+    try {
+      (window as any).AndroidBridge.updatePlaybackState(
+        currentTrack.title,
+        currentTrack.artist,
+        currentTrack.album,
+        currentTrack.has_artwork ? getArtworkUrl(currentTrack.id) : '',
+        isPlaying,
+        progress,
+        duration,
+      );
+    } catch (e) {}
+  }, [currentTrack, isPlaying, progress, duration]);
+
+  const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
+    if (info.offset.y > 100) {
+      toggleNowPlaying();
+    }
+  }, [toggleNowPlaying]);
+
   if (!currentTrack) return null;
 
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
@@ -77,14 +103,36 @@ export default function NowPlaying() {
             }}
           />
 
+          {/* Swipe-down drag handle */}
+          <motion.div
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.5}
+            onDragEnd={handleDragEnd}
+            style={{ y }}
+            className="absolute top-0 left-0 right-0 z-10 pt-4 pb-2 flex justify-center cursor-grab active:cursor-grabbing"
+          >
+            <div className="w-10 h-1 rounded-full bg-white/30" />
+          </motion.div>
+
           {/* Close button */}
           <button
             onClick={toggleNowPlaying}
-            className="absolute top-4 left-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            className="absolute top-4 left-4 z-10 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
+          </button>
+
+          {/* Lyrics button */}
+          <button
+            onClick={toggleLyrics}
+            className={`absolute top-4 right-4 z-10 px-3 py-1.5 rounded-full text-sm transition-all active:scale-95 ${
+              lyricsOpen ? 'bg-brand-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+            }`}
+          >
+            Lyrics
           </button>
 
           <div className="h-full flex flex-col items-center justify-center px-6 pb-24 pt-16 max-w-lg mx-auto">
@@ -125,7 +173,7 @@ export default function NowPlaying() {
             </div>
 
             {/* Audio info */}
-            <div className="flex items-center gap-4 text-xs text-tertiary mb-6">
+            <div className="flex items-center gap-3 text-xs text-tertiary mb-6">
               {currentTrack.codec && (
                 <span className="px-2 py-1 rounded-lg bg-white/5">{currentTrack.codec}</span>
               )}
@@ -165,6 +213,18 @@ export default function NowPlaying() {
                   const percent = (e.clientX - rect.left) / rect.width;
                   seek(percent * duration);
                 }}
+                onTouchStart={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+                  seek(percent * duration);
+                }}
+                onTouchMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+                  seek(percent * duration);
+                }}
               >
                 <motion.div
                   className="absolute h-full bg-brand-500 rounded-full"
@@ -176,16 +236,25 @@ export default function NowPlaying() {
                 />
               </div>
               <div className="flex justify-between mt-2 text-xs text-tertiary">
-                <span>{formatTime(progress / 1000)}</span>
-                <span>{formatTime(duration / 1000)}</span>
+                <span>{formatDuration(progress)}</span>
+                <span>{formatDuration(duration)}</span>
               </div>
             </div>
 
-            {/* Controls */}
+            {/* Primary controls */}
             <div className="flex items-center gap-6">
               <button
+                onClick={previous}
+                className="p-3 text-white/60 hover:text-white active:text-white active:scale-90 transition-all"
+              >
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                </svg>
+              </button>
+
+              <button
                 onClick={togglePlay}
-                className="w-16 h-16 rounded-full bg-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+                className="w-16 h-16 rounded-full bg-white flex items-center justify-center active:scale-90 transition-transform"
               >
                 {isPlaying ? (
                   <svg className="w-7 h-7 text-black" fill="currentColor" viewBox="0 0 24 24">
@@ -197,25 +266,46 @@ export default function NowPlaying() {
                   </svg>
                 )}
               </button>
-            </div>
 
-            {/* Secondary controls */}
-            <div className="flex items-center gap-8 mt-6">
-              <button onClick={previous} className="text-white/60 hover:text-white transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                </svg>
-              </button>
-              <button onClick={next} className="text-white/60 hover:text-white transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <button
+                onClick={next}
+                className="p-3 text-white/60 hover:text-white active:text-white active:scale-90 transition-all"
+              >
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
                 </svg>
               </button>
+            </div>
+
+            {/* Secondary controls */}
+            <div className="flex items-center justify-center gap-10 mt-6">
               <button
-                onClick={toggleLyrics}
-                className={`text-sm transition-colors ${lyricsOpen ? 'text-brand-500' : 'text-white/60 hover:text-white'}`}
+                onClick={toggleShuffle}
+                className={`p-2 transition-colors active:scale-90 ${
+                  shuffle ? 'text-brand-500' : 'text-white/50 hover:text-white'
+                }`}
               >
-                Lyrics
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+                </svg>
+              </button>
+
+              <button
+                onClick={cycleRepeat}
+                className={`p-2 transition-colors active:scale-90 ${
+                  repeat !== 'off' ? 'text-brand-500' : 'text-white/50 hover:text-white'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  {repeat === 'one' ? (
+                    <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+                  ) : (
+                    <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+                  )}
+                </svg>
+                {repeat === 'one' && (
+                  <span className="absolute -top-1 -right-1 text-[9px] font-bold text-brand-500">1</span>
+                )}
               </button>
             </div>
           </div>
@@ -223,11 +313,4 @@ export default function NowPlaying() {
       )}
     </AnimatePresence>
   );
-}
-
-function formatTime(seconds: number): string {
-  if (!isFinite(seconds)) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
