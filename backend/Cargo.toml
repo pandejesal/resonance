@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["staticlib", "lib"]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
 
 [dependencies]
 actix-web.workspace = true

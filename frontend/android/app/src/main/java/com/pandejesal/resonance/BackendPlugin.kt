@@ -2,158 +2,113 @@ package com.pandejesal.resonance
 
 import android.content.Context
 import android.util.Log
-import java.io.*
-import java.net.Socket
+import java.io.File
+import java.io.FileOutputStream
 
 class BackendPlugin(private val context: Context) {
 
     companion object {
         private const val TAG = "BackendPlugin"
-        private const val BACKEND_BINARY = "resonance-backend"
-        private const val STATIC_DIR = "static"
-        private const val HOST = "127.0.0.1"
-        private const val PORT = "8080"
-        private const val STARTUP_TIMEOUT_MS = 20000L
-        private const val POLL_INTERVAL_MS = 500L
+        private const val PORT = 8080
+
+        init {
+            try {
+                System.loadLibrary("resonance_backend")
+                Log.i(TAG, "Native library loaded")
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(TAG, "Failed to load native library: ${e.message}")
+            }
+        }
     }
 
-    private var backendProcess: Process? = null
+    @JvmStatic
+    private external fun startNative(
+        dbPath: String,
+        staticDir: String,
+        host: String,
+        port: Int
+    ): Boolean
+
+    private var serverThread: Thread? = null
+    private var isStarting = false
 
     fun startBackend(onReady: () -> Unit, onError: (String) -> Unit) {
-        Thread {
+        if (isStarting) return
+        isStarting = true
+
+        serverThread = Thread {
             try {
                 val filesDir = context.filesDir
-                val backendDir = File(filesDir, "backend")
-                backendDir.mkdirs()
+                val dbPath = File(filesDir, "resonance.db").absolutePath
+                val staticDir = File(filesDir, "static").absolutePath
 
-                val dbDir = File(filesDir, "data")
-                dbDir.mkdirs()
+                copyAssetsIfNeeded(staticDir)
 
-                val backendBinaryFile = File(backendDir, BACKEND_BINARY)
+                Log.i(TAG, "Starting native server...")
+                Log.i(TAG, "DB: $dbPath")
+                Log.i(TAG, "Static: $staticDir")
 
-                val assetBytes = try {
-                    context.assets.open(BACKEND_BINARY).use { it.readBytes() }
-                } catch (e: Exception) {
-                    onError("Backend binary not found in APK assets. The APK may be corrupted.")
-                    return@Thread
-                }
+                val success = startNative(dbPath, staticDir, "127.0.0.1", PORT)
 
-                FileOutputStream(backendBinaryFile).use { it.write(assetBytes) }
-                backendBinaryFile.setExecutable(true, false)
-                Log.i(TAG, "Backend binary: ${assetBytes.size} bytes, executable=${backendBinaryFile.canExecute()}")
-
-                copyAssetDir(STATIC_DIR, File(backendDir, STATIC_DIR))
-
-                val dbPath = File(dbDir, "resonance.db").absolutePath
-                val staticPath = File(backendDir, STATIC_DIR).absolutePath
-
-                val processBuilder = ProcessBuilder(backendBinaryFile.absolutePath)
-                processBuilder.directory(backendDir)
-                processBuilder.environment()["DATABASE_URL"] = "sqlite:$dbPath"
-                processBuilder.environment()["HOST"] = HOST
-                processBuilder.environment()["PORT"] = PORT
-                processBuilder.environment()["STATIC_DIR"] = staticPath
-                processBuilder.redirectErrorStream(true)
-
-                val logFile = File(backendDir, "backend.log")
-                processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
-
-                Log.i(TAG, "Starting: ${backendBinaryFile.absolutePath}")
-                Log.i(TAG, "Args: DATABASE_URL=sqlite:$dbPath HOST=$HOST PORT=$PORT STATIC_DIR=$staticPath")
-
-                backendProcess = processBuilder.start()
-                val pid = getPid(backendProcess!!)
-                Log.i(TAG, "Process started (PID: $pid)")
-
-                Thread.sleep(1000)
-
-                if (backendProcess != null && !backendProcess!!.isAlive) {
-                    val exitCode = backendProcess?.exitValue() ?: -1
-                    val logContent = readFileTail(logFile, 30)
-                    val errorMsg = "Binary exited with code $exitCode\n\n$logContent"
-                    Log.e(TAG, errorMsg)
-                    onError(errorMsg)
-                    return@Thread
-                }
-
-                val serverReady = waitForServer(HOST, PORT.toInt(), STARTUP_TIMEOUT_MS)
-                if (serverReady) {
-                    Log.i(TAG, "Server ready")
+                if (success) {
+                    Log.i(TAG, "Server started on port $PORT")
+                    Thread.sleep(1000)
                     onReady()
                 } else {
-                    val logContent = readFileTail(logFile, 30)
-                    val processAlive = backendProcess?.isAlive ?: false
-                    val errorMsg = if (!processAlive) {
-                        val exitCode = backendProcess?.exitValue() ?: -1
-                        "Binary crashed (exit code $exitCode)\n\n$logContent"
-                    } else {
-                        "Server did not respond within ${STARTUP_TIMEOUT_MS / 1000}s\n\n$logContent"
-                    }
-                    Log.e(TAG, errorMsg)
-                    backendProcess?.destroyForcibly()
-                    backendProcess = null
-                    onError(errorMsg)
+                    Log.e(TAG, "Server failed to start")
+                    onError("Server failed to start")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Exception", e)
-                backendProcess?.destroyForcibly()
-                backendProcess = null
-                onError("Exception: ${e.javaClass.simpleName}: ${e.message}")
+                Log.e(TAG, "Error: ${e.message}", e)
+                onError(e.message ?: "Unknown error")
+            } finally {
+                isStarting = false
             }
-        }.start()
+        }
+        serverThread?.start()
     }
 
     fun stopBackend() {
-        backendProcess?.destroyForcibly()
-        backendProcess = null
+        serverThread?.interrupt()
+        serverThread = null
     }
 
-    private fun copyAssetDir(assetDir: String, destDir: File) {
+    private fun copyAssetsIfNeeded(staticDir: String) {
+        val staticDirFile = File(staticDir)
+        if (staticDirFile.exists() && staticDirFile.listFiles()?.isNotEmpty() == true) {
+            return
+        }
+
+        staticDirFile.mkdirs()
+
         try {
-            val files = context.assets.list(assetDir) ?: return
-            destDir.mkdirs()
-            for (file in files) {
-                val subAsset = "$assetDir/$file"
-                val destFile = File(destDir, file)
-                val subFiles = context.assets.list(subAsset)
-                if (subFiles != null && subFiles.isNotEmpty()) {
-                    copyAssetDir(subAsset, destFile)
-                } else {
-                    try {
-                        context.assets.open(subAsset).use { input ->
-                            FileOutputStream(destFile).use { output -> input.copyTo(output) }
-                        }
-                    } catch (_: Exception) {}
+            val assetManager = context.assets
+            val files = assetManager.list("static") ?: return
+
+            for (filename in files) {
+                copyAssetFile("static/$filename", File(staticDirFile, filename))
+            }
+            Log.i(TAG, "Copied ${files.size} files from assets")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy assets: ${e.message}")
+        }
+    }
+
+    private fun copyAssetFile(assetPath: String, destFile: File) {
+        val assetManager = context.assets
+        val subFiles = assetManager.list(assetPath)
+
+        if (subFiles != null && subFiles.isNotEmpty()) {
+            destFile.mkdirs()
+            for (subFile in subFiles) {
+                copyAssetFile("$assetPath/$subFile", File(destFile, subFile))
+            }
+        } else {
+            assetManager.open(assetPath).use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
                 }
             }
-        } catch (_: Exception) {}
-    }
-
-    private fun waitForServer(host: String, port: Int, timeoutMs: Long): Boolean {
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            try {
-                Socket(host, port).use { return true }
-            } catch (_: Exception) {
-                if (backendProcess != null && !backendProcess!!.isAlive) return false
-                Thread.sleep(POLL_INTERVAL_MS)
-            }
         }
-        return false
-    }
-
-    private fun readFileTail(file: File, maxLines: Int): String {
-        if (!file.exists()) return "(no log file)"
-        return try {
-            file.readLines().takeLast(maxLines).joinToString("\n")
-        } catch (_: Exception) { "" }
-    }
-
-    private fun getPid(process: Process): Int {
-        return try {
-            val pidField = process.javaClass.getDeclaredField("pid")
-            pidField.isAccessible = true
-            pidField.getInt(process)
-        } catch (_: Exception) { -1 }
     }
 }

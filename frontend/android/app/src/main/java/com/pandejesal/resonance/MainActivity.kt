@@ -32,17 +32,14 @@ class MainActivity : AppCompatActivity() {
 
         webView.addJavascriptInterface(AppBridge(this), "AndroidBridge")
 
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                Log.w(TAG, "WebView error: $description")
+            }
+        }
         webView.webChromeClient = WebChromeClient()
 
-        val savedUrl = getPrefs().getString("server_url", null)
-        if (savedUrl != null) {
-            Log.i(TAG, "Connecting to saved server: $savedUrl")
-            webView.loadUrl(savedUrl)
-        } else {
-            Log.i(TAG, "No server configured, showing setup")
-            webView.loadData(setupHtml(), "text/html", "UTF-8")
-        }
+        webView.loadData(getLoadingHtml(), "text/html", "UTF-8")
 
         backendPlugin = BackendPlugin(this)
         tryStartBackend()
@@ -51,22 +48,43 @@ class MainActivity : AppCompatActivity() {
     private fun tryStartBackend() {
         backendPlugin.startBackend(
             onReady = {
-                val savedUrl = getPrefs().getString("server_url", null)
-                if (savedUrl == null) {
-                    Log.i(TAG, "Backend started, saving URL")
-                    getPrefs().edit().putString("server_url", "http://127.0.0.1:8080").apply()
-                    runOnUiThread {
-                        webView.loadUrl("http://127.0.0.1:8080")
-                    }
+                Log.i(TAG, "Backend ready, loading UI")
+                runOnUiThread {
+                    webView.loadUrl("http://127.0.0.1:$PORT")
                 }
             },
             onError = { msg ->
                 Log.w(TAG, "Backend failed: $msg")
+                runOnUiThread {
+                    webView.loadData(getErrorHtml(msg), "text/html", "UTF-8")
+                }
             }
         )
     }
 
-    private fun setupHtml(): String {
+    private fun getLoadingHtml(): String {
+        return """<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:24px}
+h1{font-size:28px;font-weight:700;margin-bottom:16px;color:#1DB954}
+.spinner{width:40px;height:40px;border:4px solid #333;border-top-color:#1DB954;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.msg{color:#888;font-size:14px;margin-top:20px}
+</style>
+</head>
+<body>
+<h1>Resonance</h1>
+<div class="spinner"></div>
+<p class="msg">Starting server...</p>
+</body>
+</html>"""
+    }
+
+    private fun getErrorHtml(error: String): String {
         return """<!DOCTYPE html>
 <html>
 <head>
@@ -84,6 +102,7 @@ button{width:100%;padding:14px;border:none;border-radius:24px;font-size:16px;fon
 .btn-primary{background:#1DB954;color:#000}
 .btn-secondary{background:#333;color:#fff;margin-top:10px}
 .status{margin-top:16px;font-size:12px;color:#888}
+.err{color:#ff4444;font-size:12px;margin-top:12px}
 </style>
 </head>
 <body>
@@ -93,8 +112,9 @@ button{width:100%;padding:14px;border:none;border-radius:24px;font-size:16px;fon
   <label>Server URL</label>
   <input type="url" id="url" placeholder="http://192.168.1.100:8080" value="http://127.0.0.1:8080">
   <button class="btn-primary" onclick="connect()">Connect</button>
-  <button class="btn-secondary" onclick="tryLocal()">Try Local Server</button>
+  <button class="btn-secondary" onclick="retry()">Retry Local</button>
   <p class="status" id="status"></p>
+  <p class="err">$error</p>
 </div>
 <script>
 function connect(){
@@ -113,7 +133,7 @@ function connect(){
     document.getElementById('status').textContent='Cannot reach server: '+e.message;
   });
 }
-function tryLocal(){
+function retry(){
   document.getElementById('url').value='http://127.0.0.1:8080';
   connect();
 }
@@ -157,5 +177,6 @@ function tryLocal(){
 
     companion object {
         private const val TAG = "Resonance"
+        private const val PORT = 8080
     }
 }
