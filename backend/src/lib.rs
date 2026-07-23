@@ -184,7 +184,7 @@ pub mod android {
             log::info!("Starting server on {}:{}", host, port);
 
             let static_dir_owned = static_dir.clone();
-            if let Err(e) = HttpServer::new(move || {
+            let server = HttpServer::new(move || {
                 let cors = Cors::default()
                     .allow_any_origin()
                     .allow_any_method()
@@ -247,10 +247,10 @@ pub mod android {
                     .route("/api/import/formats", web::get().to(handlers::get_import_formats))
                     .service(static_files)
             })
-            .bind((host.as_str(), port))
-            {
-                Ok(server) => {
-                    if let Err(e) = server.run().await {
+            .bind((host.as_str(), port));
+            match server {
+                Ok(srv) => {
+                    if let Err(e) = srv.run().await {
                         log::error!("Server error: {}", e);
                     }
                 }
