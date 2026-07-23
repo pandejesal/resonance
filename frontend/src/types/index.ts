@@ -232,6 +232,28 @@ export interface ImportConfirmTrack {
   track_id?: string;
 }
 
+export interface DeviceTrack {
+  path: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration_ms?: number;
+  year?: number;
+  track_number?: number;
+  file_name: string;
+  mime_type?: string;
+  file_size?: number;
+  date_added?: number;
+}
+
+export interface DeviceScanResult {
+  success: boolean;
+  library_id: string;
+  tracks_added: number;
+  tracks_skipped: number;
+  total_scanned: number;
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   queue: QueueItem[];

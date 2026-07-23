@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useUIStore, usePlayerStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
-import type { Library, ScanProgress, ScrobblingConfig, UpdateStatus, UpdaterConfig } from '../types';
+import type { Library, ScanProgress, ScrobblingConfig, UpdateStatus, UpdaterConfig, DeviceTrack } from '../types';
 
 const DEFAULT_SCROBBLE_CONFIG: ScrobblingConfig = {
   lastfm: { enabled: false, api_key: null, api_secret: null, session_key: null, username: null },
@@ -37,6 +37,8 @@ export default function SettingsPage() {
   const [updaterChecking, setUpdaterChecking] = useState(false);
   const [updaterUpdating, setUpdaterUpdating] = useState(false);
   const [updaterMessage, setUpdaterMessage] = useState('');
+  const [deviceScanning, setDeviceScanning] = useState(false);
+  const [deviceScanResult, setDeviceScanResult] = useState<string>('');
 
   useEffect(() => {
     api.libraries.list()
@@ -185,6 +187,35 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeviceScan = async () => {
+    if (!(window as any).AndroidBridge) {
+      setDeviceScanResult('Device scan is only available on Android');
+      return;
+    }
+    setDeviceScanning(true);
+    setDeviceScanResult('');
+    try {
+      const tracksJson = (window as any).AndroidBridge.scanDeviceMusic();
+      const tracks: DeviceTrack[] = JSON.parse(tracksJson);
+      if (tracks.length === 0) {
+        setDeviceScanResult('No music files found on device');
+        setDeviceScanning(false);
+        return;
+      }
+      setDeviceScanResult(`Found ${tracks.length} tracks. Importing...`);
+      const result = await api.import.deviceScan(null, tracks);
+      setDeviceScanResult(
+        `Scan complete! Added ${result.tracks_added} tracks, skipped ${result.tracks_skipped} (duplicates/invalid) out of ${result.total_scanned} found.`
+      );
+      const libs = await api.libraries.list();
+      setLibraries(libs);
+    } catch (e: any) {
+      setDeviceScanResult(`Scan failed: ${e.message || 'Unknown error'}`);
+    } finally {
+      setDeviceScanning(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold text-primary">Settings</h1>
@@ -193,16 +224,35 @@ export default function SettingsPage() {
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-primary">Libraries</h2>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Add Library
-          </button>
+          <div className="flex gap-2">
+            {(window as any).AndroidBridge && (
+              <button
+                onClick={handleDeviceScan}
+                disabled={deviceScanning}
+                className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+                {deviceScanning ? 'Scanning...' : 'Scan Device Music'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowAdd(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Add Library
+            </button>
+          </div>
         </div>
+        {deviceScanResult && (
+          <div className="surface-card p-3 mb-4 text-sm">
+            <p className="text-primary">{deviceScanResult}</p>
+          </div>
+        )}
 
         {/* Add form */}
         {showAdd && (

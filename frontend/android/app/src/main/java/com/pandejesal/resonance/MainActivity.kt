@@ -19,6 +19,9 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.provider.MediaStore
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
@@ -245,6 +248,68 @@ function retry(){
         @JavascriptInterface
         fun getExternalStoragePath(): String {
             return android.os.Environment.getExternalStorageDirectory().absolutePath
+        }
+
+        @JavascriptInterface
+        fun scanDeviceMusic(): String {
+            val tracks = JSONArray()
+            val projection = arrayOf(
+                MediaStore.Audio.Media.DATA,
+                MediaStore.Audio.Media.TITLE,
+                MediaStore.Audio.Media.ARTIST,
+                MediaStore.Audio.Media.ALBUM,
+                MediaStore.Audio.Media.DURATION,
+                MediaStore.Audio.Media.YEAR,
+                MediaStore.Audio.Media.TRACK,
+                MediaStore.Audio.Media.DISPLAY_NAME,
+                MediaStore.Audio.Media.MIME_TYPE,
+                MediaStore.Audio.Media.SIZE,
+                MediaStore.Audio.Media.DATE_ADDED,
+                MediaStore.Audio.Media.ALBUM_ID
+            )
+            val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 5000"
+            val sortOrder = "${MediaStore.Audio.Media.ARTIST} ASC, ${MediaStore.Audio.Media.ALBUM} ASC, ${MediaStore.Audio.Media.TRACK} ASC"
+            try {
+                context.contentResolver.query(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    selection,
+                    null,
+                    sortOrder
+                )?.use { cursor ->
+                    val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                    val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+                    val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                    val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+                    val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                    val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+                    val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+                    val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+                    val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+                    val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+                    val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                    val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+                    while (cursor.moveToNext()) {
+                        val obj = JSONObject()
+                        obj.put("path", cursor.getString(pathCol) ?: "")
+                        obj.put("title", cursor.getString(titleCol) ?: "")
+                        obj.put("artist", cursor.getString(artistCol) ?: "")
+                        obj.put("album", cursor.getString(albumCol) ?: "")
+                        obj.put("duration_ms", cursor.getLong(durationCol))
+                        obj.put("year", cursor.getInt(yearCol))
+                        obj.put("track_number", cursor.getInt(trackCol))
+                        obj.put("file_name", cursor.getString(nameCol) ?: "")
+                        obj.put("mime_type", cursor.getString(mimeCol) ?: "")
+                        obj.put("file_size", cursor.getLong(sizeCol))
+                        obj.put("date_added", cursor.getLong(dateCol))
+                        tracks.put(obj)
+                    }
+                }
+                Log.i(TAG, "MediaStore scan found ${tracks.length()} tracks")
+            } catch (e: Exception) {
+                Log.e(TAG, "MediaStore scan failed: ${e.message}", e)
+            }
+            return tracks.toString()
         }
     }
 

@@ -16,6 +16,8 @@ import type {
   ImportPreview,
   ImportFormat,
   ImportConfirmTrack,
+  DeviceTrack,
+  DeviceScanResult,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -215,6 +217,11 @@ export const api = {
       fetchJson<{ success: boolean; playlist_id: string; tracks_added: number }>('/import/confirm', {
         method: 'POST',
         body: JSON.stringify({ platform, playlist_name: playlistName, tracks }),
+      }),
+    deviceScan: (libraryId: string | null, tracks: DeviceTrack[]) =>
+      fetchJson<DeviceScanResult>('/import/device', {
+        method: 'POST',
+        body: JSON.stringify({ library_id: libraryId, tracks }),
       }),
   },
 };

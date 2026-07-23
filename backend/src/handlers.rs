@@ -1710,6 +1710,128 @@ pub async fn confirm_import(
     }))
 }
 
+#[derive(serde::Deserialize)]
+pub struct DeviceTrack {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_ms: Option<i64>,
+    pub year: Option<i32>,
+    pub track_number: Option<i32>,
+    pub file_name: String,
+    pub mime_type: Option<String>,
+    pub file_size: Option<i64>,
+    pub date_added: Option<i64>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct DeviceScanRequest {
+    pub library_id: Option<String>,
+    pub tracks: Vec<DeviceTrack>,
+}
+
+pub async fn import_device_music(
+    data: web::Data<AppState>,
+    body: web::Json<DeviceScanRequest>,
+) -> HttpResponse {
+    let library_id = if let Some(id) = &body.library_id {
+        id.clone()
+    } else {
+        let id = uuid::Uuid::new_v4().to_string();
+        let _ = sqlx::query(
+            "INSERT INTO libraries (id, name, path) VALUES (?, 'Device Music', '')"
+        )
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+        id
+    };
+
+    let mut added = 0;
+    let mut skipped = 0;
+
+    for track in &body.tracks {
+        if track.path.is_empty() || track.file_size.unwrap_or(0) < 10000 {
+            skipped += 1;
+            continue;
+        }
+
+        let existing = sqlx::query_scalar::<_, String>(
+            "SELECT id FROM tracks WHERE file_path = ?"
+        )
+        .bind(&track.path)
+        .fetch_optional(&data.db)
+        .await;
+
+        match existing {
+            Ok(Some(_)) => { skipped += 1; continue; }
+            Err(_) => { skipped += 1; continue; }
+            _ => {}
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let folder = std::path::Path::new(&track.path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let format = track.mime_type.as_deref()
+            .unwrap_or("audio/mpeg")
+            .replace("audio/", "");
+
+        let result = sqlx::query(
+            r#"INSERT OR IGNORE INTO tracks (
+                id, title, artist, album, album_artist, genre, year, track_number,
+                disc_number, duration_ms, file_path, file_name, file_size, file_modified,
+                format, sample_rate, bit_depth, bitrate, channels, codec, composer,
+                lyricist, mood, bpm, rating, play_count, skip_count, last_played,
+                date_added, has_artwork, artwork_hash, lyrics, comment, grouping,
+                copyright, custom_tags, folder, library_id, fingerprint
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, datetime('now'), FALSE, NULL, NULL, NULL, NULL, NULL, ?, '')"#
+        )
+        .bind(&id)
+        .bind(&track.title)
+        .bind(&track.artist)
+        .bind(&track.album)
+        .bind(track.year)
+        .bind(track.track_number)
+        .bind(track.duration_ms.unwrap_or(0))
+        .bind(&track.path)
+        .bind(&track.file_name)
+        .bind(track.file_size.unwrap_or(0))
+        .bind(format)
+        .bind(&folder)
+        .bind(&library_id)
+        .execute(&data.db)
+        .await;
+
+        match result {
+            Ok(_) => added += 1,
+            Err(e) => {
+                log::warn!("Failed to insert track {}: {}", track.path, e);
+                skipped += 1;
+            }
+        }
+    }
+
+    let _ = sqlx::query(
+        "UPDATE libraries SET track_count = (SELECT COUNT(*) FROM tracks WHERE library_id = ?), last_scan = datetime('now') WHERE id = ?"
+    )
+    .bind(&library_id)
+    .bind(&library_id)
+    .execute(&data.db)
+    .await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "library_id": library_id,
+        "tracks_added": added,
+        "tracks_skipped": skipped,
+        "total_scanned": body.tracks.len(),
+    }))
+}
+
 pub async fn get_import_formats() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({
         "formats": [
