@@ -137,10 +137,11 @@ class AudioEngine {
     return BAND_LABELS;
   }
 
-  resume(): void {
+  resume(): Promise<void> {
     if (this.ctx?.state === 'suspended') {
-      this.ctx.resume();
+      return this.ctx.resume().then(() => {});
     }
+    return Promise.resolve();
   }
 
   destroy(): void {

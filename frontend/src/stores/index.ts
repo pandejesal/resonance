@@ -92,9 +92,10 @@ export const usePlayerStore = create<PlayerStore>()(
           if (startIndex === -1) startIndex = 0;
         }
 
-        audioEngine.resume();
         audio.src = `/api/tracks/${track.id}/stream`;
-        audio.play().catch(() => {});
+        audioEngine.resume().then(() => {
+          audio.play().catch((e) => console.warn('Play failed:', e));
+        });
         api.tracks.play(track.id).catch(() => {});
 
         set({
@@ -122,9 +123,10 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         const track = queue[index].track;
-        audioEngine.resume();
         audio.src = `/api/tracks/${track.id}/stream`;
-        audio.play().catch(() => {});
+        audioEngine.resume().then(() => {
+          audio.play().catch((e) => console.warn('Play failed:', e));
+        });
         api.tracks.play(track.id).catch(() => {});
 
         set({
@@ -140,11 +142,12 @@ export const usePlayerStore = create<PlayerStore>()(
         const { audio, isPlaying } = get();
         if (!audio) return;
 
-        audioEngine.resume();
         if (isPlaying) {
           audio.pause();
         } else {
-          audio.play().catch(() => {});
+          audioEngine.resume().then(() => {
+            audio.play().catch((e) => console.warn('Play failed:', e));
+          });
         }
         set({ isPlaying: !isPlaying });
       },

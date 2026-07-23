@@ -435,12 +435,16 @@ pub async fn stream_track(
 
     let track = match track {
         Ok(t) => t,
-        Err(_) => return HttpResponse::NotFound().finish(),
+        Err(e) => {
+            log::warn!("Stream: track not found {}: {}", id, e);
+            return HttpResponse::NotFound().finish();
+        }
     };
 
     let file_path = std::path::Path::new(&track.file_path);
     if !file_path.exists() {
-        return HttpResponse::NotFound().finish();
+        log::warn!("Stream: file not found: {} (exists={})", track.file_path, file_path.exists());
+        return HttpResponse::NotFound().json(serde_json::json!({"error": "File not found", "path": track.file_path}));
     }
 
     let mime = get_mime_type(&track.format);

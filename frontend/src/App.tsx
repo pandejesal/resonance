@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useUIStore, usePlayerStore } from './stores';
+import { useUIStore } from './stores';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MiniPlayer from './components/MiniPlayer';
@@ -23,7 +23,6 @@ import ImportPage from './pages/ImportPage';
 
 export default function App() {
   const { theme } = useUIStore();
-  const { currentTrack } = usePlayerStore();
 
   useEffect(() => {
     document.documentElement.className = theme === 'dark' ? '' : theme;
@@ -59,7 +58,7 @@ export default function App() {
           </div>
         </div>
 
-        {currentTrack && <MiniPlayer />}
+        <MiniPlayer />
         <NowPlaying />
         <QueuePanel />
         <SearchModal />

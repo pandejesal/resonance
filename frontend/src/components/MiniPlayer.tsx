@@ -34,10 +34,12 @@ export default function MiniPlayer() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  // Always create audio element on mount — never skip this
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
       audio.preload = 'auto';
+      audio.crossOrigin = 'anonymous';
       audioRef.current = audio;
       setAudio(audio);
 
@@ -53,7 +55,7 @@ export default function MiniPlayer() {
         const state = usePlayerStore.getState();
         if (state.repeat === 'one') {
           audio.currentTime = 0;
-          audio.play().catch(() => {});
+          audio.play().catch((e) => console.warn('Loop play failed:', e));
         } else {
           state.next();
         }
@@ -61,6 +63,11 @@ export default function MiniPlayer() {
 
       audio.addEventListener('play', () => setIsPlaying(true));
       audio.addEventListener('pause', () => setIsPlaying(false));
+
+      audio.addEventListener('error', (e) => {
+        const err = (e.target as HTMLAudioElement).error;
+        console.error('Audio error:', err?.code, err?.message);
+      });
 
       // Handle media commands from Android lock screen / notification
       (window as any).__mediaCommand = (cmd: string) => {
@@ -106,7 +113,11 @@ export default function MiniPlayer() {
     }
   }, [toggleNowPlaying]);
 
-  if (!currentTrack) return null;
+  if (!currentTrack) {
+    return (
+      <div className="flex-shrink-0 h-0" />
+    );
+  }
 
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
 
@@ -179,7 +190,7 @@ export default function MiniPlayer() {
           </button>
         </div>
 
-        {/* Controls - larger touch targets on mobile */}
+        {/* Controls */}
         <div className="flex items-center gap-1">
           <button
             onClick={previous}
