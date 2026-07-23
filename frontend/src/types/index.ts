@@ -275,3 +275,12 @@ export interface PlayerState {
     channels: number;
   } | null;
 }
+
+export interface TransferPlatform {
+  id: string;
+  name: string;
+  export_formats: string[];
+  import_formats: string[];
+  description: string;
+  color: string;
+}

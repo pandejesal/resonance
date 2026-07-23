@@ -19,6 +19,7 @@ import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
 import PlaylistToolsPage from './pages/PlaylistToolsPage';
 import EqualizerPage from './pages/EqualizerPage';
+import TransferPage from './pages/TransferPage';
 import ImportPage from './pages/ImportPage';
 
 export default function App() {
@@ -52,6 +53,7 @@ export default function App() {
                 <Route path="/tools" element={<PlaylistToolsPage />} />
                 <Route path="/equalizer" element={<EqualizerPage />} />
                 <Route path="/import" element={<ImportPage />} />
+                <Route path="/transfer" element={<TransferPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </main>

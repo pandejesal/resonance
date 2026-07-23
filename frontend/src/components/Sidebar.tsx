@@ -15,6 +15,7 @@ const navItems = [
   { path: '/stats', label: 'Statistics', icon: StatsIcon },
   { path: '/tools', label: 'Music Tools', icon: ToolsIcon },
   { path: '/import', label: 'Import', icon: ImportIcon },
+  { path: '/transfer', label: 'Transfer', icon: TransferIcon },
   { path: '/equalizer', label: 'Equalizer', icon: EqualizerIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -180,6 +181,14 @@ function ImportIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+    </svg>
+  );
+}
+
+function TransferIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
     </svg>
   );
 }

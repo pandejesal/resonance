@@ -224,4 +224,14 @@ export const api = {
         body: JSON.stringify({ library_id: libraryId, tracks }),
       }),
   },
+
+  transfer: {
+    platforms: () => fetchJson<{ platforms: TransferPlatform[] }>('/transfer/platforms'),
+    export: (playlistId: string, targetPlatform: string) =>
+      fetch(`/api/transfer/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlist_id: playlistId, target_platform: targetPlatform }),
+      }),
+  },
 };

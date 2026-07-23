@@ -1884,3 +1884,114 @@ pub async fn get_import_formats() -> HttpResponse {
         ]
     }))
 }
+
+#[derive(serde::Deserialize)]
+pub struct ExportRequest {
+    pub playlist_id: String,
+    pub target_platform: String,
+}
+
+pub async fn export_playlist(
+    data: web::Data<AppState>,
+    body: web::Json<ExportRequest>,
+) -> HttpResponse {
+    let playlist = sqlx::query_as::<_, (String, String)>(
+        "SELECT id, name FROM playlists WHERE id = ?"
+    )
+    .bind(&body.playlist_id)
+    .fetch_optional(&data.db)
+    .await;
+
+    let playlist = match playlist {
+        Ok(Some(p)) => p,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Playlist not found"})),
+        Err(e) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+    };
+
+    let tracks = match crate::importer::get_playlist_export_tracks(&data.db, &body.playlist_id).await {
+        Ok(t) => t,
+        Err(e) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": e})),
+    };
+
+    if tracks.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Playlist is empty"}));
+    }
+
+    let (content, filename, content_type) = match body.target_platform.as_str() {
+        "spotify" => (
+            crate::importer::export_to_spotify_csv(&tracks, &playlist.1),
+            format!("{}.csv", playlist.1),
+            "text/csv".to_string(),
+        ),
+        "youtube_music" => (
+            crate::importer::export_to_youtube_music_text(&tracks),
+            format!("{}.txt", playlist.1),
+            "text/plain".to_string(),
+        ),
+        "apple_music" => (
+            crate::importer::export_to_apple_music_m3u(&tracks, &playlist.1),
+            format!("{}.m3u", playlist.1),
+            "audio/x-mpegurl".to_string(),
+        ),
+        "soundcloud" => (
+            crate::importer::export_to_soundcloud_text(&tracks),
+            format!("{}.txt", playlist.1),
+            "text/plain".to_string(),
+        ),
+        "m3u" => (
+            crate::importer::export_to_m3u(&tracks, &playlist.1),
+            format!("{}.m3u", playlist.1),
+            "audio/x-mpegurl".to_string(),
+        ),
+        "xspf" => (
+            crate::importer::export_to_xspf(&tracks, &playlist.1),
+            format!("{}.xspf", playlist.1),
+            "application/xspf+xml".to_string(),
+        ),
+        _ => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Unsupported target platform"})),
+    };
+
+    HttpResponse::Ok()
+        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+        .insert_header(("Content-Type", content_type))
+        .body(content)
+}
+
+pub async fn get_transfer_platforms() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "platforms": [
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "export_formats": ["csv"],
+                "import_formats": ["csv"],
+                "description": "Transfer to/from Spotify",
+                "color": "#1DB954"
+            },
+            {
+                "id": "youtube_music",
+                "name": "YouTube Music",
+                "export_formats": ["txt"],
+                "import_formats": ["txt"],
+                "description": "Transfer to/from YouTube Music",
+                "color": "#FF0000"
+            },
+            {
+                "id": "apple_music",
+                "name": "Apple Music",
+                "export_formats": ["m3u"],
+                "import_formats": ["m3u"],
+                "description": "Transfer to/from Apple Music",
+                "color": "#FC3C44"
+            },
+            {
+                "id": "soundcloud",
+                "name": "SoundCloud",
+                "export_formats": ["txt"],
+                "import_formats": ["txt"],
+                "description": "Transfer to/from SoundCloud",
+                "color": "#FF5500"
+            }
+        ]
+    }))
+}

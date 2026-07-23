@@ -3,6 +3,110 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExportTrack {
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<i64>,
+}
+
+pub fn export_to_spotify_csv(tracks: &[ExportTrack], playlist_name: &str) -> String {
+    let mut csv = String::from("Track Name,Artist,Album\n");
+    for t in tracks {
+        let title = t.title.replace('"', "\"\"");
+        let artist = t.artist.replace('"', "\"\"");
+        let album = t.album.as_deref().unwrap_or("").replace('"', "\"\"");
+        csv.push_str(&format!("\"{}\",\"{}\",\"{}\"\n", title, artist, album));
+    }
+    csv
+}
+
+pub fn export_to_youtube_music_text(tracks: &[ExportTrack]) -> String {
+    tracks.iter()
+        .map(|t| format!("{} - {}", t.artist, t.title))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], playlist_name: &str) -> String {
+    let mut m3u = String::from("#EXTM3U\n");
+    for t in tracks {
+        let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
+        m3u.push_str(&format!("#EXTINF:{},{} - {}\n", duration_sec, t.artist, t.title));
+        m3u.push_str(&format!("{}\n", t.title));
+    }
+    m3u
+}
+
+pub fn export_to_soundcloud_text(tracks: &[ExportTrack]) -> String {
+    tracks.iter()
+        .map(|t| {
+            if let Some(album) = &t.album {
+                format!("{} - {} [{}]", t.artist, t.title, album)
+            } else {
+                format!("{} - {}", t.artist, t.title)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn export_to_m3u(tracks: &[ExportTrack], playlist_name: &str) -> String {
+    let mut m3u = String::from("#EXTM3U\n");
+    for t in tracks {
+        let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
+        m3u.push_str(&format!("#EXTINF:{},{} - {}\n", duration_sec, t.artist, t.title));
+        m3u.push_str(&format!("{}.mp3\n", t.title));
+    }
+    m3u
+}
+
+pub fn export_to_xspf(tracks: &[ExportTrack], playlist_name: &str) -> String {
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
+    xml.push_str(&format!("  <title>{}</title>\n", playlist_name));
+    xml.push_str("  <trackList>\n");
+    for t in tracks {
+        xml.push_str("    <track>\n");
+        xml.push_str(&format!("      <title>{}</title>\n", t.title));
+        xml.push_str(&format!("      <creator>{}</creator>\n", t.artist));
+        if let Some(album) = &t.album {
+            xml.push_str(&format!("      <album>{}</album>\n", album));
+        }
+        if let Some(dur) = t.duration_ms {
+            xml.push_str(&format!("      <duration>{}</duration>\n", dur));
+        }
+        xml.push_str("    </track>\n");
+    }
+    xml.push_str("  </trackList>\n");
+    xml.push_str("</playlist>\n");
+    xml
+}
+
+pub async fn get_playlist_export_tracks(pool: &SqlitePool, playlist_id: &str) -> Result<Vec<ExportTrack>, String> {
+    let rows = sqlx::query_as::<_, (String, String, String, String, i64)>(
+        "SELECT t.title, t.artist, t.album, t.id, t.duration_ms
+         FROM playlist_tracks pt
+         JOIN tracks t ON pt.track_id = t.id
+         WHERE pt.playlist_id = ?
+         ORDER BY pt.position"
+    )
+    .bind(playlist_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch playlist tracks: {}", e))?;
+
+    Ok(rows.into_iter().map(|(title, artist, album, _, duration_ms)| {
+        ExportTrack {
+            title,
+            artist,
+            album: if album.is_empty() { None } else { Some(album) },
+            duration_ms: Some(duration_ms),
+        }
+    }).collect())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ImportTrack {
     pub title: String,
     pub artist: String,
