@@ -11,7 +11,10 @@ export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [recentAlbums, setRecentAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState('');
   const { playTrack } = usePlayerStore();
+  const isAndroid = !!(window as any).AndroidBridge;
 
   useEffect(() => {
     Promise.all([
@@ -21,8 +24,44 @@ export default function HomePage() {
       setStats(statsData);
       setRecentAlbums(albumsData.items);
       setLoading(false);
+
+      // Auto-scan on first launch on Android
+      if (isAndroid && statsData && statsData.total_tracks === 0) {
+        handleDeviceScan();
+      }
     });
   }, []);
+
+  const handleDeviceScan = async () => {
+    if (!(window as any).AndroidBridge) return;
+    setScanning(true);
+    setScanResult('');
+    try {
+      const tracksJson = (window as any).AndroidBridge.scanDeviceMusic();
+      const tracks = JSON.parse(tracksJson);
+      if (tracks.length === 0) {
+        setScanResult('No music files found on device');
+        setScanning(false);
+        return;
+      }
+      setScanResult(`Found ${tracks.length} tracks. Importing...`);
+      const result = await api.import.deviceScan(null, tracks);
+      setScanResult(
+        `Added ${result.tracks_added} tracks!`
+      );
+      // Reload stats
+      const [statsData, albumsData] = await Promise.all([
+        api.stats().catch(() => null),
+        api.albums.list({ sort: 'date_added', order: 'DESC', per_page: 12 }).catch(() => ({ items: [], total: 0, page: 1, per_page: 12, total_pages: 1 })),
+      ]);
+      setStats(statsData);
+      setRecentAlbums(albumsData.items);
+    } catch (e: any) {
+      setScanResult(`Scan failed: ${e.message || 'Unknown error'}`);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -190,13 +229,34 @@ export default function HomePage() {
             </svg>
           </div>
           <h2 className="text-xl font-semibold text-primary mb-2">Your library is empty</h2>
-          <p className="text-secondary mb-6">Add a music folder to start building your library</p>
-          <Link to="/settings" className="btn-primary inline-flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Add Library
-          </Link>
+          {isAndroid ? (
+            <>
+              <p className="text-secondary mb-6">Scan your device to find all your music</p>
+              <button
+                onClick={handleDeviceScan}
+                disabled={scanning}
+                className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+                </svg>
+                {scanning ? 'Scanning...' : 'Scan Device Music'}
+              </button>
+              {scanResult && (
+                <p className="text-sm text-secondary mt-4">{scanResult}</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-secondary mb-6">Add a music folder to start building your library</p>
+              <Link to="/settings" className="btn-primary inline-flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Add Library
+              </Link>
+            </>
+          )}
         </motion.div>
       )}
     </div>

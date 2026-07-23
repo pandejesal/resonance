@@ -224,19 +224,18 @@ export default function SettingsPage() {
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-primary">Libraries</h2>
-          <div className="flex gap-2">
-            {(window as any).AndroidBridge && (
-              <button
-                onClick={handleDeviceScan}
-                disabled={deviceScanning}
-                className="btn-secondary flex items-center gap-2 disabled:opacity-50"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                </svg>
-                {deviceScanning ? 'Scanning...' : 'Scan Device Music'}
-              </button>
-            )}
+          {(window as any).AndroidBridge ? (
+            <button
+              onClick={handleDeviceScan}
+              disabled={deviceScanning}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+              </svg>
+              {deviceScanning ? 'Scanning...' : 'Scan Device Music'}
+            </button>
+          ) : (
             <button
               onClick={() => setShowAdd(true)}
               className="btn-primary flex items-center gap-2"
@@ -246,7 +245,7 @@ export default function SettingsPage() {
               </svg>
               Add Library
             </button>
-          </div>
+          )}
         </div>
         {deviceScanResult && (
           <div className="surface-card p-3 mb-4 text-sm">
@@ -254,6 +253,9 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Add form and library list - hidden on Android (auto-scan only) */}
+        {!(window as any).AndroidBridge && (
+          <>
         {/* Add form */}
         {showAdd && (
           <motion.div
@@ -388,6 +390,8 @@ export default function SettingsPage() {
               Add your first library
             </button>
           </div>
+        )}
+          </>
         )}
       </section>
 
