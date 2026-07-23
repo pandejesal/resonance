@@ -1,14 +1,24 @@
 package com.pandejesal.resonance
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebChromeClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,10 +49,40 @@ class MainActivity : AppCompatActivity() {
         }
         webView.webChromeClient = WebChromeClient()
 
+        requestPermissions()
+
         webView.loadData(getLoadingHtml(), "text/html", "UTF-8")
 
         backendPlugin = BackendPlugin(this)
         tryStartBackend()
+    }
+
+    private fun requestPermissions() {
+        val perms = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT < 33) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_AUDIO")
+                != PackageManager.PERMISSION_GRANTED) {
+                perms.add("android.permission.READ_MEDIA_AUDIO")
+            }
+        }
+        if (perms.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, perms.toTypedArray(), 100)
+        }
+        if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                intent.data = Uri.parse("package:$packageName")
+                startActivity(intent)
+            } catch (e: Exception) {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                startActivity(intent)
+            }
+        }
     }
 
     private fun tryStartBackend() {
@@ -173,10 +213,72 @@ function retry(){
         fun clearServerUrl() {
             getPrefs().edit().remove("server_url").apply()
         }
+
+        @JavascriptInterface
+        fun openFolderPicker() {
+            runOnUiThread {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                @Suppress("DEPRECATION")
+                startActivityForResult(intent, FOLDER_PICKER_REQUEST)
+            }
+        }
+
+        @JavascriptInterface
+        fun hasStoragePermission(): Boolean {
+            return if (Build.VERSION.SDK_INT >= 30) {
+                Environment.isExternalStorageManager()
+            } else if (Build.VERSION.SDK_INT >= 33) {
+                ContextCompat.checkSelfPermission(context, "android.permission.READ_MEDIA_AUDIO") ==
+                    PackageManager.PERMISSION_GRANTED
+            } else {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                    PackageManager.PERMISSION_GRANTED
+            }
+        }
+
+        @JavascriptInterface
+        fun requestStoragePermission() {
+            requestPermissions()
+        }
+
+        @JavascriptInterface
+        fun getExternalStoragePath(): String {
+            return android.os.Environment.getExternalStorageDirectory().absolutePath
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FOLDER_PICKER_REQUEST && resultCode == Activity.RESULT_OK) {
+            val uri = data?.data ?: return
+            val path = getPathFromUri(uri)
+            Log.i(TAG, "Selected folder: $path")
+            webView.post {
+                webView.evaluateJavascript(
+                    "if(window.__onFolderSelected) window.__onFolderSelected('$path');",
+                    null
+                )
+            }
+        }
+    }
+
+    private fun getPathFromUri(uri: Uri): String {
+        val docId = uri.lastPathSegment ?: return uri.path ?: "/"
+        if (docId.startsWith("primary:")) {
+            return "/storage/emulated/0/${docId.removePrefix("primary:")}"
+        }
+        if (docId.contains(":")) {
+            val parts = docId.split(":")
+            return if (parts.size > 1) "/storage/emulated/0/${parts[1]}" else "/storage/emulated/0"
+        }
+        return "/storage/emulated/0"
     }
 
     companion object {
         private const val TAG = "Resonance"
         private const val PORT = 8080
+        private const val FOLDER_PICKER_REQUEST = 9999
     }
 }
