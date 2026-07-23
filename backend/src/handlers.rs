@@ -1752,7 +1752,7 @@ pub async fn import_device_music(
     let mut skipped = 0;
 
     for track in &body.tracks {
-        if track.path.is_empty() || track.file_size.unwrap_or(0) < 10000 {
+        if track.path.is_empty() {
             skipped += 1;
             continue;
         }
@@ -1788,7 +1788,7 @@ pub async fn import_device_music(
                 lyricist, mood, bpm, rating, play_count, skip_count, last_played,
                 date_added, has_artwork, artwork_hash, lyrics, comment, grouping,
                 copyright, custom_tags, folder, library_id, fingerprint
-            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, datetime('now'), FALSE, NULL, NULL, NULL, NULL, NULL, ?, '')"#
+            ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, datetime('now'), FALSE, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, '')"#
         )
         .bind(&id)
         .bind(&track.title)
