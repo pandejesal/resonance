@@ -84,7 +84,7 @@ export default function EqualizerPage() {
       </section>
 
       {/* EQ Sliders */}
-      <section className="surface-card p-6">
+      <section className="surface-card p-6 overflow-x-auto">
         <div className="flex items-end justify-between gap-1">
           {EQ_FREQUENCIES.map((freq, i) => (
             <EQSlider

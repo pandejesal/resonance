@@ -78,7 +78,7 @@ export default function StatsPage() {
                   <p className="text-sm font-medium text-primary truncate">{artist.name}</p>
                   <p className="text-xs text-secondary">{artist.track_count} tracks</p>
                 </div>
-                <div className="w-32 bg-surface-2 rounded-full h-2 overflow-hidden">
+                <div className="w-20 sm:w-32 bg-surface-2 rounded-full h-2 overflow-hidden flex-shrink-0">
                   <div
                     className="h-full bg-brand-500 rounded-full"
                     style={{

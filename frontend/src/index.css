@@ -34,6 +34,10 @@
     scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
   }
 
+  html, body {
+    overflow-x: hidden;
+  }
+
   *::-webkit-scrollbar {
     width: 6px;
     height: 6px;

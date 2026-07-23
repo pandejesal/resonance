@@ -7,7 +7,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-20 glass border-b border-white/5">
-      <div className="flex items-center gap-4 px-4 py-3">
+      <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3">
         {/* Mobile menu button */}
         <button
           onClick={toggleSidebar}
