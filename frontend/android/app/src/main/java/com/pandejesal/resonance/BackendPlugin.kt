@@ -21,7 +21,6 @@ class BackendPlugin(private val context: Context) {
         }
     }
 
-    @JvmStatic
     private external fun startNative(
         dbPath: String,
         staticDir: String,
