@@ -58,7 +58,7 @@ export default function FileBrowser({ isOpen, onClose, onSelect }: FileBrowserPr
   const handleNativePicker = () => {
     const bridge = (window as any).AndroidBridge;
     if (bridge && typeof bridge.openFolderPicker === 'function') {
-      window.__onFolderSelected = (path: string) => {
+      (window as any).__onFolderSelected = (path: string) => {
         setManualPath(path);
         onSelect(path);
         onClose();
@@ -260,10 +260,10 @@ export default function FileBrowser({ isOpen, onClose, onSelect }: FileBrowserPr
               <div>
                 <p className="text-xs text-tertiary mb-2">Common locations:</p>
                 <div className="flex flex-wrap gap-2">
-                  {['/home', '/media', '/mnt', '/sdcard', '/storage', '/data/data/com.termux/files/home/storage/shared/Music',
-                    (window as any).AndroidBridge ? '/storage/emulated/0' : null,
-                    (window as any).AndroidBridge ? '/storage/emulated/0/Music' : null
-                  ].filter(Boolean).map((p) => (
+                  {(['/home', '/media', '/mnt', '/sdcard', '/storage', '/data/data/com.termux/files/home/storage/shared/Music',
+                    (window as any).AndroidBridge ? '/storage/emulated/0' : '',
+                    (window as any).AndroidBridge ? '/storage/emulated/0/Music' : ''
+                  ] as string[]).filter(Boolean).map((p) => (
                     <button
                       key={p}
                       onClick={() => setManualPath(p)}
