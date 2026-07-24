@@ -13,10 +13,10 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
-import androidx.media.session.MediaButtonReceiver
-import androidx.media.session.MediaSessionCompat
-import androidx.media.session.PlaybackStateCompat
-import androidx.media.MediaMetadataCompat
+import androidx.media3.session.MediaButtonReceiver
+import androidx.media3.session.MediaSession
+import androidx.media3.session.PlaybackState
+import androidx.media3.common.MediaMetadata
 import java.net.URL
 
 class MediaSessionService : Service() {
@@ -44,7 +44,7 @@ class MediaSessionService : Service() {
         }
     }
 
-    private lateinit var mediaSession: MediaSessionCompat
+    private lateinit var mediaSession: MediaSession
     private var artworkBitmap: Bitmap? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -54,8 +54,8 @@ class MediaSessionService : Service() {
         instance = this
         createNotificationChannel()
 
-        mediaSession = MediaSessionCompat(this, "ResonanceSession").apply {
-            setCallback(object : MediaSessionCompat.Callback() {
+        mediaSession = MediaSession.Builder(this)
+            .setCallback(object : androidx.media3.session.MediaSession.Callback {
                 override fun onPlay() {
                     sendCommand(ACTION_PLAY)
                 }
@@ -76,8 +76,7 @@ class MediaSessionService : Service() {
                     sendCommand(ACTION_STOP)
                 }
             })
-            isActive = true
-        }
+            .build()
 
         Log.i(TAG, "MediaSession created")
     }
@@ -95,8 +94,8 @@ class MediaSessionService : Service() {
         val album = intent?.getStringExtra("album") ?: ""
         val artworkUrl = intent?.getStringExtra("artwork_url") ?: ""
         val isPlaying = intent?.getBooleanExtra("is_playing", false) ?: false
-        val position = intent?.getLongExtra("position", 0) ?: 0
-        val duration = intent?.getLongExtra("duration", 0) ?: 0
+        val position = intent?.getLongExtra("position", 0) ?: 0L
+        val duration = intent?.getLongExtra("duration", 0) ?: 0L
 
         updateMetadata(title, artist, album, artworkUrl, duration)
         updatePlaybackState(isPlaying, position, duration)
@@ -106,11 +105,14 @@ class MediaSessionService : Service() {
     }
 
     private fun updateMetadata(title: String, artist: String, album: String, artworkUrl: String, duration: Long = 0) {
-        val builder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+        val metadata = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
+            .build()
+
+        mediaSession.setMetadata(metadata)
 
         if (artworkUrl.isNotEmpty()) {
             Thread {
@@ -123,32 +125,25 @@ class MediaSessionService : Service() {
                     val inputStream = connection.getInputStream()
                     artworkBitmap = BitmapFactory.decodeStream(inputStream)
                     inputStream.close()
-                    if (artworkBitmap != null) {
-                        builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artworkBitmap)
-                        mediaSession.setMetadata(builder.build())
-                    }
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to load artwork: ${e.message}")
-                    mediaSession.setMetadata(builder.build())
                 }
             }.start()
-        } else {
-            mediaSession.setMetadata(builder.build())
         }
     }
 
     private fun updatePlaybackState(isPlaying: Boolean, position: Long, duration: Long) {
-        val state = PlaybackStateCompat.Builder()
+        val state = PlaybackState.Builder()
             .setActions(
-                PlaybackStateCompat.ACTION_PLAY
-                or PlaybackStateCompat.ACTION_PAUSE
-                or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-                or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-                or PlaybackStateCompat.ACTION_SEEK_TO
-                or PlaybackStateCompat.ACTION_STOP
+                PlaybackState.ACTION_PLAY
+                or PlaybackState.ACTION_PAUSE
+                or PlaybackState.ACTION_SKIP_TO_NEXT
+                or PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                or PlaybackState.ACTION_SEEK_TO
+                or PlaybackState.ACTION_STOP
             )
             .setState(
-                if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
+                if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
                 position,
                 1.0f
             )
@@ -194,7 +189,6 @@ class MediaSessionService : Service() {
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", pendingStop)
             .setStyle(
                 MediaStyle()
-                    .setMediaSession(mediaSession.sessionToken)
                     .setShowActionsInCompactView(0, 1, 2)
             )
 
@@ -229,7 +223,6 @@ class MediaSessionService : Service() {
     }
 
     override fun onDestroy() {
-        mediaSession.isActive = false
         mediaSession.release()
         instance = null
         super.onDestroy()
