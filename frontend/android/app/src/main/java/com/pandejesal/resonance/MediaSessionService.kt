@@ -12,11 +12,6 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.media.app.NotificationCompat.MediaStyle
-import androidx.media3.session.MediaButtonReceiver
-import androidx.media3.session.MediaSession
-import androidx.media3.session.PlaybackState
-import androidx.media3.common.MediaMetadata
 import java.net.URL
 
 class MediaSessionService : Service() {
@@ -44,7 +39,6 @@ class MediaSessionService : Service() {
         }
     }
 
-    private lateinit var mediaSession: MediaSession
     private var artworkBitmap: Bitmap? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -53,32 +47,7 @@ class MediaSessionService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
-
-        mediaSession = MediaSession.Builder(this)
-            .setCallback(object : androidx.media3.session.MediaSession.Callback {
-                override fun onPlay() {
-                    sendCommand(ACTION_PLAY)
-                }
-
-                override fun onPause() {
-                    sendCommand(ACTION_PAUSE)
-                }
-
-                override fun onSkipToNext() {
-                    sendCommand(ACTION_NEXT)
-                }
-
-                override fun onSkipToPrevious() {
-                    sendCommand(ACTION_PREV)
-                }
-
-                override fun onStop() {
-                    sendCommand(ACTION_STOP)
-                }
-            })
-            .build()
-
-        Log.i(TAG, "MediaSession created")
+        Log.i(TAG, "MediaSessionService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -91,28 +60,8 @@ class MediaSessionService : Service() {
 
         val title = intent?.getStringExtra("title") ?: ""
         val artist = intent?.getStringExtra("artist") ?: ""
-        val album = intent?.getStringExtra("album") ?: ""
         val artworkUrl = intent?.getStringExtra("artwork_url") ?: ""
         val isPlaying = intent?.getBooleanExtra("is_playing", false) ?: false
-        val position = intent?.getLongExtra("position", 0) ?: 0L
-        val duration = intent?.getLongExtra("duration", 0) ?: 0L
-
-        updateMetadata(title, artist, album, artworkUrl, duration)
-        updatePlaybackState(isPlaying, position, duration)
-        startForeground(NOTIFICATION_ID, buildNotification(title, artist, isPlaying))
-
-        return START_STICKY
-    }
-
-    private fun updateMetadata(title: String, artist: String, album: String, artworkUrl: String, duration: Long = 0) {
-        val metadata = MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
-            .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
-            .build()
-
-        mediaSession.setMetadata(metadata)
 
         if (artworkUrl.isNotEmpty()) {
             Thread {
@@ -130,26 +79,10 @@ class MediaSessionService : Service() {
                 }
             }.start()
         }
-    }
 
-    private fun updatePlaybackState(isPlaying: Boolean, position: Long, duration: Long) {
-        val state = PlaybackState.Builder()
-            .setActions(
-                PlaybackState.ACTION_PLAY
-                or PlaybackState.ACTION_PAUSE
-                or PlaybackState.ACTION_SKIP_TO_NEXT
-                or PlaybackState.ACTION_SKIP_TO_PREVIOUS
-                or PlaybackState.ACTION_SEEK_TO
-                or PlaybackState.ACTION_STOP
-            )
-            .setState(
-                if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
-                position,
-                1.0f
-            )
-            .build()
+        startForeground(NOTIFICATION_ID, buildNotification(title, artist, isPlaying))
 
-        mediaSession.setPlaybackState(state)
+        return START_STICKY
     }
 
     private fun buildNotification(title: String, artist: String, isPlaying: Boolean): Notification {
@@ -187,10 +120,6 @@ class MediaSessionService : Service() {
             )
             .addAction(android.R.drawable.ic_media_next, "Next", pendingNext)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", pendingStop)
-            .setStyle(
-                MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
 
         if (artworkBitmap != null) {
             builder.setLargeIcon(artworkBitmap)
@@ -223,7 +152,6 @@ class MediaSessionService : Service() {
     }
 
     override fun onDestroy() {
-        mediaSession.release()
         instance = null
         super.onDestroy()
     }
