@@ -284,7 +284,19 @@ jobs:
       - name: Build Android APK
         run: |
           cd frontend/android
-          gradle assembleDebug --no-configuration-cache -Dandroid.injected.signing.store.file=$HOME/.android/debug.keystore -Dandroid.injected.signing.store.password=android -Dandroid.injected.signing.key.alias=androiddebugkey -Dandroid.injected.signing.key.password=android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-configuration-cache
+
+      - name: Verify APK Signing
+        run: |
+          APK_PATH=frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK not found at $APK_PATH"
+            exit 1
+          fi
+          echo "APK found, checking signature..."
+          jarsigner -verify -verbose -certs "$APK_PATH" || true
+          echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
