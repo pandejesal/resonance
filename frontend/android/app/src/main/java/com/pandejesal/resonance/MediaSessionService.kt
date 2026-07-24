@@ -10,11 +10,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.media.app.NotificationCompat.MediaStyle
+import androidx.media.session.MediaButtonReceiver
+import androidx.media.session.MediaSessionCompat
+import androidx.media.session.PlaybackStateCompat
+import androidx.media.MediaMetadataCompat
 import java.net.URL
 
 class MediaSessionService : Service() {
@@ -96,19 +98,19 @@ class MediaSessionService : Service() {
         val position = intent?.getLongExtra("position", 0) ?: 0
         val duration = intent?.getLongExtra("duration", 0) ?: 0
 
-        updateMetadata(title, artist, album, artworkUrl)
+        updateMetadata(title, artist, album, artworkUrl, duration)
         updatePlaybackState(isPlaying, position, duration)
         startForeground(NOTIFICATION_ID, buildNotification(title, artist, isPlaying))
 
         return START_STICKY
     }
 
-    private fun updateMetadata(title: String, artist: String, album: String, artworkUrl: String) {
+    private fun updateMetadata(title: String, artist: String, album: String, artworkUrl: String, duration: Long = 0) {
         val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, 0)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
 
         if (artworkUrl.isNotEmpty()) {
             Thread {
@@ -191,7 +193,7 @@ class MediaSessionService : Service() {
             .addAction(android.R.drawable.ic_media_next, "Next", pendingNext)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", pendingStop)
             .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
+                MediaStyle()
                     .setMediaSession(mediaSession.sessionToken)
                     .setShowActionsInCompactView(0, 1, 2)
             )

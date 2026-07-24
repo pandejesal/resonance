@@ -25,10 +25,12 @@ export function formatDurationLong(ms: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
 
   if (hours > 0) {
-    if (hours === 1) {
-      return minutes > 0 ? `1 hour, ${minutes} minutes` : '1 hour';
+    const hourStr = hours === 1 ? '1 hour' : `${hours} hours`;
+    if (minutes > 0) {
+      const minStr = minutes === 1 ? '1 minute' : `${minutes} minutes`;
+      return `${hourStr}, ${minStr}`;
     }
-    return minutes > 0 ? `${hours} hours, ${minutes} minutes` : `${hours} hours`;
+    return hourStr;
   }
   return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
 }
@@ -38,7 +40,10 @@ export function formatFileSize(bytes: number): string {
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const value = (bytes / Math.pow(k, i)).toFixed(1);
+  // Remove trailing zeros but keep at least one decimal place
+  const formattedValue = value.replace(/\.?0+$/, '') || '0';
+  return `${formattedValue} ${sizes[i]}`;
 }
 
 export function formatNumber(n: number): string {
