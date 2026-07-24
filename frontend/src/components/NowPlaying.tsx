@@ -109,8 +109,8 @@ export default function NowPlaying() {
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.5}
             onDragEnd={handleDragEnd}
-            style={{ y }}
-            className="absolute top-0 left-0 right-0 z-10 pt-4 pb-2 flex justify-center cursor-grab active:cursor-grabbing"
+            style={{ y, touchAction: 'pan-y' }}
+            className="absolute top-0 left-1/2 -translate-x-1/2 z-10 pt-4 pb-2 flex justify-center cursor-grab active:cursor-grabbing w-20"
           >
             <div className="w-10 h-1 rounded-full bg-white/30" />
           </motion.div>
@@ -118,7 +118,8 @@ export default function NowPlaying() {
           {/* Close button */}
           <button
             onClick={toggleNowPlaying}
-            className="absolute top-4 left-4 z-10 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
+            style={{ touchAction: 'manipulation' }}
+            className="absolute top-4 left-4 z-20 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -128,14 +129,15 @@ export default function NowPlaying() {
           {/* Lyrics button */}
           <button
             onClick={toggleLyrics}
-            className={`absolute top-4 right-4 z-10 px-3 py-1.5 rounded-full text-sm transition-all active:scale-95 ${
+            style={{ touchAction: 'manipulation' }}
+            className={`absolute top-4 right-4 z-20 px-3 py-1.5 rounded-full text-sm transition-all active:scale-95 ${
               lyricsOpen ? 'bg-brand-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
             }`}
           >
             Lyrics
           </button>
 
-          <div className="h-full flex flex-col items-center justify-center px-6 pb-24 pt-16 max-w-lg mx-auto">
+          <div className="relative z-20 h-full flex flex-col items-center justify-center px-6 pb-24 pt-16 max-w-lg mx-auto">
             {/* Album artwork */}
             <motion.div
               className="relative w-full max-w-[320px] aspect-square rounded-3xl overflow-hidden album-shadow-lg mb-8"
@@ -208,6 +210,7 @@ export default function NowPlaying() {
             <div className="w-full mb-4">
               <div
                 className="relative w-full h-1 bg-white/10 rounded-full cursor-pointer group"
+                style={{ touchAction: 'none' }}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const percent = (e.clientX - rect.left) / rect.width;
@@ -245,6 +248,7 @@ export default function NowPlaying() {
             <div className="flex items-center gap-6">
               <button
                 onClick={previous}
+                style={{ touchAction: 'manipulation' }}
                 className="p-3 text-white/60 hover:text-white active:text-white active:scale-90 transition-all"
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
@@ -254,6 +258,7 @@ export default function NowPlaying() {
 
               <button
                 onClick={togglePlay}
+                style={{ touchAction: 'manipulation' }}
                 className="w-16 h-16 rounded-full bg-white flex items-center justify-center active:scale-90 transition-transform"
               >
                 {isPlaying ? (
@@ -269,6 +274,7 @@ export default function NowPlaying() {
 
               <button
                 onClick={next}
+                style={{ touchAction: 'manipulation' }}
                 className="p-3 text-white/60 hover:text-white active:text-white active:scale-90 transition-all"
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
@@ -281,6 +287,7 @@ export default function NowPlaying() {
             <div className="flex items-center justify-center gap-10 mt-6">
               <button
                 onClick={toggleShuffle}
+                style={{ touchAction: 'manipulation' }}
                 className={`p-2 transition-colors active:scale-90 ${
                   shuffle ? 'text-brand-500' : 'text-white/50 hover:text-white'
                 }`}
@@ -292,6 +299,7 @@ export default function NowPlaying() {
 
               <button
                 onClick={cycleRepeat}
+                style={{ touchAction: 'manipulation' }}
                 className={`p-2 transition-colors active:scale-90 ${
                   repeat !== 'off' ? 'text-brand-500' : 'text-white/50 hover:text-white'
                 }`}
