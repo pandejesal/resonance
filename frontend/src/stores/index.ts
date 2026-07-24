@@ -211,6 +211,12 @@ export const usePlayerStore = create<PlayerStore>()(
           setTimeout(() => {
             audio.pause();
             audio.src = '';
+            audioEngine.destroy();
+            audioEngine.init(crossfadeAudio);
+            audioEngine.setVolume(get().volume);
+            if (get().eqEnabled) {
+              get().eqBands.forEach((gain, i) => audioEngine.setEQBand(i, gain));
+            }
             gainNode.gain.setValueAtTime(get().volume, ctx.currentTime);
 
             set({
@@ -365,6 +371,9 @@ export const usePlayerStore = create<PlayerStore>()(
       toggleEQ: () => {
         const enabled = !get().eqEnabled;
         audioEngine.setEQEnabled(enabled);
+        if (enabled) {
+          get().eqBands.forEach((gain, i) => audioEngine.setEQBand(i, gain));
+        }
         set({ eqEnabled: enabled });
       },
 

@@ -43,15 +43,15 @@ export default function MiniPlayer() {
       audioRef.current = audio;
       setAudio(audio);
 
-      audio.addEventListener('timeupdate', () => {
+      const handleTimeUpdate = () => {
         setProgress(audio.currentTime * 1000);
-      });
+      };
 
-      audio.addEventListener('loadedmetadata', () => {
+      const handleLoadedMetadata = () => {
         setDuration(audio.duration * 1000);
-      });
+      };
 
-      audio.addEventListener('ended', () => {
+      const handleEnded = () => {
         const state = usePlayerStore.getState();
         if (state.repeat === 'one') {
           audio.currentTime = 0;
@@ -59,15 +59,22 @@ export default function MiniPlayer() {
         } else {
           state.next();
         }
-      });
+      };
 
-      audio.addEventListener('play', () => setIsPlaying(true));
-      audio.addEventListener('pause', () => setIsPlaying(false));
+      const handlePlay = () => setIsPlaying(true);
+      const handlePause = () => setIsPlaying(false);
 
-      audio.addEventListener('error', (e) => {
+      const handleError = (e: Event) => {
         const err = (e.target as HTMLAudioElement).error;
         console.error('Audio error:', err?.code, err?.message);
-      });
+      };
+
+      audio.addEventListener('timeupdate', handleTimeUpdate);
+      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('play', handlePlay);
+      audio.addEventListener('pause', handlePause);
+      audio.addEventListener('error', handleError);
 
       // Handle media commands from Android lock screen / notification
       (window as any).__mediaCommand = (cmd: string) => {
@@ -88,6 +95,19 @@ export default function MiniPlayer() {
           case 'stop':
             if (state.isPlaying) state.togglePlay();
             break;
+        }
+      };
+
+      return () => {
+        if (audioRef.current) {
+          audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
+          audioRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
+          audioRef.current.removeEventListener('ended', handleEnded);
+          audioRef.current.removeEventListener('play', handlePlay);
+          audioRef.current.removeEventListener('pause', handlePause);
+          audioRef.current.removeEventListener('error', handleError);
+          audioRef.current.pause();
+          audioRef.current = null;
         }
       };
     }

@@ -11,6 +11,19 @@ interface AlbumCardProps {
 }
 
 export function AlbumCard({ album, onClick }: AlbumCardProps) {
+  const playTrack = usePlayerStore((s) => s.playTrack);
+
+  const handlePlay = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await api.tracks.list({ album: album.id, per_page: 100 });
+      if (res.items.length > 0) {
+        playTrack(res.items[0], res.items);
+      }
+    } catch (err) {
+      console.error('Failed to fetch album tracks:', err);
+    }
+  };
   return (
     <motion.div
       whileHover={{ scale: 1.02 }}
@@ -40,9 +53,7 @@ export function AlbumCard({ album, onClick }: AlbumCardProps) {
             initial={{ scale: 0, opacity: 0 }}
             whileHover={{ scale: 1.1 }}
             className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
+            onClick={handlePlay}
           >
             <svg className="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />

@@ -40,6 +40,10 @@ jobs:
           key: tauri-windows-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: tauri-windows-cargo-
 
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm install
+
       - name: Build Tauri App
         working-directory: src-tauri
         run: cargo tauri build

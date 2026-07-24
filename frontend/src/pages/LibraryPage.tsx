@@ -19,6 +19,7 @@ export default function LibraryPage() {
   const { viewMode } = useUIStore();
   const observerRef = useRef<HTMLDivElement>(null);
   const filterTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const { playTrack, addToQueue } = usePlayerStore();
 
   const loadTracks = useCallback(async (pageNum: number, reset: boolean) => {
     if (pageNum === 1) setLoading(true);
@@ -72,12 +73,26 @@ export default function LibraryPage() {
   }, [page, totalPages, loading, loadingMore, loadTracks]);
 
   const handleFilterChange = (value: string) => {
-    setFilter(value);
     if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
     filterTimeoutRef.current = setTimeout(() => {
-      setTracks([]);
-      setPage(1);
+      setFilter(value);
     }, 300);
+  };
+
+  const handlePlayTrack = (track: Track) => {
+    try {
+      playTrack(track, tracks);
+    } catch (e) {
+      console.error('Failed to play track:', e);
+    }
+  };
+
+  const handleAddToQueue = (track: Track) => {
+    try {
+      addToQueue(track);
+    } catch (e) {
+      console.error('Failed to add to queue:', e);
+    }
   };
 
   return (

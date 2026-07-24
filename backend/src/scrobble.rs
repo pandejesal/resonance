@@ -314,11 +314,8 @@ fn generate_lastfm_signature(params: &BTreeMap<&str, &str>, secret: &str) -> Str
     }
     sig_string.push_str(secret);
 
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    sig_string.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    let digest = md5::compute(sig_string.as_bytes());
+    format!("{:x}", digest)
 }
 
 pub async fn get_scrobbling_config(db: &SqlitePool) -> ScrobblingConfig {

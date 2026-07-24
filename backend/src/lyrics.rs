@@ -161,7 +161,7 @@ pub async fn fetch_from_lrclib(
 pub fn is_lrc(content: &str) -> bool {
     content.lines().any(|line| {
         let trimmed = line.trim();
-        trimmed.starts_with('[') && trimmed.contains("]:")
+        trimmed.starts_with('[') && trimmed.contains(']')
     })
 }
 

@@ -3,6 +3,7 @@ FROM rust:1-slim-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml ./
 COPY backend/Cargo.toml ./backend/Cargo.toml
+COPY src-tauri/Cargo.toml ./src-tauri/Cargo.toml
 COPY backend/migrations ./backend/migrations
 RUN mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*

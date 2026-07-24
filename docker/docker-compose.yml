@@ -16,7 +16,7 @@ services:
       # You can also mount your entire home or a parent folder for browsing:
       #   Windows:  C:\Users\YOU:/music:ro
       #   Linux:    /home/YOU:/music:ro
-      - C:\Users\DELL\Music:/music:ro
+      # - /path/to/your/music:/music:ro
       # Docker socket for auto-updates (optional, security risk):
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:

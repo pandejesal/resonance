@@ -26,7 +26,7 @@ fn main() {
                     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
                     // Static dir: use bundled frontend assets
-                    let static_dir = app.path().resource_dir()
+                    let static_dir = handle.path().resource_dir()
                         .expect("Failed to resolve resource dir");
 
                     // Copy bundled frontend to app data if not present
@@ -37,7 +37,7 @@ fn main() {
                     }
 
                     let host = "127.0.0.1";
-                    let port: u16 = 0; // Let OS pick available port
+                    let port: u16 = 8080;
 
                     info!("Starting Resonance backend for Tauri...");
                     info!("Database: {}", db_url);

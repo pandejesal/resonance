@@ -216,6 +216,25 @@ export default function SettingsPage() {
     }
   };
 
+  const handleImportAutoEq = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const profile = JSON.parse(text);
+      if (profile.profile_name) console.log('Profile:', profile.profile_name);
+      if (profile.target_name) console.log('Target:', profile.target_name);
+      if (profile.preamp != null) console.log('Preamp:', profile.preamp);
+      if (Array.isArray(profile.filters)) {
+        console.log('Filters loaded:', profile.filters.length);
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold text-primary">Settings</h1>

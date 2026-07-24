@@ -8,6 +8,7 @@ pub struct ExportTrack {
     pub artist: String,
     pub album: Option<String>,
     pub duration_ms: Option<i64>,
+    pub file_path: Option<String>,
 }
 
 pub fn export_to_spotify_csv(tracks: &[ExportTrack], playlist_name: &str) -> String {
@@ -33,7 +34,8 @@ pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], playlist_name: &str) ->
     for t in tracks {
         let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
         m3u.push_str(&format!("#EXTINF:{},{} - {}\n", duration_sec, t.artist, t.title));
-        m3u.push_str(&format!("{}\n", t.title));
+        let path = t.file_path.as_deref().unwrap_or(&t.title);
+        m3u.push_str(&format!("{}\n", path));
     }
     m3u
 }
@@ -56,7 +58,8 @@ pub fn export_to_m3u(tracks: &[ExportTrack], playlist_name: &str) -> String {
     for t in tracks {
         let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
         m3u.push_str(&format!("#EXTINF:{},{} - {}\n", duration_sec, t.artist, t.title));
-        m3u.push_str(&format!("{}.mp3\n", t.title));
+        let path = t.file_path.as_deref().unwrap_or(&t.title);
+        m3u.push_str(&format!("{}\n", path));
     }
     m3u
 }
@@ -64,14 +67,14 @@ pub fn export_to_m3u(tracks: &[ExportTrack], playlist_name: &str) -> String {
 pub fn export_to_xspf(tracks: &[ExportTrack], playlist_name: &str) -> String {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
-    xml.push_str(&format!("  <title>{}</title>\n", playlist_name));
+    xml.push_str(&format!("  <title>{}</title>\n", escape_xml(playlist_name)));
     xml.push_str("  <trackList>\n");
     for t in tracks {
         xml.push_str("    <track>\n");
-        xml.push_str(&format!("      <title>{}</title>\n", t.title));
-        xml.push_str(&format!("      <creator>{}</creator>\n", t.artist));
+        xml.push_str(&format!("      <title>{}</title>\n", escape_xml(&t.title)));
+        xml.push_str(&format!("      <creator>{}</creator>\n", escape_xml(&t.artist)));
         if let Some(album) = &t.album {
-            xml.push_str(&format!("      <album>{}</album>\n", album));
+            xml.push_str(&format!("      <album>{}</album>\n", escape_xml(album)));
         }
         if let Some(dur) = t.duration_ms {
             xml.push_str(&format!("      <duration>{}</duration>\n", dur));
@@ -83,9 +86,17 @@ pub fn export_to_xspf(tracks: &[ExportTrack], playlist_name: &str) -> String {
     xml
 }
 
+fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 pub async fn get_playlist_export_tracks(pool: &SqlitePool, playlist_id: &str) -> Result<Vec<ExportTrack>, String> {
-    let rows = sqlx::query_as::<_, (String, String, String, String, i64)>(
-        "SELECT t.title, t.artist, t.album, t.id, t.duration_ms
+    let rows = sqlx::query_as::<_, (String, String, String, String, i64, Option<String>)>(
+        "SELECT t.title, t.artist, t.album, t.id, t.duration_ms, t.file_path
          FROM playlist_tracks pt
          JOIN tracks t ON pt.track_id = t.id
          WHERE pt.playlist_id = ?
@@ -96,12 +107,13 @@ pub async fn get_playlist_export_tracks(pool: &SqlitePool, playlist_id: &str) ->
     .await
     .map_err(|e| format!("Failed to fetch playlist tracks: {}", e))?;
 
-    Ok(rows.into_iter().map(|(title, artist, album, _, duration_ms)| {
+    Ok(rows.into_iter().map(|(title, artist, album, _, duration_ms, file_path)| {
         ExportTrack {
             title,
             artist,
             album: if album.is_empty() { None } else { Some(album) },
             duration_ms: Some(duration_ms),
+            file_path,
         }
     }).collect())
 }

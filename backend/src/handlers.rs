@@ -62,6 +62,18 @@ pub async fn delete_library(
     path: web::Path<String>,
 ) -> HttpResponse {
     let id = path.into_inner();
+
+    let lib = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    if let Ok(lib) = lib {
+        if std::fs::remove_dir_all(&lib.path).is_err() {
+            // Directory may not exist or may be in use; continue with DB cleanup
+        }
+    }
+
     let result = sqlx::query("DELETE FROM libraries WHERE id = ?")
         .bind(&id)
         .execute(&data.db)
@@ -88,6 +100,8 @@ pub async fn scan_library(
         Ok(lib) => lib,
         Err(_) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Library not found"})),
     };
+
+    let start = std::time::Instant::now();
 
     let scanner = data.scanner.lock();
     let state = scanner.scan_library(library_id.clone(), library.path.clone());
@@ -203,6 +217,9 @@ pub async fn scan_library(
             .execute(&db)
             .await
             .ok();
+
+        let elapsed = start.elapsed().as_secs_f64();
+        log::info!("Library scan completed in {:.1}s", elapsed);
     });
 
     HttpResponse::Ok().json(serde_json::json!({
@@ -390,19 +407,19 @@ pub async fn play_track(
         .ok()
         .flatten();
 
-    sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
-        .bind(&id)
-        .execute(&data.db)
-        .await
-        .ok();
-
-    sqlx::query("INSERT INTO listening_history (track_id, played_at) VALUES (?, datetime('now'))")
-        .bind(&id)
-        .execute(&data.db)
-        .await
-        .ok();
-
     if let Some(track) = track {
+        sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
+            .bind(&id)
+            .execute(&data.db)
+            .await
+            .ok();
+
+        sqlx::query("INSERT INTO listening_history (track_id, played_at) VALUES (?, datetime('now'))")
+            .bind(&id)
+            .execute(&data.db)
+            .await
+            .ok();
+
         let db = data.db.clone();
         let track_id = track.id.clone();
         let artist = track.artist.clone();
@@ -824,6 +841,10 @@ pub async fn delete_playlist(
     path: web::Path<String>,
 ) -> HttpResponse {
     let id = path.into_inner();
+    let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
+        .bind(&id)
+        .execute(&data.db)
+        .await;
     let result = sqlx::query("DELETE FROM playlists WHERE id = ?")
         .bind(&id)
         .execute(&data.db)
