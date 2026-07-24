@@ -125,7 +125,7 @@ export default function EqualizerPage() {
                 return `M ${points.join(' L ')}`;
               })()}
               fill="none"
-              stroke={eqEnabled ? 'rgb(92, 124, 250)' : 'rgba(255,255,255,0.2)'}
+              stroke={eqEnabled ? 'var(--color-brand-500)' : 'rgba(255,255,255,0.2)'}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -137,7 +137,7 @@ export default function EqualizerPage() {
                 cx={(i / (eqBands.length - 1)) * 400}
                 cy={50 - (gain / 12) * 50}
                 r="3"
-                fill={eqEnabled ? 'rgb(92, 124, 250)' : 'rgba(255,255,255,0.2)'}
+                fill={eqEnabled ? 'var(--color-brand-500)' : 'rgba(255,255,255,0.2)'}
               />
             ))}
           </svg>

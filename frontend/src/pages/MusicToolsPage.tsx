@@ -61,8 +61,8 @@ export default function MusicToolsPage() {
 
   const platformColor = (p: string) => {
     switch (p) {
-      case 'spotify': return 'bg-green-500';
-      case 'youtube_music': return 'bg-red-500';
+      case 'spotify': return 'bg-brand-500';
+      case 'youtube_music': return 'bg-accent-500';
       case 'soundcloud': return 'bg-orange-500';
       default: return 'bg-gray-500';
     }
@@ -143,7 +143,7 @@ export default function MusicToolsPage() {
                       {platformIcon(track.platform)}
                     </span>
                     {track.artist} - {track.title}
-                    <button onClick={() => toggleTrack(track)} className="ml-1 text-tertiary hover:text-red-400">×</button>
+                    <button onClick={() => toggleTrack(track)} className="ml-1 text-tertiary hover:text-accent-400">×</button>
                   </span>
                 ))}
               </div>
@@ -294,8 +294,8 @@ function TransferTab() {
           <div className="space-y-1 text-sm">
             <p className="text-secondary">Status: <span className="text-primary">{progress.status}</span></p>
             <p className="text-secondary">Total: <span className="text-primary">{progress.total}</span></p>
-            <p className="text-secondary">Matched: <span className="text-green-400">{progress.matched}</span></p>
-            <p className="text-secondary">Not Found: <span className="text-red-400">{progress.not_found}</span></p>
+            <p className="text-secondary">Matched: <span className="text-brand-400">{progress.matched}</span></p>
+            <p className="text-secondary">Not Found: <span className="text-accent-400">{progress.not_found}</span></p>
             {progress.playlist_url && (
               <p className="text-secondary">URL: <a href={progress.playlist_url} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">{progress.playlist_url}</a></p>
             )}

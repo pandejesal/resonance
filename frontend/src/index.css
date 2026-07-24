@@ -134,7 +134,11 @@
   }
 
   .btn-primary {
-    @apply px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl font-medium transition-all duration-200 active:scale-95;
+    @apply px-4 py-2 bg-brand-500 hover:bg-brand-400 text-white rounded-xl font-medium transition-all duration-200 active:scale-95;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-accent-500 hover:bg-accent-400 text-white rounded-xl font-medium transition-all duration-200 active:scale-95;
   }
 
   .btn-secondary {

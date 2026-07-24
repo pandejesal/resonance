@@ -36,11 +36,11 @@ export default function StatsPage() {
       {/* Overview cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Total Tracks', value: formatNumber(stats.total_tracks), color: 'from-blue-500/20 to-blue-600/20' },
-          { label: 'Total Albums', value: formatNumber(stats.total_albums), color: 'from-purple-500/20 to-purple-600/20' },
-          { label: 'Total Artists', value: formatNumber(stats.total_artists), color: 'from-pink-500/20 to-pink-600/20' },
-          { label: 'Total Duration', value: formatDurationLong(stats.total_duration_ms), color: 'from-green-500/20 to-green-600/20' },
-          { label: 'Library Size', value: formatFileSize(stats.total_size_bytes), color: 'from-orange-500/20 to-orange-600/20' },
+          { label: 'Total Tracks', value: formatNumber(stats.total_tracks), color: 'from-brand-500/20 to-brand-700/20' },
+          { label: 'Total Albums', value: formatNumber(stats.total_albums), color: 'from-accent-500/20 to-accent-700/20' },
+          { label: 'Total Artists', value: formatNumber(stats.total_artists), color: 'from-brand-400/20 to-brand-600/20' },
+          { label: 'Total Duration', value: formatDurationLong(stats.total_duration_ms), color: 'from-accent-400/20 to-accent-600/20' },
+          { label: 'Library Size', value: formatFileSize(stats.total_size_bytes), color: 'from-brand-300/20 to-brand-500/20' },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}

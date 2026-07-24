@@ -204,7 +204,7 @@ export default function FileBrowser({ isOpen, onClose, onSelect }: FileBrowserPr
                   </div>
                 ) : error ? (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-sm text-red-400">{error}</p>
+                    <p className="text-sm text-accent-400">{error}</p>
                   </div>
                 ) : entries.length === 0 ? (
                   <div className="flex items-center justify-center h-full">

@@ -362,7 +362,7 @@ export default function SettingsPage() {
                       </button>
                       <button
                         onClick={() => handleDelete(lib.id)}
-                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-accent-500/10 text-accent-500 transition-colors"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -628,7 +628,7 @@ export default function SettingsPage() {
               <p className="text-xs text-tertiary">v{updaterStatus?.current_version || '0.1.0'}</p>
             </div>
             {updaterStatus?.update_available && (
-              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-lg font-medium">
+              <span className="px-2 py-1 bg-brand-500/20 text-brand-400 text-xs rounded-lg font-medium">
                 Update Available
               </span>
             )}
@@ -727,8 +727,8 @@ export default function SettingsPage() {
             <p className={cn(
               'text-sm',
               updaterMessage.includes('Error') || updaterMessage.includes('failed')
-                ? 'text-red-400'
-                : 'text-green-400'
+                ? 'text-accent-500'
+                : 'text-brand-500'
             )}>
               {updaterMessage}
             </p>

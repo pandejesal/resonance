@@ -99,7 +99,7 @@ export default function NowPlaying() {
           <div
             className="absolute inset-0 opacity-40"
             style={{
-              background: `radial-gradient(ellipse at 50% 0%, rgba(92, 124, 250, 0.3) 0%, transparent 60%)`,
+              background: `radial-gradient(ellipse at 50% 0%, rgba(29, 185, 84, 0.3) 0%, transparent 60%)`,
             }}
           />
 
@@ -259,7 +259,7 @@ export default function NowPlaying() {
               <button
                 onClick={togglePlay}
                 style={{ touchAction: 'manipulation' }}
-                className="w-16 h-16 rounded-full bg-white flex items-center justify-center active:scale-90 transition-transform"
+                className="w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center active:scale-90 transition-transform"
               >
                 {isPlaying ? (
                   <svg className="w-7 h-7 text-black" fill="currentColor" viewBox="0 0 24 24">
