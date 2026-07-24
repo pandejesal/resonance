@@ -6,6 +6,13 @@ target/
 dist/
 *.exe
 *.pdb
+*.msi
+*.app
+*.dmg
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
 
 # Environment
 .env

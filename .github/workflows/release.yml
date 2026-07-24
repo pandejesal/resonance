@@ -14,7 +14,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-windows:
+  build-windows-tauri:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +27,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Inno Setup
-        run: choco install innosetup -y
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -37,47 +37,24 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: windows-cargo-
+          key: tauri-windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: tauri-windows-cargo-
 
-      - name: Build Frontend
-        run: |
-          cd frontend
-          npm install
-          npm run build
+      - name: Build Tauri App
+        working-directory: src-tauri
+        run: cargo tauri build
 
-      - name: Copy Frontend to Static
-        run: xcopy /E /I /Q frontend\dist static
-
-      - name: Build Backend
-        run: cargo build --release -p resonance-backend
-
-      - name: Package Portable
-        run: |
-          mkdir release
-          copy target\release\resonance-backend.exe release\
-          xcopy /E /I /Q static release\static
-          xcopy /E /I /Q backend\migrations release\migrations
-          copy scripts\install-windows.ps1 release\
-          copy VERSION release\
-          Compress-Archive -Path release\* -DestinationPath resonance-windows-x64.zip
-
-      - name: Build Installer
-        run: |
-          mkdir installer_output
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\windows.iss
-
-      - name: Upload Portable
+      - name: Upload MSI Installer
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x64
-          path: resonance-windows-x64.zip
+          name: windows-tauri-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
 
-      - name: Upload Installer
+      - name: Upload Portable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: installer/installer_output/resonance-*-setup.exe
+          name: windows-tauri-exe
+          path: src-tauri/target/release/resonance.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -384,7 +361,7 @@ jobs:
           path: frontend/ios/App/build/resonance-ios.ipa
 
   release:
-    needs: [build-windows, build-linux, build-macos, build-android-apk, build-ios-ipa]
+    needs: [build-windows-tauri, build-linux, build-macos, build-android-apk, build-ios-ipa]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -418,13 +395,19 @@ jobs:
 
             A self-hosted music archival system with bit-perfect playback.
 
-            ### Native Installers (Recommended)
+            ### Native Desktop App (Recommended)
 
             | Platform | File | Description |
             |----------|------|-------------|
-            | **Windows** | `resonance-*-setup.exe` | Double-click installer with wizard |
+            | **Windows** | `resonance-*-windows-x64.msi` | Native desktop app (Tauri) |
+            | **Windows Portable** | `resonance.exe` | Standalone executable, no install needed |
             | **macOS** | `resonance-*-macos.dmg` | Drag-to-Applications disk image |
             | **Linux** | `Resonance-*.AppImage` | Universal portable app (chmod +x, run) |
+
+            ### Mobile
+
+            | Platform | File | Description |
+            |----------|------|-------------|
             | **Android** | `resonance-*-android.apk` | Install directly on Android device |
             | **iOS** | `resonance-*-ios.ipa` | Unsigned IPA (re-sign with AltStore/Sideloadly) |
 
@@ -432,7 +415,6 @@ jobs:
 
             | Platform | File | Description |
             |----------|------|-------------|
-            | **Windows** | `resonance-windows-x64.zip` | Extract and run `install-windows.ps1` |
             | **Linux** | `resonance-linux-x64.tar.gz` | Extract and run `bash install-linux.sh` |
             | **macOS** | `resonance-macos-x64.tar.gz` | Extract and run `bash install-macos.sh` |
 
@@ -445,18 +427,19 @@ jobs:
             Open http://localhost:8080
 
             ### Features
+            - Native desktop app with system integration (Tauri)
             - Bit-perfect audio playback with Web Audio API
             - 10-band equalizer with presets
             - Gapless playback and crossfade
             - Scrobbling (Last.fm, ListenBrainz)
             - Synced lyrics (LRCLIB)
             - Import from Spotify, YouTube Music, Apple Music, SoundCloud
-            - Auto-updater
             - Dark/Light/AMOLED themes
           files: |
+            artifacts/**/*.msi
+            artifacts/**/*.exe
             artifacts/**/*.zip
             artifacts/**/*.tar.gz
-            artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.AppImage
             artifacts/**/*.apk
