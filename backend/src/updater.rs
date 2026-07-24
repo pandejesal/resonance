@@ -1,4 +1,4 @@
-use log::{info, warn, error};
+use log::{info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -200,7 +200,7 @@ fn extract_version_from_message(message: &str) -> String {
     "0.1.0".to_string()
 }
 
-async fn get_latest_commit_hash(db: &SqlitePool) -> Option<String> {
+async fn get_latest_commit_hash(_db: &SqlitePool) -> Option<String> {
     let client = Client::new();
     let url = format!("{}/{}/commits/main?per_page=1", GITHUB_API_URL, GITHUB_REPO);
 

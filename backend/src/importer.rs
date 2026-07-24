@@ -1,4 +1,3 @@
-use log::info;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
@@ -11,7 +10,7 @@ pub struct ExportTrack {
     pub file_path: Option<String>,
 }
 
-pub fn export_to_spotify_csv(tracks: &[ExportTrack], playlist_name: &str) -> String {
+pub fn export_to_spotify_csv(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut csv = String::from("Track Name,Artist,Album\n");
     for t in tracks {
         let title = t.title.replace('"', "\"\"");
@@ -29,7 +28,7 @@ pub fn export_to_youtube_music_text(tracks: &[ExportTrack]) -> String {
         .join("\n")
 }
 
-pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], playlist_name: &str) -> String {
+pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut m3u = String::from("#EXTM3U\n");
     for t in tracks {
         let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
@@ -53,7 +52,7 @@ pub fn export_to_soundcloud_text(tracks: &[ExportTrack]) -> String {
         .join("\n")
 }
 
-pub fn export_to_m3u(tracks: &[ExportTrack], playlist_name: &str) -> String {
+pub fn export_to_m3u(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut m3u = String::from("#EXTM3U\n");
     for t in tracks {
         let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
@@ -516,7 +515,7 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
 
         let mut best_match: Option<(String, String, f64)> = None;
 
-        for (id, db_title, db_artist, db_album) in &db_tracks {
+        for (id, db_title, db_artist, _db_album) in &db_tracks {
             let norm_db_title = normalize(db_title);
             let norm_db_artist = normalize(db_artist);
 

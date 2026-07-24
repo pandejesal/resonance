@@ -116,7 +116,7 @@ pub async fn start_server(
             .route("/api/import/confirm", web::post().to(handlers::confirm_import))
             .route("/api/import/formats", web::get().to(handlers::get_import_formats))
             .route("/api/import/device", web::post().to(handlers::import_device_music))
-            .route("/api/transfer/export", web::post().to(handlers::export_transfer))
+            .route("/api/transfer/export", web::post().to(handlers::export_playlist))
             .route("/api/transfer/platforms", web::get().to(handlers::get_transfer_platforms))
             .service(static_files)
     })
