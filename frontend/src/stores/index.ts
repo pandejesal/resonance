@@ -278,9 +278,9 @@ export const usePlayerStore = create<PlayerStore>()(
 
       toggleShuffle: () => {
         const { shuffle, queue, queueIndex } = get();
-        const newShuffle = !shuffle;
 
-        if (newShuffle && queue.length > 1) {
+        if (!shuffle && queue.length > 1) {
+          // Turning shuffle ON with a queue > 1
           const current = queue[queueIndex];
           const rest = queue.filter((_, i) => i !== queueIndex);
           const shuffled = shuffleArray(rest);
@@ -290,6 +290,7 @@ export const usePlayerStore = create<PlayerStore>()(
             queueIndex: 0,
           });
         } else {
+          // Turning shuffle OFF (or can't shuffle with < 2 items)
           set({ shuffle: false });
         }
       },
