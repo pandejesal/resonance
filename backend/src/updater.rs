@@ -58,9 +58,8 @@ pub async fn get_updater_status(db: &SqlitePool) -> UpdateStatus {
     let last_checked = get_state(db, "last_checked").await.unwrap_or_default();
     let docker_socket = get_state(db, "docker_socket").await == Some("true".to_string());
 
-    let update_available = !latest_commit.is_empty()
-        && !current_commit.is_empty()
-        && latest_commit != current_commit;
+    let update_available =
+        !latest_commit.is_empty() && !current_commit.is_empty() && latest_commit != current_commit;
 
     UpdateStatus {
         current_version,
@@ -106,7 +105,12 @@ pub async fn check_for_updates(db: &SqlitePool) -> Result<UpdateStatus, String> 
         set_state(db, "current_commit", &latest_commit).await;
     }
 
-    info!("Update check: current={}, latest={}, available={}", current_commit, latest_commit, latest_commit != current_commit);
+    info!(
+        "Update check: current={}, latest={}, available={}",
+        current_commit,
+        latest_commit,
+        latest_commit != current_commit
+    );
 
     Ok(get_updater_status(db).await)
 }
@@ -141,7 +145,14 @@ pub async fn apply_update(db: &SqlitePool) -> Result<String, String> {
     info!("Rebuilding Docker container...");
 
     let output = std::process::Command::new("docker")
-        .args(["compose", "-f", "/app/docker/docker-compose.yml", "up", "-d", "--build"])
+        .args([
+            "compose",
+            "-f",
+            "/app/docker/docker-compose.yml",
+            "up",
+            "-d",
+            "--build",
+        ])
         .current_dir("/app")
         .output()
         .map_err(|e| format!("Failed to execute docker compose: {}", e))?;
@@ -175,7 +186,12 @@ pub async fn get_updater_config(db: &SqlitePool) -> UpdaterConfig {
 
 pub async fn save_updater_config(db: &SqlitePool, config: &UpdaterConfig) {
     set_state(db, "auto_check", &config.auto_check.to_string()).await;
-    set_state(db, "check_interval_hours", &config.check_interval_hours.to_string()).await;
+    set_state(
+        db,
+        "check_interval_hours",
+        &config.check_interval_hours.to_string(),
+    )
+    .await;
     set_state(db, "docker_socket", &config.docker_socket.to_string()).await;
 }
 
@@ -232,7 +248,10 @@ pub async fn start_background_check(db: SqlitePool) {
     }
 
     let interval_hours = config.check_interval_hours;
-    info!("Starting background update check every {} hours", interval_hours);
+    info!(
+        "Starting background update check every {} hours",
+        interval_hours
+    );
 
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(interval_hours as u64 * 3600)).await;
@@ -240,7 +259,10 @@ pub async fn start_background_check(db: SqlitePool) {
         match check_for_updates(&db).await {
             Ok(status) => {
                 if status.update_available {
-                    info!("Update available: {} -> {}", status.current_version, status.latest_version);
+                    info!(
+                        "Update available: {} -> {}",
+                        status.current_version, status.latest_version
+                    );
                 }
             }
             Err(e) => {

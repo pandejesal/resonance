@@ -1,7 +1,7 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
-use chrono::Utc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Track {
@@ -146,6 +146,7 @@ pub struct QueryParams {
     pub folder: Option<String>,
     pub mood: Option<String>,
     pub min_rating: Option<i32>,
+    pub last_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -315,11 +316,13 @@ pub struct SettingRow {
 impl Track {
     pub fn new(file_path: String, library_id: String) -> Self {
         let path = std::path::Path::new(&file_path);
-        let file_name = path.file_name()
+        let file_name = path
+            .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let folder = path.parent()
+        let folder = path
+            .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 

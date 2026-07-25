@@ -1,16 +1,16 @@
-use lofty::prelude::*;
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
-use rayon::prelude::*;
-use dashmap::DashMap;
-use std::sync::atomic::{AtomicI32, AtomicBool, Ordering};
-use std::sync::Arc;
-use log::warn;
 use crate::models::Track;
+use dashmap::DashMap;
+use lofty::prelude::*;
+use log::warn;
+use rayon::prelude::*;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::Arc;
+use walkdir::WalkDir;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "mp3", "flac", "alac", "wav", "aiff", "aif", "ogg", "opus",
-    "aac", "m4a", "mp4", "m4b", "dsf", "dff",
+    "mp3", "flac", "alac", "wav", "aiff", "aif", "ogg", "opus", "aac", "m4a", "mp4", "m4b", "dsf",
+    "dff",
 ];
 
 pub struct Scanner {
@@ -52,11 +52,7 @@ impl Scanner {
         })
     }
 
-    pub fn scan_library(
-        &self,
-        library_id: String,
-        _path: String,
-    ) -> Arc<LibraryScanState> {
+    pub fn scan_library(&self, library_id: String, _path: String) -> Arc<LibraryScanState> {
         let state = Arc::new(LibraryScanState {
             is_scanning: Arc::new(AtomicBool::new(true)),
             files_found: Arc::new(AtomicI32::new(0)),
@@ -125,7 +121,10 @@ impl Scanner {
     }
 }
 
-pub fn extract_metadata(path: &Path, library_id: &str) -> Result<Track, Box<dyn std::error::Error>> {
+pub fn extract_metadata(
+    path: &Path,
+    library_id: &str,
+) -> Result<Track, Box<dyn std::error::Error>> {
     let path_str = path.to_string_lossy().to_string();
     let mut track = Track::new(path_str.clone(), library_id.to_string());
 
@@ -133,10 +132,7 @@ pub fn extract_metadata(path: &Path, library_id: &str) -> Result<Track, Box<dyn 
     track.file_size = file_size;
 
     if let Ok(modified) = std::fs::metadata(path).and_then(|m| m.modified()) {
-        track.file_modified = Some(
-            chrono::DateTime::<chrono::Utc>::from(modified)
-                .to_rfc3339(),
-        );
+        track.file_modified = Some(chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339());
     }
 
     let tagged_file = lofty::read_from_path(path)?;
@@ -150,7 +146,10 @@ pub fn extract_metadata(path: &Path, library_id: &str) -> Result<Track, Box<dyn 
     track.format = format!("{:?}", tagged_file.file_type()).to_lowercase();
     track.codec = Some(format!("{:?}", tagged_file.file_type()));
 
-    if let Some(tag) = tagged_file.primary_tag().or_else(|| tagged_file.first_tag()) {
+    if let Some(tag) = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag())
+    {
         track.title = tag
             .get_string(&ItemKey::TrackTitle)
             .unwrap_or("")
@@ -163,9 +162,7 @@ pub fn extract_metadata(path: &Path, library_id: &str) -> Result<Track, Box<dyn 
             .get_string(&ItemKey::AlbumTitle)
             .unwrap_or("")
             .to_string();
-        track.album_artist = tag
-            .get_string(&ItemKey::AlbumArtist)
-            .map(|s| s.to_string());
+        track.album_artist = tag.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string());
         track.genre = tag.get_string(&ItemKey::Genre).map(|s| s.to_string());
         track.year = tag
             .get_string(&ItemKey::RecordingDate)
@@ -205,7 +202,10 @@ pub fn extract_metadata(path: &Path, library_id: &str) -> Result<Track, Box<dyn 
 pub fn extract_artwork(path: &Path) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
     let tagged_file = lofty::read_from_path(path)?;
 
-    if let Some(tag) = tagged_file.primary_tag().or_else(|| tagged_file.first_tag()) {
+    if let Some(tag) = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag())
+    {
         if let Some(picture) = tag.pictures().first() {
             return Ok(Some(picture.data().to_vec()));
         }

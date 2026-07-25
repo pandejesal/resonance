@@ -22,7 +22,8 @@ pub fn export_to_spotify_csv(tracks: &[ExportTrack], _playlist_name: &str) -> St
 }
 
 pub fn export_to_youtube_music_text(tracks: &[ExportTrack]) -> String {
-    tracks.iter()
+    tracks
+        .iter()
         .map(|t| format!("{} - {}", t.artist, t.title))
         .collect::<Vec<_>>()
         .join("\n")
@@ -32,7 +33,10 @@ pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], _playlist_name: &str) -
     let mut m3u = String::from("#EXTM3U\n");
     for t in tracks {
         let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
-        m3u.push_str(&format!("#EXTINF:{},{} - {}\n", duration_sec, t.artist, t.title));
+        m3u.push_str(&format!(
+            "#EXTINF:{},{} - {}\n",
+            duration_sec, t.artist, t.title
+        ));
         let path = t.file_path.as_deref().unwrap_or(&t.title);
         m3u.push_str(&format!("{}\n", path));
     }
@@ -40,7 +44,8 @@ pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], _playlist_name: &str) -
 }
 
 pub fn export_to_soundcloud_text(tracks: &[ExportTrack]) -> String {
-    tracks.iter()
+    tracks
+        .iter()
         .map(|t| {
             if let Some(album) = &t.album {
                 format!("{} - {} [{}]", t.artist, t.title, album)
@@ -56,7 +61,10 @@ pub fn export_to_m3u(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut m3u = String::from("#EXTM3U\n");
     for t in tracks {
         let duration_sec = t.duration_ms.map(|d| d / 1000).unwrap_or(0);
-        m3u.push_str(&format!("#EXTINF:{},{} - {}\n", duration_sec, t.artist, t.title));
+        m3u.push_str(&format!(
+            "#EXTINF:{},{} - {}\n",
+            duration_sec, t.artist, t.title
+        ));
         let path = t.file_path.as_deref().unwrap_or(&t.title);
         m3u.push_str(&format!("{}\n", path));
     }
@@ -71,7 +79,10 @@ pub fn export_to_xspf(tracks: &[ExportTrack], playlist_name: &str) -> String {
     for t in tracks {
         xml.push_str("    <track>\n");
         xml.push_str(&format!("      <title>{}</title>\n", escape_xml(&t.title)));
-        xml.push_str(&format!("      <creator>{}</creator>\n", escape_xml(&t.artist)));
+        xml.push_str(&format!(
+            "      <creator>{}</creator>\n",
+            escape_xml(&t.artist)
+        ));
         if let Some(album) = &t.album {
             xml.push_str(&format!("      <album>{}</album>\n", escape_xml(album)));
         }
@@ -93,28 +104,34 @@ fn escape_xml(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-pub async fn get_playlist_export_tracks(pool: &SqlitePool, playlist_id: &str) -> Result<Vec<ExportTrack>, String> {
+pub async fn get_playlist_export_tracks(
+    pool: &SqlitePool,
+    playlist_id: &str,
+) -> Result<Vec<ExportTrack>, String> {
     let rows = sqlx::query_as::<_, (String, String, String, String, i64, Option<String>)>(
         "SELECT t.title, t.artist, t.album, t.id, t.duration_ms, t.file_path
          FROM playlist_tracks pt
          JOIN tracks t ON pt.track_id = t.id
          WHERE pt.playlist_id = ?
-         ORDER BY pt.position"
+         ORDER BY pt.position",
     )
     .bind(playlist_id)
     .fetch_all(pool)
     .await
     .map_err(|e| format!("Failed to fetch playlist tracks: {}", e))?;
 
-    Ok(rows.into_iter().map(|(title, artist, album, _, duration_ms, file_path)| {
-        ExportTrack {
-            title,
-            artist,
-            album: if album.is_empty() { None } else { Some(album) },
-            duration_ms: Some(duration_ms),
-            file_path,
-        }
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(
+            |(title, artist, album, _, duration_ms, file_path)| ExportTrack {
+                title,
+                artist,
+                album: if album.is_empty() { None } else { Some(album) },
+                duration_ms: Some(duration_ms),
+                file_path,
+            },
+        )
+        .collect())
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -233,8 +250,8 @@ pub fn normalize(s: &str) -> String {
 }
 
 pub fn parse_spotify(content: &str) -> Result<ImportPreview, String> {
-    let data: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let mut tracks = Vec::new();
     let mut playlist_name = "Spotify Playlist".to_string();
@@ -243,23 +260,36 @@ pub fn parse_spotify(content: &str) -> Result<ImportPreview, String> {
         playlist_name = name.to_string();
     }
 
-    if let Some(items) = data.get("tracks").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
+    if let Some(items) = data
+        .get("tracks")
+        .and_then(|t| t.get("items"))
+        .and_then(|i| i.as_array())
+    {
         for item in items {
             if let Some(track) = item.get("track") {
-                let title = track.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-                let artist = track.get("artists")
+                let title = track
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                let artist = track
+                    .get("artists")
                     .and_then(|a| a.as_array())
                     .and_then(|a| a.first())
                     .and_then(|a| a.get("name"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown")
                     .to_string();
-                let album = track.get("album")
+                let album = track
+                    .get("album")
                     .and_then(|a| a.get("name"))
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
                 let duration_ms = track.get("duration_ms").and_then(|v| v.as_i64());
-                let id = track.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let id = track
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
                 tracks.push(ImportTrack {
                     title,
@@ -282,8 +312,8 @@ pub fn parse_spotify(content: &str) -> Result<ImportPreview, String> {
 }
 
 pub fn parse_youtube_music(content: &str) -> Result<ImportPreview, String> {
-    let data: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let mut tracks = Vec::new();
     let mut playlist_name = "YouTube Music Playlist".to_string();
@@ -294,11 +324,25 @@ pub fn parse_youtube_music(content: &str) -> Result<ImportPreview, String> {
 
     if let Some(content_arr) = data.get("content").and_then(|c| c.as_array()) {
         for item in content_arr {
-            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let artist = item.get("artist").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let album = item.get("album").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let title = item
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let artist = item
+                .get("artist")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let album = item
+                .get("album")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             let duration_ms = item.get("duration_ms").and_then(|v| v.as_i64());
-            let id = item.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let id = item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             tracks.push(ImportTrack {
                 title,
@@ -320,8 +364,8 @@ pub fn parse_youtube_music(content: &str) -> Result<ImportPreview, String> {
 }
 
 pub fn parse_apple_music(content: &str) -> Result<ImportPreview, String> {
-    let data: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let mut tracks = Vec::new();
     let mut playlist_name = "Apple Music Playlist".to_string();
@@ -332,11 +376,28 @@ pub fn parse_apple_music(content: &str) -> Result<ImportPreview, String> {
 
     if let Some(tracks_arr) = data.get("tracks").and_then(|t| t.as_array()) {
         for item in tracks_arr {
-            let title = item.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let artist = item.get("artist").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let album = item.get("album").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let duration_ms = item.get("duration").and_then(|v| v.as_f64()).map(|d| (d * 1000.0) as i64);
-            let id = item.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let title = item
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let artist = item
+                .get("artist")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let album = item
+                .get("album")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let duration_ms = item
+                .get("duration")
+                .and_then(|v| v.as_f64())
+                .map(|d| (d * 1000.0) as i64);
+            let id = item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             tracks.push(ImportTrack {
                 title,
@@ -358,8 +419,8 @@ pub fn parse_apple_music(content: &str) -> Result<ImportPreview, String> {
 }
 
 pub fn parse_soundcloud(content: &str) -> Result<ImportPreview, String> {
-    let data: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
     let mut tracks = Vec::new();
     let mut playlist_name = "SoundCloud Playlist".to_string();
@@ -377,14 +438,22 @@ pub fn parse_soundcloud(content: &str) -> Result<ImportPreview, String> {
     };
 
     for item in &items {
-        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-        let artist = item.get("user")
+        let title = item
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let artist = item
+            .get("user")
             .and_then(|u| u.get("username"))
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown")
             .to_string();
         let duration_ms = item.get("duration").and_then(|v| v.as_i64());
-        let id = item.get("id").and_then(|v| v.as_i64()).map(|i| i.to_string());
+        let id = item
+            .get("id")
+            .and_then(|v| v.as_i64())
+            .map(|i| i.to_string());
 
         tracks.push(ImportTrack {
             title,
@@ -416,7 +485,10 @@ pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
                 if parts.len() > 1 {
                     let artist_title = parts[1].trim().to_string();
                     let (artist, track_title) = if let Some(pos) = artist_title.find(" - ") {
-                        (artist_title[..pos].trim().to_string(), artist_title[pos + 3..].trim().to_string())
+                        (
+                            artist_title[..pos].trim().to_string(),
+                            artist_title[pos + 3..].trim().to_string(),
+                        )
                     } else {
                         ("Unknown".to_string(), artist_title)
                     };
@@ -459,21 +531,25 @@ pub fn parse_xspf(content: &str) -> Result<ImportPreview, String> {
             }
 
             for track_node in root.children().filter(|n| n.has_tag_name("track")) {
-                let title = track_node.children()
+                let title = track_node
+                    .children()
                     .find(|n| n.has_tag_name("title"))
                     .and_then(|n| n.text())
                     .unwrap_or("Unknown")
                     .to_string();
-                let creator = track_node.children()
+                let creator = track_node
+                    .children()
                     .find(|n| n.has_tag_name("creator"))
                     .and_then(|n| n.text())
                     .unwrap_or("Unknown")
                     .to_string();
-                let album = track_node.children()
+                let album = track_node
+                    .children()
                     .find(|n| n.has_tag_name("album"))
                     .and_then(|n| n.text())
                     .map(|s| s.to_string());
-                let duration_ms = track_node.children()
+                let duration_ms = track_node
+                    .children()
                     .find(|n| n.has_tag_name("duration"))
                     .and_then(|n| n.text())
                     .and_then(|s| s.parse::<i64>().ok());
@@ -500,7 +576,7 @@ pub fn parse_xspf(content: &str) -> Result<ImportPreview, String> {
 
 pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
     let db_tracks = sqlx::query_as::<_, (String, String, String, String)>(
-        "SELECT id, title, artist, album FROM tracks"
+        "SELECT id, title, artist, album FROM tracks",
     )
     .fetch_all(pool)
     .await
@@ -532,7 +608,9 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
                 }
             }
 
-            if (norm_title.contains(&norm_db_title) || norm_db_title.contains(&norm_title)) && best_match.is_none() {
+            if (norm_title.contains(&norm_db_title) || norm_db_title.contains(&norm_title))
+                && best_match.is_none()
+            {
                 best_match = Some((id.clone(), "title_only".to_string(), 0.6));
             }
         }

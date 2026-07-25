@@ -48,21 +48,24 @@ Fix README claims and get the four existing plans fully operational.
 
 ---
 
-## Phase 2: Unwire the Unused (Use What's Already There)
+## Phase 2: Unwire the Unused (Use What's Already There) ✅ DONE
 
 Two crates already in `Cargo.toml` but not used in any source file.
 
-### 2a. Wire `actix-ws` for push-based updates
-- Scan progress: replace polling `GET /api/libraries/{id}/scan/progress` with WebSocket push
-- Now-playing state: push current track to all connected clients (multi-device sync)
-- Future: Spotify-Connect-style "control this room from my phone" handoff
-- WebSocket endpoint: `ws://host/api/ws`
+### 2a. Wire `actix-ws` for push-based updates ✅ DONE
+- `backend/src/ws.rs` — WebSocket endpoint at `/api/ws`
+- Client tracking in `DashMap<String, Session>`
+- `subscribe:scan_progress` and `subscribe:now_playing` commands
+- `broadcast_scan_progress()` and `broadcast_now_playing()` functions
+- Wired into `AppState` and `lib.rs`
 
-### 2b. Wire `notify` for filesystem-triggered rescans
-- Monitor each library's path for file changes (create, modify, delete)
-- Debounce events (batch within 5-second window)
-- Trigger incremental rescan on change
-- This means the UI "Scan" button becomes optional — changes auto-detect
+### 2b. Wire `notify` for filesystem-triggered rescans ✅ DONE
+- `backend/src/watcher.rs` — `WatcherService` with `RecommendedWatcher`
+- Monitors library paths recursively for create/modify/delete
+- Debounces events (5-second window)
+- Auto-triggers incremental rescan on file changes
+- Filters hidden files and unsupported audio extensions
+- Started automatically on server boot
 
 ---
 
@@ -89,33 +92,35 @@ Basic accounts to protect the write API.
 
 ---
 
-## Phase 4: Subsonic / OpenSubsonic API
+## Phase 4: Subsonic / OpenSubsonic API ✅ DONE
 
 **Highest-leverage addition.** Implement even a subset and every Subsonic client works immediately.
 
-### 4a. Core endpoints (Symfonium, play:Sub, Amperfy compatible)
+### 4a. Core endpoints (Symfonium, play:Sub, Amperfy compatible) ✅ DONE
 ```
-GET /rest/ping.view
-GET /rest/getArtists.view
-GET /rest/getAlbum.view
-GET /rest/getSongsByAlbumId.view
-GET /rest/stream.view (proxy to /api/tracks/{id}/stream)
-GET /rest/getCoverArt.view (proxy to /api/tracks/{id}/cover)
-GET /rest/search2.view
-GET /rest/getPlaylists.view
-POST /rest/createPlaylist.view
-POST /rest/updatePlaylist.view
-POST /rest/deletePlaylist.view
-POST /rest/scrobble.view (proxy to play_track)
-GET /rest/getUser.view
-POST /rest/login.view
+GET /rest/ping.view ✅
+GET /rest/getMusicFolders.view ✅
+GET /rest/getArtists.view ✅
+GET /rest/getAlbumList.view ✅
+GET /rest/getAlbum.view ✅
+GET /rest/getSongsByAlbumId.view ✅
+GET /rest/stream.view ✅
+GET /rest/getCoverArt.view ✅
+GET /rest/search2.view ✅
+GET /rest/getPlaylists.view ✅
+POST /rest/createPlaylist.view ✅
+POST /rest/updatePlaylist.view ✅
+POST /rest/deletePlaylist.view ✅
+POST /rest/scrobble.view ✅
+GET /rest/getUser.view ✅
+POST /rest/login.view ✅
 ```
 
-### 4b. Implementation approach
-- New `subsonic.rs` module with its own router (`/rest/*.view`)
-- Reuse existing handlers — thin adapter layer
-- No new DB schema — read from existing tables
-- Auth: HTTP Basic auth (Subsonic standard) mapped to local users
+### 4b. Implementation approach ✅ DONE
+- `backend/src/subsonic.rs` — 960 lines, 16 endpoints
+- ID mapping: `s` prefix for songs, `al` for albums, `ar` for artists, `pl` for playlists
+- JSON response format matching Subsonic spec
+- Wired via `.configure(subsonic::configure)` in `lib.rs`
 
 ---
 
@@ -182,23 +187,27 @@ Seek bar shows real waveform shape.
 
 ## Phase 9: Codebase Hardening
 
-### 9a. SQLite busy_timeout
-- Add `PRAGMA busy_timeout = 5000;` to `db.rs` alongside WAL PRAGMAs
+### 9a. SQLite busy_timeout ✅ DONE
+- Added `PRAGMA busy_timeout=5000` to `db.rs` alongside WAL PRAGMAs
 - Prevents "database is locked" when scan + stream land simultaneously
 
-### 9b. Keyset pagination
-- Replace `OFFSET` in `GET /api/tracks` with `WHERE id > last_id ORDER BY id LIMIT n`
+### 9b. Keyset pagination ✅ DONE
+- `GET /api/tracks?last_id=xxx&order=DESC` uses `WHERE id < last_id ORDER BY id DESC LIMIT n`
+- Backward compatible: `?page=2` still works via OFFSET
 - Keeps query fast at offset 100,000+
 
-### 9c. Health endpoint
-- `GET /api/health` → `{ status: "ok", db: "connected", version: "0.5.3" }`
+### 9c. Health endpoint ✅ DONE
+- `GET /api/health` → `{ status: "ok", db: "connected", version: "0.5.4" }`
 - Docker HEALTHCHECK uses this instead of raw port check
-- Updater uses this to verify server restarted successfully
+- Updater reads version from VERSION file
 
 ### 9d. Docker socket isolation
 - Separate `docker-compose.override.yml` for Docker socket mount
 - Main compose file has no socket access
 - Document the security implications
+
+### 9e. Remove unused dependencies ✅ DONE
+- Removed `rusqlite` from workspace and backend Cargo.toml
 
 ---
 

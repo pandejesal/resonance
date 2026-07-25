@@ -27,7 +27,9 @@ fn main() {
                     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
                     // Static dir: use bundled frontend assets
-                    let static_dir = handle.path().resource_dir()
+                    let static_dir = handle
+                        .path()
+                        .resource_dir()
                         .expect("Failed to resolve resource dir");
 
                     // Copy bundled frontend to app data if not present
@@ -49,7 +51,9 @@ fn main() {
                         host,
                         port,
                         static_dir.to_str().unwrap_or("./static"),
-                    ).await {
+                    )
+                    .await
+                    {
                         eprintln!("Backend server error: {}", e);
                     }
                 });

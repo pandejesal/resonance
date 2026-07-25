@@ -32,7 +32,6 @@ dotenvy.workspace = true
 rayon.workspace = true
 dashmap.workspace = true
 parking_lot.workspace = true
-rusqlite.workspace = true
 image.workspace = true
 base64.workspace = true
 reqwest.workspace = true

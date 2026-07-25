@@ -1,19 +1,22 @@
-pub mod models;
 pub mod db;
-pub mod scanner;
 pub mod handlers;
-pub mod scrobble;
-pub mod lyrics;
-pub mod updater;
 pub mod importer;
+pub mod lyrics;
+pub mod models;
+pub mod scanner;
+pub mod scrobble;
+pub mod subsonic;
+pub mod updater;
+pub mod watcher;
+pub mod ws;
 
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer, middleware};
+use actix_web::{middleware, web, App, HttpServer};
 use handlers::AppState;
+use log::info;
+use parking_lot::Mutex;
 use scanner::Scanner;
 use std::sync::Arc;
-use parking_lot::Mutex;
-use log::info;
 
 pub async fn start_server(
     database_url: &str,
@@ -37,13 +40,18 @@ pub async fn start_server(
         .await
         .expect("Failed to connect to database");
 
-    database.run_migrations().await.expect("Failed to run migrations");
+    database
+        .run_migrations()
+        .await
+        .expect("Failed to run migrations");
 
     let scanner = Arc::new(Mutex::new(Scanner::new()));
+    let ws_clients = Arc::new(ws::WsClients::new());
 
     let state = web::Data::new(AppState {
         db: database.pool.clone(),
-        scanner,
+        scanner: scanner.clone(),
+        ws_clients: ws_clients.clone(),
     });
 
     let db_for_updater = database.pool.clone();
@@ -51,9 +59,24 @@ pub async fn start_server(
         updater::start_background_check(db_for_updater).await;
     });
 
+    let db_for_watcher = database.pool.clone();
+    let scanner_for_watcher = scanner.clone();
+    let mut watcher_service = watcher::WatcherService::new(db_for_watcher, scanner_for_watcher);
+    match watcher_service.start_watching() {
+        Ok(()) => info!("Filesystem watcher started"),
+        Err(e) => log::warn!("Filesystem watcher failed to start: {}", e),
+    }
+    let watcher_service = Arc::new(Mutex::new(watcher_service));
+    tokio::spawn(async move {
+        watcher::start_watching_task(watcher_service).await;
+    });
+
     let static_dir_owned = static_dir.to_string();
 
-    info!("Starting Resonance server on {}:{} (static: {})", host, port, static_dir);
+    info!(
+        "Starting Resonance server on {}:{} (static: {})",
+        host, port, static_dir
+    );
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -65,24 +88,44 @@ pub async fn start_server(
         let index_path = format!("{}/index.html", static_dir_owned);
         let static_files = actix_files::Files::new("/", &static_dir_owned)
             .index_file("index.html")
-            .default_handler(actix_files::NamedFile::open(&index_path)
-                .expect("index.html not found"));
+            .default_handler(
+                actix_files::NamedFile::open(&index_path).expect("index.html not found"),
+            );
 
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
             .app_data(state.clone())
+            .configure(subsonic::configure)
             .route("/api/libraries", web::get().to(handlers::get_libraries))
             .route("/api/libraries", web::post().to(handlers::create_library))
-            .route("/api/libraries/{id}", web::delete().to(handlers::delete_library))
-            .route("/api/libraries/{id}/scan", web::post().to(handlers::scan_library))
-            .route("/api/libraries/{id}/scan/progress", web::get().to(handlers::get_scan_progress))
+            .route(
+                "/api/libraries/{id}",
+                web::delete().to(handlers::delete_library),
+            )
+            .route(
+                "/api/libraries/{id}/scan",
+                web::post().to(handlers::scan_library),
+            )
+            .route(
+                "/api/libraries/{id}/scan/progress",
+                web::get().to(handlers::get_scan_progress),
+            )
             .route("/api/tracks", web::get().to(handlers::get_tracks))
             .route("/api/tracks/{id}", web::get().to(handlers::get_track))
             .route("/api/tracks/{id}", web::put().to(handlers::update_track))
-            .route("/api/tracks/{id}/play", web::post().to(handlers::play_track))
-            .route("/api/tracks/{id}/stream", web::get().to(handlers::stream_track))
-            .route("/api/tracks/{id}/artwork", web::get().to(handlers::get_artwork))
+            .route(
+                "/api/tracks/{id}/play",
+                web::post().to(handlers::play_track),
+            )
+            .route(
+                "/api/tracks/{id}/stream",
+                web::get().to(handlers::stream_track),
+            )
+            .route(
+                "/api/tracks/{id}/artwork",
+                web::get().to(handlers::get_artwork),
+            )
             .route("/api/albums", web::get().to(handlers::get_albums))
             .route("/api/artists", web::get().to(handlers::get_artists))
             .route("/api/genres", web::get().to(handlers::get_genres))
@@ -91,34 +134,114 @@ pub async fn start_server(
             .route("/api/stats", web::get().to(handlers::get_stats))
             .route("/api/playlists", web::get().to(handlers::get_playlists))
             .route("/api/playlists", web::post().to(handlers::create_playlist))
-            .route("/api/playlists/{id}", web::delete().to(handlers::delete_playlist))
-            .route("/api/playlists/{id}/tracks", web::get().to(handlers::get_playlist_tracks))
-            .route("/api/playlists/{id}/tracks", web::post().to(handlers::add_track_to_playlist))
-            .route("/api/playlists/{id}/shuffle", web::post().to(handlers::shuffle_playlist))
-            .route("/api/playlists/{id}/sort", web::post().to(handlers::sort_playlist))
-            .route("/api/playlists/{id}/dedupe", web::post().to(handlers::dedupe_playlist))
-            .route("/api/playlists/{id}/stats", web::get().to(handlers::playlist_stats))
-            .route("/api/playlists/{id}/share", web::post().to(handlers::share_playlist))
-            .route("/api/playlists/generate", web::post().to(handlers::generate_playlist))
+            .route(
+                "/api/playlists/{id}",
+                web::delete().to(handlers::delete_playlist),
+            )
+            .route(
+                "/api/playlists/{id}/tracks",
+                web::get().to(handlers::get_playlist_tracks),
+            )
+            .route(
+                "/api/playlists/{id}/tracks",
+                web::post().to(handlers::add_track_to_playlist),
+            )
+            .route(
+                "/api/playlists/{id}/shuffle",
+                web::post().to(handlers::shuffle_playlist),
+            )
+            .route(
+                "/api/playlists/{id}/sort",
+                web::post().to(handlers::sort_playlist),
+            )
+            .route(
+                "/api/playlists/{id}/dedupe",
+                web::post().to(handlers::dedupe_playlist),
+            )
+            .route(
+                "/api/playlists/{id}/stats",
+                web::get().to(handlers::playlist_stats),
+            )
+            .route(
+                "/api/playlists/{id}/share",
+                web::post().to(handlers::share_playlist),
+            )
+            .route(
+                "/api/playlists/generate",
+                web::post().to(handlers::generate_playlist),
+            )
             .route("/api/browse", web::get().to(handlers::browse_directory))
-            .route("/api/settings/scrobbling", web::get().to(handlers::get_scrobbling_settings))
-            .route("/api/settings/scrobbling", web::put().to(handlers::update_scrobbling_settings))
-            .route("/api/settings/scrobbling/test", web::post().to(handlers::test_scrobbling))
-            .route("/api/tracks/{id}/lyrics", web::get().to(handlers::get_lyrics))
-            .route("/api/tracks/{id}/lyrics", web::put().to(handlers::update_lyrics))
-            .route("/api/tracks/{id}/lyrics/fetch", web::post().to(handlers::fetch_lyrics))
-            .route("/api/updater/status", web::get().to(handlers::get_updater_status))
-            .route("/api/updater/check", web::post().to(handlers::check_for_updates))
-            .route("/api/updater/update", web::post().to(handlers::apply_update))
-            .route("/api/updater/config", web::get().to(handlers::get_updater_config))
-            .route("/api/updater/config", web::put().to(handlers::update_updater_config))
-            .route("/api/import/preview", web::post().to(handlers::preview_import))
-            .route("/api/import/confirm", web::post().to(handlers::confirm_import))
-            .route("/api/import/formats", web::get().to(handlers::get_import_formats))
-            .route("/api/import/device", web::post().to(handlers::import_device_music))
-            .route("/api/transfer/export", web::post().to(handlers::export_playlist))
-            .route("/api/transfer/platforms", web::get().to(handlers::get_transfer_platforms))
+            .route(
+                "/api/settings/scrobbling",
+                web::get().to(handlers::get_scrobbling_settings),
+            )
+            .route(
+                "/api/settings/scrobbling",
+                web::put().to(handlers::update_scrobbling_settings),
+            )
+            .route(
+                "/api/settings/scrobbling/test",
+                web::post().to(handlers::test_scrobbling),
+            )
+            .route(
+                "/api/tracks/{id}/lyrics",
+                web::get().to(handlers::get_lyrics),
+            )
+            .route(
+                "/api/tracks/{id}/lyrics",
+                web::put().to(handlers::update_lyrics),
+            )
+            .route(
+                "/api/tracks/{id}/lyrics/fetch",
+                web::post().to(handlers::fetch_lyrics),
+            )
+            .route(
+                "/api/updater/status",
+                web::get().to(handlers::get_updater_status),
+            )
+            .route(
+                "/api/updater/check",
+                web::post().to(handlers::check_for_updates),
+            )
+            .route(
+                "/api/updater/update",
+                web::post().to(handlers::apply_update),
+            )
+            .route(
+                "/api/updater/config",
+                web::get().to(handlers::get_updater_config),
+            )
+            .route(
+                "/api/updater/config",
+                web::put().to(handlers::update_updater_config),
+            )
+            .route(
+                "/api/import/preview",
+                web::post().to(handlers::preview_import),
+            )
+            .route(
+                "/api/import/confirm",
+                web::post().to(handlers::confirm_import),
+            )
+            .route(
+                "/api/import/formats",
+                web::get().to(handlers::get_import_formats),
+            )
+            .route(
+                "/api/import/device",
+                web::post().to(handlers::import_device_music),
+            )
+            .route(
+                "/api/transfer/export",
+                web::post().to(handlers::export_playlist),
+            )
+            .route(
+                "/api/transfer/platforms",
+                web::get().to(handlers::get_transfer_platforms),
+            )
             .route("/api/health", web::get().to(handlers::health_check))
+            .route("/api/ws", web::get().to(ws::ws_handler))
+            .app_data(web::Data::new(ws_clients.clone()))
             .service(static_files)
     })
     .bind((host, port))?
@@ -129,9 +252,9 @@ pub async fn start_server(
 #[cfg(target_os = "android")]
 pub mod android {
     use super::*;
-    use jni::JNIEnv;
     use jni::objects::{JClass, JString};
     use jni::sys::jboolean;
+    use jni::JNIEnv;
 
     #[no_mangle]
     pub extern "system" fn Java_com_pandejesal_resonance_BackendPlugin_startNative(
@@ -180,9 +303,11 @@ pub mod android {
                 }
 
                 let scanner = Arc::new(Mutex::new(Scanner::new()));
+                let ws_clients = Arc::new(ws::WsClients::new());
                 let state = web::Data::new(AppState {
                     db: database.pool.clone(),
                     scanner,
+                    ws_clients: ws_clients.clone(),
                 });
 
                 let db_for_updater = database.pool.clone();
@@ -204,24 +329,44 @@ pub mod android {
                     let static_files = actix_files::Files::new("/", &static_dir_owned)
                         .index_file("index.html")
                         .default_handler(
-                            actix_files::NamedFile::open(&index_path).expect("index.html not found"),
+                            actix_files::NamedFile::open(&index_path)
+                                .expect("index.html not found"),
                         );
 
                     App::new()
                         .wrap(cors)
                         .wrap(middleware::Logger::default())
                         .app_data(state.clone())
+                        .configure(subsonic::configure)
                         .route("/api/libraries", web::get().to(handlers::get_libraries))
                         .route("/api/libraries", web::post().to(handlers::create_library))
-                        .route("/api/libraries/{id}", web::delete().to(handlers::delete_library))
-                        .route("/api/libraries/{id}/scan", web::post().to(handlers::scan_library))
-                        .route("/api/libraries/{id}/scan/progress", web::get().to(handlers::get_scan_progress))
+                        .route(
+                            "/api/libraries/{id}",
+                            web::delete().to(handlers::delete_library),
+                        )
+                        .route(
+                            "/api/libraries/{id}/scan",
+                            web::post().to(handlers::scan_library),
+                        )
+                        .route(
+                            "/api/libraries/{id}/scan/progress",
+                            web::get().to(handlers::get_scan_progress),
+                        )
                         .route("/api/tracks", web::get().to(handlers::get_tracks))
                         .route("/api/tracks/{id}", web::get().to(handlers::get_track))
                         .route("/api/tracks/{id}", web::put().to(handlers::update_track))
-                        .route("/api/tracks/{id}/play", web::post().to(handlers::play_track))
-                        .route("/api/tracks/{id}/stream", web::get().to(handlers::stream_track))
-                        .route("/api/tracks/{id}/artwork", web::get().to(handlers::get_artwork))
+                        .route(
+                            "/api/tracks/{id}/play",
+                            web::post().to(handlers::play_track),
+                        )
+                        .route(
+                            "/api/tracks/{id}/stream",
+                            web::get().to(handlers::stream_track),
+                        )
+                        .route(
+                            "/api/tracks/{id}/artwork",
+                            web::get().to(handlers::get_artwork),
+                        )
                         .route("/api/albums", web::get().to(handlers::get_albums))
                         .route("/api/artists", web::get().to(handlers::get_artists))
                         .route("/api/genres", web::get().to(handlers::get_genres))
@@ -230,31 +375,106 @@ pub mod android {
                         .route("/api/stats", web::get().to(handlers::get_stats))
                         .route("/api/playlists", web::get().to(handlers::get_playlists))
                         .route("/api/playlists", web::post().to(handlers::create_playlist))
-                        .route("/api/playlists/{id}", web::delete().to(handlers::delete_playlist))
-                        .route("/api/playlists/{id}/tracks", web::get().to(handlers::get_playlist_tracks))
-                        .route("/api/playlists/{id}/tracks", web::post().to(handlers::add_track_to_playlist))
-                        .route("/api/playlists/{id}/shuffle", web::post().to(handlers::shuffle_playlist))
-                        .route("/api/playlists/{id}/sort", web::post().to(handlers::sort_playlist))
-                        .route("/api/playlists/{id}/dedupe", web::post().to(handlers::dedupe_playlist))
-                        .route("/api/playlists/{id}/stats", web::get().to(handlers::playlist_stats))
-                        .route("/api/playlists/{id}/share", web::post().to(handlers::share_playlist))
-                        .route("/api/playlists/generate", web::post().to(handlers::generate_playlist))
+                        .route(
+                            "/api/playlists/{id}",
+                            web::delete().to(handlers::delete_playlist),
+                        )
+                        .route(
+                            "/api/playlists/{id}/tracks",
+                            web::get().to(handlers::get_playlist_tracks),
+                        )
+                        .route(
+                            "/api/playlists/{id}/tracks",
+                            web::post().to(handlers::add_track_to_playlist),
+                        )
+                        .route(
+                            "/api/playlists/{id}/shuffle",
+                            web::post().to(handlers::shuffle_playlist),
+                        )
+                        .route(
+                            "/api/playlists/{id}/sort",
+                            web::post().to(handlers::sort_playlist),
+                        )
+                        .route(
+                            "/api/playlists/{id}/dedupe",
+                            web::post().to(handlers::dedupe_playlist),
+                        )
+                        .route(
+                            "/api/playlists/{id}/stats",
+                            web::get().to(handlers::playlist_stats),
+                        )
+                        .route(
+                            "/api/playlists/{id}/share",
+                            web::post().to(handlers::share_playlist),
+                        )
+                        .route(
+                            "/api/playlists/generate",
+                            web::post().to(handlers::generate_playlist),
+                        )
                         .route("/api/browse", web::get().to(handlers::browse_directory))
-                        .route("/api/settings/scrobbling", web::get().to(handlers::get_scrobbling_settings))
-                        .route("/api/settings/scrobbling", web::put().to(handlers::update_scrobbling_settings))
-                        .route("/api/settings/scrobbling/test", web::post().to(handlers::test_scrobbling))
-                        .route("/api/tracks/{id}/lyrics", web::get().to(handlers::get_lyrics))
-                        .route("/api/tracks/{id}/lyrics", web::put().to(handlers::update_lyrics))
-                        .route("/api/tracks/{id}/lyrics/fetch", web::post().to(handlers::fetch_lyrics))
-                        .route("/api/updater/status", web::get().to(handlers::get_updater_status))
-                        .route("/api/updater/check", web::post().to(handlers::check_for_updates))
-                        .route("/api/updater/update", web::post().to(handlers::apply_update))
-                        .route("/api/updater/config", web::get().to(handlers::get_updater_config))
-                        .route("/api/updater/config", web::put().to(handlers::update_updater_config))
-                        .route("/api/import/preview", web::post().to(handlers::preview_import))
-                        .route("/api/import/confirm", web::post().to(handlers::confirm_import))
-                        .route("/api/import/formats", web::get().to(handlers::get_import_formats))
-                        .route("/api/import/device", web::post().to(handlers::import_device_music))
+                        .route(
+                            "/api/settings/scrobbling",
+                            web::get().to(handlers::get_scrobbling_settings),
+                        )
+                        .route(
+                            "/api/settings/scrobbling",
+                            web::put().to(handlers::update_scrobbling_settings),
+                        )
+                        .route(
+                            "/api/settings/scrobbling/test",
+                            web::post().to(handlers::test_scrobbling),
+                        )
+                        .route(
+                            "/api/tracks/{id}/lyrics",
+                            web::get().to(handlers::get_lyrics),
+                        )
+                        .route(
+                            "/api/tracks/{id}/lyrics",
+                            web::put().to(handlers::update_lyrics),
+                        )
+                        .route(
+                            "/api/tracks/{id}/lyrics/fetch",
+                            web::post().to(handlers::fetch_lyrics),
+                        )
+                        .route(
+                            "/api/updater/status",
+                            web::get().to(handlers::get_updater_status),
+                        )
+                        .route(
+                            "/api/updater/check",
+                            web::post().to(handlers::check_for_updates),
+                        )
+                        .route(
+                            "/api/updater/update",
+                            web::post().to(handlers::apply_update),
+                        )
+                        .route(
+                            "/api/updater/config",
+                            web::get().to(handlers::get_updater_config),
+                        )
+                        .route(
+                            "/api/updater/config",
+                            web::put().to(handlers::update_updater_config),
+                        )
+                        .route(
+                            "/api/import/preview",
+                            web::post().to(handlers::preview_import),
+                        )
+                        .route(
+                            "/api/import/confirm",
+                            web::post().to(handlers::confirm_import),
+                        )
+                        .route(
+                            "/api/import/formats",
+                            web::get().to(handlers::get_import_formats),
+                        )
+                        .route(
+                            "/api/import/device",
+                            web::post().to(handlers::import_device_music),
+                        )
+                        .route("/api/health", web::get().to(handlers::health_check))
+                        .route("/api/ws", web::get().to(ws::ws_handler))
+                        .app_data(web::Data::new(ws_clients.clone()))
                         .service(static_files)
                 })
                 .bind((host.as_str(), port_u16));

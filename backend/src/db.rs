@@ -1,7 +1,7 @@
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
-use sqlx::migrate;
-use std::path::Path;
 use log::info;
+use sqlx::migrate;
+use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use std::path::Path;
 
 pub mod db {
     use super::*;
@@ -29,12 +29,24 @@ pub mod db {
                 .connect(database_url)
                 .await?;
 
-            sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
-            sqlx::query("PRAGMA synchronous=NORMAL").execute(&pool).await?;
-            sqlx::query("PRAGMA busy_timeout=5000").execute(&pool).await?;
-            sqlx::query("PRAGMA cache_size=-64000").execute(&pool).await?;
-            sqlx::query("PRAGMA temp_store=MEMORY").execute(&pool).await?;
-            sqlx::query("PRAGMA mmap_size=268435456").execute(&pool).await?;
+            sqlx::query("PRAGMA journal_mode=WAL")
+                .execute(&pool)
+                .await?;
+            sqlx::query("PRAGMA synchronous=NORMAL")
+                .execute(&pool)
+                .await?;
+            sqlx::query("PRAGMA busy_timeout=5000")
+                .execute(&pool)
+                .await?;
+            sqlx::query("PRAGMA cache_size=-64000")
+                .execute(&pool)
+                .await?;
+            sqlx::query("PRAGMA temp_store=MEMORY")
+                .execute(&pool)
+                .await?;
+            sqlx::query("PRAGMA mmap_size=268435456")
+                .execute(&pool)
+                .await?;
             sqlx::query("PRAGMA optimize").execute(&pool).await?;
 
             Ok(Self { pool })

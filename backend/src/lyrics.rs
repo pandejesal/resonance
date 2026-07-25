@@ -130,7 +130,12 @@ pub async fn fetch_from_lrclib(
     };
 
     if !response.status().is_success() {
-        info!("LRCLIB returned status {} for {} - {}", response.status(), artist, track);
+        info!(
+            "LRCLIB returned status {} for {} - {}",
+            response.status(),
+            artist,
+            track
+        );
         return None;
     }
 
@@ -142,8 +147,14 @@ pub async fn fetch_from_lrclib(
         }
     };
 
-    let synced = body.get("syncedLyrics").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let plain = body.get("plainLyrics").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let synced = body
+        .get("syncedLyrics")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let plain = body
+        .get("plainLyrics")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     if synced.is_none() && plain.is_none() {
         info!("No lyrics found on LRCLIB for {} - {}", artist, track);
@@ -167,5 +178,9 @@ pub fn is_lrc(content: &str) -> bool {
 
 pub fn extract_plain_from_lrc(content: &str) -> String {
     let lines = parse_lrc(content);
-    lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n")
+    lines
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }

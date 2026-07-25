@@ -36,7 +36,10 @@ impl ScrobbleService {
                 .await
             {
                 warn!("Last.fm scrobble failed: {}. Queuing for retry.", e);
-                store_pending_scrobble(db, "lastfm", track_id, artist, track_name, album, timestamp).await;
+                store_pending_scrobble(
+                    db, "lastfm", track_id, artist, track_name, album, timestamp,
+                )
+                .await;
             }
         }
 
@@ -46,7 +49,16 @@ impl ScrobbleService {
                 .await
             {
                 warn!("ListenBrainz scrobble failed: {}. Queuing for retry.", e);
-                store_pending_scrobble(db, "listenbrainz", track_id, artist, track_name, album, timestamp).await;
+                store_pending_scrobble(
+                    db,
+                    "listenbrainz",
+                    track_id,
+                    artist,
+                    track_name,
+                    album,
+                    timestamp,
+                )
+                .await;
             }
         }
     }
@@ -143,7 +155,10 @@ impl ScrobbleService {
         timestamp: i64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let api_key = config.api_key.as_deref().ok_or("Last.fm API key not set")?;
-        let session_key = config.session_key.as_deref().ok_or("Last.fm session key not set")?;
+        let session_key = config
+            .session_key
+            .as_deref()
+            .ok_or("Last.fm session key not set")?;
         let api_secret = config.api_secret.as_deref().unwrap_or("");
 
         let mut params = BTreeMap::new();
@@ -174,7 +189,12 @@ impl ScrobbleService {
             if let Some(error) = body.get("error") {
                 let code = error.as_i64().unwrap_or(0);
                 if code != 0 {
-                    return Err(format!("Last.fm API error {}: {}", code, body.get("message").unwrap_or(&json!("unknown"))).into());
+                    return Err(format!(
+                        "Last.fm API error {}: {}",
+                        code,
+                        body.get("message").unwrap_or(&json!("unknown"))
+                    )
+                    .into());
                 }
             }
             info!("Last.fm scrobble successful: {} - {}", artist, track);
@@ -192,7 +212,10 @@ impl ScrobbleService {
         album: &str,
         timestamp: i64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let token = config.token.as_deref().ok_or("ListenBrainz token not set")?;
+        let token = config
+            .token
+            .as_deref()
+            .ok_or("ListenBrainz token not set")?;
 
         let payload = json!({
             "listen_type": "import",
@@ -233,7 +256,10 @@ impl ScrobbleService {
         album: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let api_key = config.api_key.as_deref().ok_or("Last.fm API key not set")?;
-        let session_key = config.session_key.as_deref().ok_or("Last.fm session key not set")?;
+        let session_key = config
+            .session_key
+            .as_deref()
+            .ok_or("Last.fm session key not set")?;
         let api_secret = config.api_secret.as_deref().unwrap_or("");
 
         let mut params = BTreeMap::new();
@@ -272,7 +298,10 @@ impl ScrobbleService {
         track: &str,
         album: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let token = config.token.as_deref().ok_or("ListenBrainz token not set")?;
+        let token = config
+            .token
+            .as_deref()
+            .ok_or("ListenBrainz token not set")?;
 
         let payload = json!({
             "listen_type": "playing_now",
@@ -358,7 +387,12 @@ pub async fn save_scrobbling_config(db: &SqlitePool, config: &ScrobblingConfig) 
         set_setting(db, "lastfm_username", v).await;
     }
 
-    set_setting(db, "listenbrainz_enabled", &config.listenbrainz.enabled.to_string()).await;
+    set_setting(
+        db,
+        "listenbrainz_enabled",
+        &config.listenbrainz.enabled.to_string(),
+    )
+    .await;
     if let Some(ref v) = config.listenbrainz.token {
         set_setting(db, "listenbrainz_token", v).await;
     }
@@ -375,12 +409,14 @@ async fn get_setting(db: &SqlitePool, key: &str) -> Option<String> {
 }
 
 async fn set_setting(db: &SqlitePool, key: &str, value: &str) {
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))")
-        .bind(key)
-        .bind(value)
-        .execute(db)
-        .await
-        .ok();
+    sqlx::query(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+    )
+    .bind(key)
+    .bind(value)
+    .execute(db)
+    .await
+    .ok();
 }
 
 async fn store_pending_scrobble(
