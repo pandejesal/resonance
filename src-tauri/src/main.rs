@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::info;
+use tauri::Manager;
 
 fn main() {
     env_logger::init();
