@@ -22,7 +22,7 @@ const navItems = [
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
-  const { user, logout } = useAuthStore();
+  const { user, logout, isGuest } = useAuthStore();
   const location = useLocation();
 
   return (
@@ -89,21 +89,30 @@ export default function Sidebar() {
                   </span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-primary">{user.username}</p>
-                  <p className="text-xs text-tertiary">{user.role}</p>
+                  <p className="text-sm font-medium text-primary">
+                    {isGuest ? 'Guest' : user.username}
+                  </p>
+                  <p className="text-xs text-tertiary">
+                    {isGuest ? 'Limited access' : user.role}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={logout}
                 className="p-2 rounded-lg hover:bg-white/5 text-secondary hover:text-primary transition-colors"
-                title="Logout"
-                aria-label="Logout"
+                title={isGuest ? 'Exit guest mode' : 'Logout'}
+                aria-label={isGuest ? 'Exit guest mode' : 'Logout'}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
               </button>
             </div>
+          )}
+          {isGuest && (
+            <p className="text-xs text-tertiary text-center mb-2">
+              Sign in for full access
+            </p>
           )}
           <div className="text-xs text-tertiary text-center">
             Resonance v0.6.0

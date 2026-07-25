@@ -3149,3 +3149,97 @@ pub async fn delete_user(
             .json(serde_json::json!({"error": e.to_string()})),
     }
 }
+
+pub async fn register_handler(
+    data: web::Data<AppState>,
+    body: web::Json<CreateUserRequest>,
+) -> HttpResponse {
+    let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&data.db)
+        .await;
+
+    if let Ok(Some(_)) = existing {
+        return HttpResponse::Conflict()
+            .json(serde_json::json!({"error": "Username already exists"}));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let password_hash = hash_password(&body.password);
+
+    let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'user')")
+        .bind(&id)
+        .bind(&body.username)
+        .bind(&password_hash)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => {
+            let user_info = UserInfo {
+                id,
+                username: body.username.clone(),
+                role: "user".to_string(),
+            };
+            let token = crate::auth::create_token(&user_info);
+
+            let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
+                .path("/")
+                .http_only(true)
+                .max_age(actix_web::cookie::time::Duration::days(7))
+                .same_site(actix_web::cookie::SameSite::Lax)
+                .finish();
+
+            HttpResponse::Created()
+                .cookie(cookie)
+                .json(LoginResponse {
+                    token,
+                    user: user_info,
+                })
+        }
+        Err(e) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn guest_login_handler(
+    data: web::Data<AppState>,
+) -> HttpResponse {
+    let guest_username = "guest";
+    let guest_id = "guest";
+
+    // Check if guest user exists; create if not
+    let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
+        .bind(guest_username)
+        .fetch_optional(&data.db)
+        .await;
+
+    if existing.unwrap_or(None).is_none() {
+        let _ = sqlx::query("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, '', 'guest')")
+            .bind(guest_id)
+            .bind(guest_username)
+            .execute(&data.db)
+            .await;
+    }
+
+    let user_info = UserInfo {
+        id: guest_id.to_string(),
+        username: guest_username.to_string(),
+        role: "guest".to_string(),
+    };
+    let token = crate::auth::create_token(&user_info);
+
+    let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
+        .path("/")
+        .http_only(true)
+        .max_age(actix_web::cookie::time::Duration::hours(24))
+        .same_site(actix_web::cookie::SameSite::Lax)
+        .finish();
+
+    HttpResponse::Ok()
+        .cookie(cookie)
+        .json(LoginResponse {
+            token,
+            user: user_info,
+        })
+}

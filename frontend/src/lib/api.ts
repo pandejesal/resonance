@@ -52,6 +52,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       }),
+    register: (username: string, password: string) =>
+      fetchJson<LoginResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    guest: () =>
+      fetchJson<LoginResponse>('/auth/guest', {
+        method: 'POST',
+      }),
     logout: () => fetchJson('/auth/logout', { method: 'POST' }),
     me: () => fetchJson<UserInfo>('/auth/me'),
     listUsers: () => fetchJson<UserInfo[]>('/auth/users'),

@@ -556,7 +556,10 @@ interface AuthState {
   user: UserInfo | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isGuest: boolean;
   login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
+  loginAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
@@ -567,10 +570,21 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
       isLoading: true,
+      isGuest: false,
 
       login: async (username: string, password: string) => {
         const response = await api.auth.login(username, password);
-        set({ user: response.user, isAuthenticated: true });
+        set({ user: response.user, isAuthenticated: true, isGuest: false });
+      },
+
+      register: async (username: string, password: string) => {
+        const response = await api.auth.register(username, password);
+        set({ user: response.user, isAuthenticated: true, isGuest: false });
+      },
+
+      loginAsGuest: async () => {
+        const response = await api.auth.guest();
+        set({ user: response.user, isAuthenticated: true, isGuest: true });
       },
 
       logout: async () => {
@@ -579,7 +593,7 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // Ignore logout errors
         }
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, isAuthenticated: false, isGuest: false });
       },
 
       checkAuth: async () => {
@@ -587,7 +601,7 @@ export const useAuthStore = create<AuthState>()(
           const user = await api.auth.me();
           set({ user, isAuthenticated: true, isLoading: false });
         } catch {
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          set({ user: null, isAuthenticated: false, isLoading: false, isGuest: false });
         }
       },
     }),
@@ -596,6 +610,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
+        isGuest: state.isGuest,
       }),
     }
   )
