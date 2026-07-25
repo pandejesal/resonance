@@ -1,3 +1,11 @@
+# Resonance - Self-Hosted Music Server
+#
+# For auto-update support, also mount the Docker socket:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+#
+# WARNING: Mounting /var/run/docker.sock gives root-equivalent host access.
+# Only use it if you need the auto-updater feature.
+
 services:
   resonance:
     build:

@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod db;
 pub mod handlers;
 pub mod importer;
@@ -16,6 +17,7 @@ use handlers::AppState;
 use log::info;
 use parking_lot::Mutex;
 use scanner::Scanner;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub async fn start_server(
@@ -52,6 +54,7 @@ pub async fn start_server(
         db: database.pool.clone(),
         scanner: scanner.clone(),
         ws_clients: ws_clients.clone(),
+        cast_targets: Arc::new(parking_lot::Mutex::new(HashMap::new())),
     });
 
     let db_for_updater = database.pool.clone();
@@ -83,6 +86,7 @@ pub async fn start_server(
             .allow_any_origin()
             .allow_any_method()
             .allow_any_header()
+            .supports_credentials()
             .max_age(3600);
 
         let index_path = format!("{}/index.html", static_dir_owned);
@@ -97,6 +101,12 @@ pub async fn start_server(
             .wrap(middleware::Logger::default())
             .app_data(state.clone())
             .configure(subsonic::configure)
+            .route("/api/auth/login", web::post().to(handlers::login_handler))
+            .route("/api/auth/logout", web::post().to(handlers::logout_handler))
+            .route("/api/auth/me", web::get().to(handlers::get_current_user))
+            .route("/api/auth/users", web::get().to(handlers::list_users))
+            .route("/api/auth/users", web::post().to(handlers::create_user))
+            .route("/api/auth/users/{id}", web::delete().to(handlers::delete_user))
             .route("/api/libraries", web::get().to(handlers::get_libraries))
             .route("/api/libraries", web::post().to(handlers::create_library))
             .route(
@@ -125,6 +135,10 @@ pub async fn start_server(
             .route(
                 "/api/tracks/{id}/artwork",
                 web::get().to(handlers::get_artwork),
+            )
+            .route(
+                "/api/tracks/{id}/waveform",
+                web::get().to(handlers::get_waveform),
             )
             .route("/api/albums", web::get().to(handlers::get_albums))
             .route("/api/artists", web::get().to(handlers::get_artists))
@@ -239,6 +253,38 @@ pub async fn start_server(
                 "/api/transfer/platforms",
                 web::get().to(handlers::get_transfer_platforms),
             )
+            .route(
+                "/api/tracks/{id}/rating",
+                web::put().to(handlers::update_track_rating),
+            )
+            .route(
+                "/api/playlists/{id}/smart/evaluate",
+                web::get().to(handlers::evaluate_smart_playlist),
+            )
+            .route(
+                "/api/playlists/{id}/smart/rules",
+                web::put().to(handlers::update_smart_playlist_rules),
+            )
+            .route(
+                "/api/tracks/duplicates",
+                web::get().to(handlers::find_duplicates),
+            )
+            .route(
+                "/api/tracks/similar",
+                web::get().to(handlers::find_similar_tracks),
+            )
+            .route(
+                "/api/tracks/duplicates/delete",
+                web::post().to(handlers::delete_duplicates_batch),
+            )
+            .route("/api/cast/targets", web::get().to(handlers::list_cast_targets))
+            .route("/api/cast/targets", web::post().to(handlers::register_cast_target))
+            .route(
+                "/api/cast/targets/{id}",
+                web::delete().to(handlers::unregister_cast_target),
+            )
+            .route("/api/cast/play", web::post().to(handlers::cast_play))
+            .route("/api/cast/control", web::post().to(handlers::cast_control))
             .route("/api/health", web::get().to(handlers::health_check))
             .route("/api/ws", web::get().to(ws::ws_handler))
             .app_data(web::Data::new(ws_clients.clone()))
@@ -308,6 +354,7 @@ pub mod android {
                     db: database.pool.clone(),
                     scanner,
                     ws_clients: ws_clients.clone(),
+                    cast_targets: Arc::new(parking_lot::Mutex::new(HashMap::new())),
                 });
 
                 let db_for_updater = database.pool.clone();
@@ -323,6 +370,7 @@ pub mod android {
                         .allow_any_origin()
                         .allow_any_method()
                         .allow_any_header()
+                        .supports_credentials()
                         .max_age(3600);
 
                     let index_path = format!("{}/index.html", static_dir_owned);
@@ -366,6 +414,10 @@ pub mod android {
                         .route(
                             "/api/tracks/{id}/artwork",
                             web::get().to(handlers::get_artwork),
+                        )
+                        .route(
+                            "/api/tracks/{id}/waveform",
+                            web::get().to(handlers::get_waveform),
                         )
                         .route("/api/albums", web::get().to(handlers::get_albums))
                         .route("/api/artists", web::get().to(handlers::get_artists))
@@ -411,7 +463,19 @@ pub mod android {
                             "/api/playlists/generate",
                             web::post().to(handlers::generate_playlist),
                         )
-                        .route("/api/browse", web::get().to(handlers::browse_directory))
+            .route(
+                "/api/settings/transcode",
+                web::get().to(handlers::get_transcode_settings),
+            )
+            .route(
+                "/api/settings/transcode",
+                web::put().to(handlers::update_transcode_settings),
+            )
+            .route(
+                "/api/tracks/{id}/stream/transcoded",
+                web::get().to(handlers::stream_track_transcoded),
+            )
+            .route("/api/browse", web::get().to(handlers::browse_directory))
                         .route(
                             "/api/settings/scrobbling",
                             web::get().to(handlers::get_scrobbling_settings),
@@ -472,6 +536,26 @@ pub mod android {
                             "/api/import/device",
                             web::post().to(handlers::import_device_music),
                         )
+                        .route(
+                            "/api/tracks/duplicates",
+                            web::get().to(handlers::find_duplicates),
+                        )
+                        .route(
+                            "/api/tracks/similar",
+                            web::get().to(handlers::find_similar_tracks),
+                        )
+                        .route(
+                            "/api/tracks/duplicates/delete",
+                            web::post().to(handlers::delete_duplicates_batch),
+                        )
+                        .route("/api/cast/targets", web::get().to(handlers::list_cast_targets))
+                        .route("/api/cast/targets", web::post().to(handlers::register_cast_target))
+                        .route(
+                            "/api/cast/targets/{id}",
+                            web::delete().to(handlers::unregister_cast_target),
+                        )
+                        .route("/api/cast/play", web::post().to(handlers::cast_play))
+                        .route("/api/cast/control", web::post().to(handlers::cast_control))
                         .route("/api/health", web::get().to(handlers::health_check))
                         .route("/api/ws", web::get().to(ws::ws_handler))
                         .app_data(web::Data::new(ws_clients.clone()))

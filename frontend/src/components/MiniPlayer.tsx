@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { usePlayerStore, useUIStore } from '../stores';
+import { usePlayerStore, useUIStore, useCastStore } from '../stores';
 import { getArtworkUrl, formatDuration } from '../lib/utils';
 import { audioEngine } from '../lib/audio-engine';
 
@@ -21,6 +21,7 @@ export default function MiniPlayer() {
     eqBands,
   } = usePlayerStore();
   const { toggleNowPlaying, toggleQueue, queueOpen } = useUIStore();
+  const { isCasting, activeTarget, stopCasting } = useCastStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const y = useMotionValue(0);
@@ -45,6 +46,15 @@ export default function MiniPlayer() {
 
       const handleTimeUpdate = () => {
         setProgress(audio.currentTime * 1000);
+
+        // Update MediaSession position state
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.setPositionState({
+            duration: audio.duration || 0,
+            playbackRate: audio.playbackRate,
+            position: audio.currentTime || 0,
+          });
+        }
       };
 
       const handleLoadedMetadata = () => {
@@ -75,6 +85,37 @@ export default function MiniPlayer() {
       audio.addEventListener('play', handlePlay);
       audio.addEventListener('pause', handlePause);
       audio.addEventListener('error', handleError);
+
+      // Set up MediaSession action handlers
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', () => {
+          usePlayerStore.getState().togglePlay();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          usePlayerStore.getState().togglePlay();
+        });
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          usePlayerStore.getState().previous();
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          usePlayerStore.getState().next();
+        });
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime != null) {
+            usePlayerStore.getState().seek(details.seekTime * 1000);
+          }
+        });
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+          const offset = details.seekOffset || 10;
+          const state = usePlayerStore.getState();
+          state.seek(Math.max(0, state.progress - offset * 1000));
+        });
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+          const offset = details.seekOffset || 10;
+          const state = usePlayerStore.getState();
+          state.seek(Math.min((state.duration || 0), state.progress + offset * 1000));
+        });
+      }
 
       // Handle media commands from Android lock screen / notification
       (window as any).__mediaCommand = (cmd: string) => {
@@ -209,6 +250,20 @@ export default function MiniPlayer() {
             <p className="text-xs text-secondary truncate">{currentTrack.artist}</p>
           </button>
         </div>
+
+        {/* Cast indicator */}
+        {isCasting && (
+          <button
+            onClick={stopCasting}
+            className="flex items-center gap-1 px-2 py-1 rounded-full bg-brand-500/20 text-brand-400 text-xs flex-shrink-0"
+            title={`Casting to ${activeTarget?.name}`}
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
+            </svg>
+            <span className="hidden md:inline">{activeTarget?.name}</span>
+          </button>
+        )}
 
         {/* Controls */}
         <div className="flex items-center gap-1">

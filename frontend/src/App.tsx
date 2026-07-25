@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { useUIStore, usePlayerStore } from './stores';
+import { useUIStore, usePlayerStore, useAuthStore } from './stores';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MiniPlayer from './components/MiniPlayer';
@@ -8,6 +8,7 @@ import NowPlaying from './components/NowPlaying';
 import QueuePanel from './components/QueuePanel';
 import SearchModal from './components/SearchModal';
 import UpdateBanner from './components/UpdateBanner';
+import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import LibraryPage from './pages/LibraryPage';
 import AlbumsPage from './pages/AlbumsPage';
@@ -46,10 +47,31 @@ function BackButtonHandler() {
 
 export default function App() {
   const { theme } = useUIStore();
+  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
 
   useEffect(() => {
     document.documentElement.className = theme === 'dark' ? '' : theme;
   }, [theme]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-surface-0">
+        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <BrowserRouter>
+        <LoginPage />
+      </BrowserRouter>
+    );
+  }
 
   return (
     <BrowserRouter>

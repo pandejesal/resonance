@@ -1,17 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
+import type { Track } from '../types';
 
-interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration_ms: number | null;
-  platform: string;
-  url: string | null;
-  thumbnail: string | null;
-}
+interface DuplicateTrack extends Track {}
 
 export default function MusicToolsPage() {
   const [query, setQuery] = useState('');
@@ -19,7 +11,7 @@ export default function MusicToolsPage() {
   const [results, setResults] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTracks, setSelectedTracks] = useState<Track[]>([]);
-  const [activeTab, setActiveTab] = useState<'search' | 'transfer' | 'utils' | 'spotify'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'transfer' | 'utils' | 'spotify' | 'duplicates'>('search');
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -79,6 +71,7 @@ export default function MusicToolsPage() {
           { id: 'transfer', label: 'Transfer' },
           { id: 'utils', label: 'Utilities' },
           { id: 'spotify', label: 'Spotify Tools' },
+          { id: 'duplicates', label: 'Duplicates' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -203,6 +196,9 @@ export default function MusicToolsPage() {
 
       {/* Spotify Tools Tab */}
       {activeTab === 'spotify' && <SpotifyToolsTab />}
+
+      {/* Duplicates Tab */}
+      {activeTab === 'duplicates' && <DuplicateDetectionTab />}
     </div>
   );
 }
@@ -547,6 +543,286 @@ function SpotifyToolsTab() {
         <h3 className="font-medium text-primary mb-2">Playlist Collage Generator</h3>
         <p className="text-xs text-secondary">Generate beautiful collages from your playlist artwork. Select a playlist above to get started.</p>
       </div>
+    </motion.div>
+  );
+}
+
+function DuplicateDetectionTab() {
+  const [fingerprintDuplicates, setFingerprintDuplicates] = useState<Record<string, DuplicateTrack[]>>({});
+  const [similarTracks, setSimilarTracks] = useState<Array<{ title: string; artist: string; count: number; tracks: DuplicateTrack[] }>>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [activeView, setActiveView] = useState<'fingerprint' | 'similar'>('fingerprint');
+  const [message, setMessage] = useState<string | null>(null);
+
+  const scanFingerprints = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const result = await api.tracks.findDuplicates();
+      setFingerprintDuplicates(result.duplicates);
+      setMessage(`Found ${result.groups} groups with ${result.total_duplicates} total duplicates`);
+    } catch (e) {
+      console.error('Scan failed:', e);
+      setMessage('Failed to scan for duplicates');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const scanSimilar = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const result = await api.tracks.findSimilar();
+      setSimilarTracks(result.duplicates);
+      setMessage(`Found ${result.groups} groups of similar tracks`);
+    } catch (e) {
+      console.error('Scan failed:', e);
+      setMessage('Failed to scan for similar tracks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selectAllFromGroup = (tracks: DuplicateTrack[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const track of tracks) {
+        next.add(track.id);
+      }
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} selected tracks?`)) return;
+
+    setLoading(true);
+    try {
+      const result = await api.tracks.deleteDuplicates(Array.from(selectedIds));
+      setMessage(result.message);
+      setSelectedIds(new Set());
+      if (activeView === 'fingerprint') {
+        await scanFingerprints();
+      } else {
+        await scanSimilar();
+      }
+    } catch (e) {
+      console.error('Delete failed:', e);
+      setMessage('Failed to delete tracks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDuration = (ms: number | null) => {
+    if (!ms) return '--:--';
+    const mins = Math.floor(ms / 60000);
+    const secs = Math.floor((ms % 60000) / 1000);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const totalGroups = activeView === 'fingerprint'
+    ? Object.keys(fingerprintDuplicates).length
+    : similarTracks.length;
+
+  const totalTracks = activeView === 'fingerprint'
+    ? Object.values(fingerprintDuplicates).reduce((sum, g) => sum + g.length, 0)
+    : similarTracks.reduce((sum, g) => sum + g.tracks.length, 0);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+      {/* Scan Controls */}
+      <div className="surface-card p-4">
+        <h3 className="font-medium text-primary mb-3">Duplicate Detection</h3>
+        <p className="text-xs text-secondary mb-4">Find exact duplicates (same content fingerprint) or similar tracks (same title + artist)</p>
+
+        <div className="flex gap-3 mb-3">
+          <div className="flex gap-1 p-1 bg-surface-1 rounded-lg">
+            <button
+              onClick={() => setActiveView('fingerprint')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                activeView === 'fingerprint'
+                  ? 'bg-brand-600 text-white'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Exact Duplicates
+            </button>
+            <button
+              onClick={() => setActiveView('similar')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                activeView === 'similar'
+                  ? 'bg-brand-600 text-white'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Similar Tracks
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          {activeView === 'fingerprint' ? (
+            <button onClick={scanFingerprints} disabled={loading} className="btn-primary">
+              {loading ? 'Scanning...' : 'Scan for Exact Duplicates'}
+            </button>
+          ) : (
+            <button onClick={scanSimilar} disabled={loading} className="btn-primary">
+              {loading ? 'Scanning...' : 'Scan for Similar Tracks'}
+            </button>
+          )}
+
+          {selectedIds.size > 0 && (
+            <button onClick={deleteSelected} disabled={loading} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">
+              Delete Selected ({selectedIds.size})
+            </button>
+          )}
+        </div>
+
+        {message && (
+          <p className="text-sm text-secondary mt-2">{message}</p>
+        )}
+      </div>
+
+      {/* Results Summary */}
+      {totalGroups > 0 && (
+        <div className="surface-card p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <span className="text-secondary">Found </span>
+              <span className="text-primary font-medium">{totalGroups}</span>
+              <span className="text-secondary"> groups with </span>
+              <span className="text-primary font-medium">{totalTracks}</span>
+              <span className="text-secondary"> total tracks</span>
+            </div>
+            {selectedIds.size > 0 && (
+              <span className="text-sm text-brand-400">{selectedIds.size} selected</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Fingerprint Duplicates */}
+      {activeView === 'fingerprint' && Object.keys(fingerprintDuplicates).length > 0 && (
+        <div className="space-y-3">
+          {Object.entries(fingerprintDuplicates).map(([fingerprint, tracks]) => (
+            <div key={fingerprint} className="surface-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <span className="text-xs text-tertiary font-mono">Fingerprint: {fingerprint.slice(0, 12)}...</span>
+                  <span className="text-xs text-secondary ml-2">({tracks.length} copies)</span>
+                </div>
+                <button
+                  onClick={() => selectAllFromGroup(tracks)}
+                  className="text-xs text-brand-400 hover:text-brand-300"
+                >
+                  Select All
+                </button>
+              </div>
+              <div className="space-y-1">
+                {tracks.map(track => (
+                  <div
+                    key={track.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${
+                      selectedIds.has(track.id)
+                        ? 'bg-red-600/20 border border-red-500/30'
+                        : 'hover:bg-white/5'
+                    }`}
+                    onClick={() => toggleSelect(track.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(track.id)}
+                      onChange={() => toggleSelect(track.id)}
+                      className="w-4 h-4 rounded bg-surface-2 border-surface-3 text-brand-500 focus:ring-brand-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-primary truncate">{track.title}</p>
+                      <p className="text-xs text-secondary truncate">{track.artist} &middot; {track.album}</p>
+                    </div>
+                    <span className="text-xs text-tertiary shrink-0">{formatDuration(track.duration_ms)}</span>
+                    <span className="text-xs text-tertiary shrink-0 truncate max-w-[200px]">{track.file_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Similar Tracks */}
+      {activeView === 'similar' && similarTracks.length > 0 && (
+        <div className="space-y-3">
+          {similarTracks.map((group, idx) => (
+            <div key={idx} className="surface-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <span className="text-sm font-medium text-primary">{group.title}</span>
+                  <span className="text-sm text-secondary"> &middot; {group.artist}</span>
+                  <span className="text-xs text-secondary ml-2">({group.count} copies)</span>
+                </div>
+                <button
+                  onClick={() => selectAllFromGroup(group.tracks)}
+                  className="text-xs text-brand-400 hover:text-brand-300"
+                >
+                  Select All
+                </button>
+              </div>
+              <div className="space-y-1">
+                {group.tracks.map(track => (
+                  <div
+                    key={track.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${
+                      selectedIds.has(track.id)
+                        ? 'bg-red-600/20 border border-red-500/30'
+                        : 'hover:bg-white/5'
+                    }`}
+                    onClick={() => toggleSelect(track.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(track.id)}
+                      onChange={() => toggleSelect(track.id)}
+                      className="w-4 h-4 rounded bg-surface-2 border-surface-3 text-brand-500 focus:ring-brand-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-primary truncate">{track.title}</p>
+                      <p className="text-xs text-secondary truncate">{track.artist} &middot; {track.album}</p>
+                    </div>
+                    <span className="text-xs text-tertiary shrink-0">{formatDuration(track.duration_ms)}</span>
+                    <span className="text-xs text-tertiary shrink-0 truncate max-w-[200px]">{track.file_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && totalGroups === 0 && (
+        <div className="surface-card p-8 text-center">
+          <svg className="w-12 h-12 mx-auto text-tertiary mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p className="text-secondary text-sm">Click scan to find duplicates in your library</p>
+        </div>
+      )}
     </motion.div>
   );
 }

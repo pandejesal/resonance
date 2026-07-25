@@ -166,7 +166,7 @@ fn handle_event(
 
                     for track in &tracks {
                         let _ = sqlx::query(
-                            "INSERT OR REPLACE INTO tracks (id, title, artist, album, album_artist, genre, year, track_number, disc_number, duration_ms, file_path, file_name, file_size, file_modified, format, sample_rate, bit_depth, bitrate, channels, codec, composer, lyricist, mood, bpm, rating, play_count, skip_count, last_played, date_added, has_artwork, artwork_hash, lyrics, comment, grouping, copyright, custom_tags, folder, library_id, fingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                            "INSERT OR REPLACE INTO tracks (id, title, artist, album, album_artist, genre, year, track_number, disc_number, duration_ms, file_path, file_name, file_size, file_modified, format, sample_rate, bit_depth, bitrate, channels, codec, composer, lyricist, mood, bpm, rating, play_count, skip_count, last_played, date_added, has_artwork, artwork_hash, lyrics, comment, grouping, copyright, custom_tags, folder, library_id, fingerprint, waveform_peaks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                         )
                         .bind(&track.id)
                         .bind(&track.title)
@@ -207,6 +207,7 @@ fn handle_event(
                         .bind(&track.folder)
                         .bind(&track.library_id)
                         .bind(&track.fingerprint)
+                        .bind(&track.waveform_peaks)
                         .execute(&db)
                         .await
                         .map_err(|e| warn!("Failed to insert track {}: {}", track.file_path, e))
@@ -269,7 +270,7 @@ pub async fn start_watching_task(service: Arc<Mutex<WatcherService>>) {
 
                 for track in &tracks {
                     let _ = sqlx::query(
-                        "INSERT OR REPLACE INTO tracks (id, title, artist, album, album_artist, genre, year, track_number, disc_number, duration_ms, file_path, file_name, file_size, file_modified, format, sample_rate, bit_depth, bitrate, channels, codec, composer, lyricist, mood, bpm, rating, play_count, skip_count, last_played, date_added, has_artwork, artwork_hash, lyrics, comment, grouping, copyright, custom_tags, folder, library_id, fingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                        "INSERT OR REPLACE INTO tracks (id, title, artist, album, album_artist, genre, year, track_number, disc_number, duration_ms, file_path, file_name, file_size, file_modified, format, sample_rate, bit_depth, bitrate, channels, codec, composer, lyricist, mood, bpm, rating, play_count, skip_count, last_played, date_added, has_artwork, artwork_hash, lyrics, comment, grouping, copyright, custom_tags, folder, library_id, fingerprint, waveform_peaks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                     )
                     .bind(&track.id)
                     .bind(&track.title)
@@ -310,6 +311,7 @@ pub async fn start_watching_task(service: Arc<Mutex<WatcherService>>) {
                     .bind(&track.folder)
                     .bind(&track.library_id)
                     .bind(&track.fingerprint)
+                    .bind(&track.waveform_peaks)
                     .execute(&db)
                     .await
                     .map_err(|e| warn!("Failed to insert track {}: {}", track.file_path, e))

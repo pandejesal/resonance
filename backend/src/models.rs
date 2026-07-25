@@ -4,6 +4,42 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub role: String,
+    pub created_at: String,
+    pub last_login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+    pub user: UserInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+    pub id: String,
+    pub username: String,
+    pub role: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateUserRequest {
+    pub username: String,
+    pub password: String,
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Track {
     pub id: String,
     pub title: String,
@@ -44,6 +80,7 @@ pub struct Track {
     pub folder: String,
     pub library_id: String,
     pub fingerprint: Option<String>,
+    pub waveform_peaks: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -280,6 +317,49 @@ pub struct ImportConfirmTrack {
     pub track_id: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmartPlaylistRule {
+    pub field: String,
+    pub op: String,
+    pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SmartPlaylistConfig {
+    pub rules: Vec<SmartPlaylistRule>,
+    pub match_all: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CastTarget {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub protocol: String,
+    pub is_connected: bool,
+    pub current_track_id: Option<String>,
+    pub volume: f32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CastPlayRequest {
+    pub target_id: String,
+    pub track_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CastControlRequest {
+    pub target_id: String,
+    pub action: String,
+    pub value: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateRatingRequest {
+    pub rating: Option<i32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrobblingConfig {
     pub lastfm: LastfmConfig,
@@ -305,6 +385,13 @@ pub struct ListenbrainzConfig {
 pub struct UpdateScrobblingRequest {
     pub lastfm: Option<LastfmConfig>,
     pub listenbrainz: Option<ListenbrainzConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscodeConfig {
+    pub enabled: bool,
+    pub format: String,
+    pub bitrate: i32,
 }
 
 #[derive(Debug, Deserialize, FromRow)]
@@ -366,6 +453,7 @@ impl Track {
             folder,
             library_id,
             fingerprint: None,
+            waveform_peaks: None,
         }
     }
 }

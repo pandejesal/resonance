@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useUIStore } from '../stores';
+import { useUIStore, useAuthStore } from '../stores';
 import { cn } from '../lib/utils';
 
 const navItems = [
@@ -22,6 +22,7 @@ const navItems = [
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { user, logout } = useAuthStore();
   const location = useLocation();
 
   return (
@@ -79,8 +80,32 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div className="p-4 border-t border-white/5">
+          {user && (
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center">
+                  <span className="text-brand-500 text-sm font-medium">
+                    {user.username.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-primary">{user.username}</p>
+                  <p className="text-xs text-tertiary">{user.role}</p>
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                className="p-2 rounded-lg hover:bg-white/5 text-secondary hover:text-primary transition-colors"
+                title="Logout"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          )}
           <div className="text-xs text-tertiary text-center">
-            Resonance v0.5.4
+            Resonance v0.6.0
           </div>
         </div>
       </motion.aside>

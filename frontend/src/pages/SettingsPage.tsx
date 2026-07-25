@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import { useUIStore, usePlayerStore } from '../stores';
+import { useUIStore, usePlayerStore, useAuthStore, useCastStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
-import type { Library, ScanProgress, ScrobblingConfig, UpdateStatus, UpdaterConfig, DeviceTrack } from '../types';
+import type { Library, ScanProgress, ScrobblingConfig, UpdateStatus, UpdaterConfig, DeviceTrack, UserInfo, CastTarget } from '../types';
 
 const DEFAULT_SCROBBLE_CONFIG: ScrobblingConfig = {
   lastfm: { enabled: false, api_key: null, api_secret: null, session_key: null, username: null },
@@ -39,6 +39,25 @@ export default function SettingsPage() {
   const [updaterMessage, setUpdaterMessage] = useState('');
   const [deviceScanning, setDeviceScanning] = useState(false);
   const [deviceScanResult, setDeviceScanResult] = useState<string>('');
+  const { user } = useAuthStore();
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('user');
+  const [addUserError, setAddUserError] = useState('');
+  const {
+    targets: castTargets,
+    fetchTargets: fetchCastTargets,
+    registerTarget: registerCastTarget,
+    unregisterTarget: unregisterCastTarget,
+  } = useCastStore();
+  const [showAddCastTarget, setShowAddCastTarget] = useState(false);
+  const [newCastName, setNewCastName] = useState('');
+  const [newCastHost, setNewCastHost] = useState('');
+  const [newCastPort, setNewCastPort] = useState('8008');
+  const [newCastProtocol, setNewCastProtocol] = useState('chromecast');
 
   useEffect(() => {
     api.libraries.list()
@@ -57,7 +76,17 @@ export default function SettingsPage() {
     api.updater.getConfig()
       .then(setUpdaterConfig)
       .catch(console.error);
-  }, []);
+
+    fetchCastTargets().catch(console.error);
+
+    if (user?.role === 'admin') {
+      setUsersLoading(true);
+      api.auth.listUsers()
+        .then(setUsers)
+        .catch(console.error)
+        .finally(() => setUsersLoading(false));
+    }
+  }, [user]);
 
   const handleAdd = async () => {
     if (!newName.trim() || !newPath.trim()) return;
@@ -213,6 +242,68 @@ export default function SettingsPage() {
       setDeviceScanResult(`Scan failed: ${e.message || 'Unknown error'}`);
     } finally {
       setDeviceScanning(false);
+    }
+  };
+
+  const handleAddUser = async () => {
+    setAddUserError('');
+    if (!newUsername.trim() || !newPassword.trim()) {
+      setAddUserError('Username and password are required');
+      return;
+    }
+    try {
+      await api.auth.createUser({
+        username: newUsername.trim(),
+        password: newPassword.trim(),
+        role: newUserRole,
+      });
+      const updatedUsers = await api.auth.listUsers();
+      setUsers(updatedUsers);
+      setNewUsername('');
+      setNewPassword('');
+      setNewUserRole('user');
+      setShowAddUser(false);
+    } catch (e: any) {
+      setAddUserError(e.message || 'Failed to create user');
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Delete this user?')) return;
+    try {
+      await api.auth.deleteUser(userId);
+      setUsers(users.filter((u) => u.id !== userId));
+    } catch (e: any) {
+      console.error('Failed to delete user:', e);
+    }
+  };
+
+  const handleAddCastTarget = async () => {
+    if (!newCastName.trim() || !newCastHost.trim()) return;
+    try {
+      await registerCastTarget({
+        name: newCastName.trim(),
+        host: newCastHost.trim(),
+        port: parseInt(newCastPort) || 8008,
+        protocol: newCastProtocol,
+        volume: 0.8,
+      });
+      setNewCastName('');
+      setNewCastHost('');
+      setNewCastPort('8008');
+      setNewCastProtocol('chromecast');
+      setShowAddCastTarget(false);
+    } catch (e) {
+      console.error('Failed to add cast target:', e);
+    }
+  };
+
+  const handleDeleteCastTarget = async (id: string) => {
+    if (!confirm('Remove this cast target?')) return;
+    try {
+      await unregisterCastTarget(id);
+    } catch (e) {
+      console.error('Failed to delete cast target:', e);
     }
   };
 
@@ -414,6 +505,293 @@ export default function SettingsPage() {
           </>
         )}
       </section>
+
+      {/* Cast Targets */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-primary">Cast Targets</h2>
+          <button
+            onClick={() => setShowAddCastTarget(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Add Target
+          </button>
+        </div>
+
+        {showAddCastTarget && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="surface-card p-4 mb-4"
+          >
+            <h3 className="font-medium text-primary mb-3">Add Cast Target</h3>
+            <input
+              type="text"
+              value={newCastName}
+              onChange={(e) => setNewCastName(e.target.value)}
+              placeholder="Target name (e.g., Living Room Speaker)"
+              className="input-field mb-3"
+              autoFocus
+            />
+            <input
+              type="text"
+              value={newCastHost}
+              onChange={(e) => setNewCastHost(e.target.value)}
+              placeholder="IP address or hostname"
+              className="input-field mb-3"
+            />
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-secondary mb-1">Port</label>
+                <input
+                  type="number"
+                  value={newCastPort}
+                  onChange={(e) => setNewCastPort(e.target.value)}
+                  placeholder="8008"
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-secondary mb-1">Protocol</label>
+                <select
+                  value={newCastProtocol}
+                  onChange={(e) => setNewCastProtocol(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="chromecast">Chromecast</option>
+                  <option value="airplay">AirPlay</option>
+                  <option value="upnp">UPnP/DLNA</option>
+                  <option value="generic">Generic HTTP</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowAddCastTarget(false);
+                  setNewCastName('');
+                  setNewCastHost('');
+                  setNewCastPort('8008');
+                  setNewCastProtocol('chromecast');
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddCastTarget}
+                disabled={!newCastName.trim() || !newCastHost.trim()}
+                className="btn-primary disabled:opacity-50"
+              >
+                Add Target
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {castTargets.length > 0 ? (
+          <div className="space-y-3">
+            {castTargets.map((target) => (
+              <motion.div
+                key={target.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="surface-card p-4"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      target.is_connected ? 'bg-brand-500/20' : 'bg-surface-3'
+                    }`}>
+                      <svg className={`w-5 h-5 ${target.is_connected ? 'text-brand-500' : 'text-secondary'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-primary">{target.name}</h3>
+                      <p className="text-sm text-secondary">{target.host}:{target.port}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      'text-xs px-2 py-0.5 rounded-full',
+                      target.is_connected
+                        ? 'bg-brand-500/20 text-brand-400'
+                        : 'bg-surface-3 text-secondary'
+                    )}>
+                      {target.is_connected ? 'Connected' : 'Disconnected'}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteCastTarget(target.id)}
+                      className="p-1.5 rounded-lg hover:bg-accent-500/10 text-accent-500 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-tertiary">
+                  <span className="capitalize">{target.protocol}</span>
+                  <span>Volume: {Math.round(target.volume * 100)}%</span>
+                  {target.current_track_id && (
+                    <span className="text-brand-400">Playing track</span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 surface-card">
+            <svg className="w-12 h-12 mx-auto text-tertiary mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
+            </svg>
+            <p className="text-secondary mb-1">No cast targets configured</p>
+            <p className="text-xs text-tertiary mb-4">Add a target to stream music to other devices</p>
+            <button onClick={() => setShowAddCastTarget(true)} className="btn-primary">
+              Add your first target
+            </button>
+          </div>
+        )}
+        <p className="text-xs text-tertiary mt-2">
+          Cast targets are HTTP endpoints that receive audio stream URLs. They support Chromecast, AirPlay, UPnP, or any custom HTTP receiver.
+        </p>
+      </section>
+
+      {/* Users */}
+      {user?.role === 'admin' && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-primary">Users</h2>
+            <button
+              onClick={() => setShowAddUser(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Add User
+            </button>
+          </div>
+
+          {showAddUser && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="surface-card p-4 mb-4"
+            >
+              <h3 className="font-medium text-primary mb-3">Add User</h3>
+              {addUserError && (
+                <div className="p-3 rounded-lg bg-accent-500/10 border border-accent-500/20 text-accent-500 text-sm mb-3">
+                  {addUserError}
+                </div>
+              )}
+              <input
+                type="text"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Username"
+                className="input-field mb-3"
+                autoFocus
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Password"
+                className="input-field mb-3"
+              />
+              <div className="mb-3">
+                <label className="block text-xs text-secondary mb-1">Role</label>
+                <div className="flex gap-2">
+                  {['user', 'admin'].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setNewUserRole(r)}
+                      className={cn(
+                        'px-4 py-2 rounded-xl text-sm font-medium transition-all',
+                        newUserRole === r
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-surface-2 text-secondary hover:text-primary'
+                      )}
+                    >
+                      {r.charAt(0).toUpperCase() + r.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowAddUser(false); setNewUsername(''); setNewPassword(''); setAddUserError(''); }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddUser}
+                  disabled={!newUsername.trim() || !newPassword.trim()}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  Add User
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {usersLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : users.length > 0 ? (
+            <div className="space-y-3">
+              {users.map((u) => (
+                <motion.div
+                  key={u.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="surface-card p-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center">
+                        <span className="text-brand-500 font-medium">
+                          {u.username.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-primary">{u.username}</p>
+                        <span className={cn(
+                          'text-xs px-2 py-0.5 rounded-full',
+                          u.role === 'admin' ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-3 text-secondary'
+                        )}>
+                          {u.role}
+                        </span>
+                      </div>
+                    </div>
+                    {u.id !== user?.id && (
+                      <button
+                        onClick={() => handleDeleteUser(u.id)}
+                        className="p-1.5 rounded-lg hover:bg-accent-500/10 text-accent-500 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 surface-card">
+              <p className="text-secondary">No users found</p>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Appearance */}
       <section>

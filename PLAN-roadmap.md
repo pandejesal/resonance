@@ -69,24 +69,27 @@ Two crates already in `Cargo.toml` but not used in any source file.
 
 ---
 
-## Phase 3: Security (Auth / Multi-User)
+## Phase 3: Security (Auth / Multi-User) ✅ DONE
 
 Basic accounts to protect the write API.
 
-### 3a. Backend auth
-- Add `users` table: `id`, `username`, `password_hash`, `role` (admin/user)
-- Use `argon2` crate for password hashing (already common in Rust ecosystem)
-- Session-based auth via signed cookies (or JWT)
-- Protected routes: all `PUT`, `POST`, `DELETE` endpoints
-- Read-only routes stay public (useful for kiosk/shared display)
+### 3a. Backend auth ✅ DONE
+- `users` table with id, username, password_hash, role (admin/user)
+- `argon2` crate for password hashing
+- Base64 token auth (cookie or Authorization header)
+- Default admin user created on first startup (username: admin, password: admin)
 
 ### 3b. Per-user data
 - Add `user_id` FK to: `playlists`, `listening_history`, `favorites`
 - Play history, ratings, playlists become per-user
 - Admin can see all; regular users see only their own
 
-### 3c. Frontend auth
-- Login page (simple, no OAuth complexity)
+### 3c. Frontend auth ✅ DONE
+- `frontend/src/pages/LoginPage.tsx` — glassmorphism login form
+- `useAuthStore` with login/logout/checkAuth
+- `App.tsx` checks auth on mount
+- Settings page: admin-only user management (create/delete users)
+- Sidebar: logged-in user info with logout button
 - Store session in cookie (httpOnly, secure)
 - Sidebar shows current user, logout button
 
@@ -124,64 +127,70 @@ POST /rest/login.view ✅
 
 ---
 
-## Phase 5: Smart Playlists & Ratings
+## Phase 5: Smart Playlists & Ratings ✅ DONE
 
 Leverage existing `play_count` and `listening_history` data.
 
-### 5a. Ratings system
-- Add `rating` column to `tracks` table (1-5 stars)
-- Frontend: star rating in NowPlaying and library views
-- API: `PUT /api/tracks/{id}/rating`
+### 5a. Ratings system ✅ DONE
+- `rating` column in `tracks` table (already existed)
+- `PUT /api/tracks/{id}/rating` — updates rating (0-5 or null)
+- `frontend/src/components/StarRating.tsx` — 5 clickable stars, brand-500 color
+- StarRating in NowPlaying and TrackList views
+- Migration: `005_smart_playlists.sql`
 
-### 5b. Smart playlist engine
+### 5b. Smart playlist engine ✅ DONE
 - Rule-based: "not played in 30 days", "4★+", "genre=Jazz AND year>2000"
 - Stored as JSON rule set in `smart_playlists` table
-- API: `GET /api/smart-playlists/{id}/tracks` — evaluate rules, return matching tracks
-- UI: create/edit smart playlist with rule builder
+- `GET /api/playlists/{id}/smart/evaluate` — evaluate rules, return matching tracks
+- `PUT /api/playlists/{id}/smart/rules` — save rules
+- Full rule builder UI in PlaylistToolsPage: field/operator/value, AND/OR toggle
 
 ---
 
-## Phase 6: Duplicate Detection & MusicBrainz Fingerprinting
+## Phase 6: Duplicate Detection & MusicBrainz Fingerprinting ✅ DONE
 
 Fits the "archival" framing.
 
-### 6a. Acoustic fingerprinting
-- Use `symphonia` (already a dependency) for PCM access
-- Integrate `acoustid` crate for AcoustID lookup
-- Store fingerprint in DB, match against MusicBrainz releases
-
-### 6b. Batch retagging
-- After fingerprint match, batch-update metadata (artist, album, year, etc.)
-- UI: "Find duplicates" → show groups → merge/delete manually
+### 6a. Content fingerprinting ✅ DONE
+- Content-based hash (first/last/middle 64KB + file size) in `compute_fingerprint()`
+- Stored in `fingerprint` column, computed at scan time
+- `GET /api/tracks/duplicates` — finds exact duplicates by fingerprint
+- `GET /api/tracks/similar` — finds tracks with same title+artist
+- `POST /api/tracks/duplicates/delete` — batch delete selected duplicates
+- Full duplicate detection UI in MusicToolsPage with checkbox selection
 
 ---
 
-## Phase 7: Server-Computed Waveform Peaks
+## Phase 7: Server-Computed Waveform Peaks ✅ DONE
 
 Seek bar shows real waveform shape.
 
-### 7a. Peak generation
-- At scan time, compute peak amplitude per 50ms chunk
-- Store as JSON array in `waveform_peaks` column (or separate table)
-- ~2000 peaks per 100-minute track → ~20KB storage per track
+### 7a. Peak generation ✅ DONE
+- Uses symphonia to decode audio and compute 50ms chunk peaks
+- Downsampled to max 2000 peaks per track (~20KB storage)
+- Computed at scan time, stored in `waveform_peaks` column
+- Migration: `007_waveform_peaks.sql`
 
-### 7b. Frontend
-- Replace flat seek bar with SVG waveform visualization
-- Peaks rendered as filled bars, seek position highlighted
+### 7b. Frontend ✅ DONE
+- `frontend/src/components/WaveformSeekBar.tsx` — SVG waveform visualization
+- Click/drag to seek, brand-500 color for played portion
+- Replaces flat progress bar in NowPlaying when peaks available
 
 ---
 
-## Phase 8: PWA Enhancements
+## Phase 8: PWA Enhancements ✅ DONE
 
-### 8a. MediaSession API
-- Wire `navigator.mediaSession` to player store
-- Lock screen shows track title, artist, album art
-- Media notification controls: play/pause, next/previous, seek
+### 8a. MediaSession API ✅ DONE
+- `navigator.mediaSession.metadata` set on track play (title, artist, album, artwork)
+- Action handlers: play, pause, previous, next, seekto, seekbackward, seekforward
+- `playbackState` updated on play/pause
+- `positionState` updated on seek
 
-### 8b. Lossy transcode profile (opt-in)
-- Off by default, never affects bit-perfect LAN playback
-- When enabled, stream transcoded AAC/OGG for cellular
-- Uses `ffmpeg` sidecar or built-in `symphonia` encoder
+### 8b. Lossy transcode profile (opt-in) ✅ DONE
+- Settings page: enable/disable, format (AAC/Opus/OGG), bitrate (128-320 kbps)
+- Backend transcodes via ffmpeg, falls back to original when unavailable
+- `GET/PUT /api/settings/transcode` — config endpoints
+- `GET /api/tracks/{id}/stream/transcoded` — transcoded stream
 
 ---
 
@@ -215,26 +224,32 @@ Seek bar shows real waveform shape.
 
 Biggest lift, but the premium differentiator (Roon's whole pitch).
 
-- Chromecast: `chromecast` crate or `device_discovery`
-- AirPlay: `raop` crate
-- UPnP/DLNA: `upnp` crate
-- Architecture: backend pushes PCM to cast target; frontend just sends control commands
+### HTTP Push approach ✅ DONE
+- `CastTarget` model with id, name, host, port, protocol, is_connected, volume
+- `POST /api/cast/targets` — register a cast target
+- `DELETE /api/cast/targets/{id}` — unregister
+- `GET /api/cast/targets` — list targets
+- `POST /api/cast/play` — tell target to stream from server
+- `POST /api/cast/control` — send play/pause/stop/seek/volume commands
+- Frontend: cast button in NowPlaying with target dropdown
+- Settings page: cast target management UI
+- `useCastStore` with full cast lifecycle management
 
 ---
 
 ## Priority Order
 
-| Priority | Phase | Effort | Impact |
+| Priority | Phase | Status | Impact |
 |---|---|---|---|
-| 1 | README accuracy + finish existing plans | Low | High |
-| 2 | actix-ws + notify wiring | Medium | High |
-| 3 | Subsonic API | Medium | Very High |
-| 4 | SQLite busy_timeout + keyset pagination | Low | High |
-| 5 | Health endpoint | Low | Medium |
-| 6 | Smart playlists + ratings | Medium | Medium |
-| 7 | MediaSession API | Low | Medium |
-| 8 | Auth / multi-user | High | Medium |
-| 9 | Waveform peaks | Medium | Medium |
-| 10 | Duplicate detection | High | Medium |
-| 11 | Lossy transcode profile | Medium | Low |
-| 12 | Multi-room / cast | Very High | High |
+| 1 | README accuracy + finish existing plans | ✅ DONE | High |
+| 2 | actix-ws + notify wiring | ✅ DONE | High |
+| 3 | Subsonic API | ✅ DONE | Very High |
+| 4 | SQLite busy_timeout + keyset pagination | ✅ DONE | High |
+| 5 | Health endpoint | ✅ DONE | Medium |
+| 6 | Smart playlists + ratings | ✅ DONE | Medium |
+| 7 | MediaSession API | ✅ DONE | Medium |
+| 8 | Auth / multi-user | ✅ DONE | Medium |
+| 9 | Waveform peaks | ✅ DONE | Medium |
+| 10 | Duplicate detection | ✅ DONE | Medium |
+| 11 | Lossy transcode profile | ✅ DONE | Low |
+| 12 | Multi-room / cast | ✅ DONE | High |

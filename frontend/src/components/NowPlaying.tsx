@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { usePlayerStore, useUIStore } from '../stores';
+import { usePlayerStore, useUIStore, useCastStore } from '../stores';
 import { getArtworkUrl, formatDuration } from '../lib/utils';
 import { audioEngine } from '../lib/audio-engine';
 import LyricsPanel from './LyricsPanel';
+import WaveformSeekBar from './WaveformSeekBar';
+import StarRating from './StarRating';
+import { api } from '../lib/api';
 
 const BAR_COUNT = 40;
 
@@ -13,10 +16,16 @@ export default function NowPlaying() {
     togglePlay, seek, shuffle, repeat, toggleShuffle, cycleRepeat,
   } = usePlayerStore();
   const { nowPlayingOpen, toggleNowPlaying, lyricsOpen, toggleLyrics } = useUIStore();
+  const {
+    targets, activeTarget, isCasting, castMenuOpen,
+    fetchTargets, castPlay, castControl, stopCasting, setCastMenuOpen,
+  } = useCastStore();
   const [artworkError, setArtworkError] = useState(false);
   const [bars, setBars] = useState<number[]>(new Array(BAR_COUNT).fill(10));
+  const [trackRating, setTrackRating] = useState<number | null>(null);
   const rafRef = useRef<number>(0);
   const y = useMotionValue(0);
+  const castMenuRef = useRef<HTMLDivElement>(null);
 
   const animate = useCallback(() => {
     if (!audioEngine.isReady) {
@@ -81,6 +90,43 @@ export default function NowPlaying() {
     }
   }, [toggleNowPlaying]);
 
+  useEffect(() => {
+    if (currentTrack) {
+      setTrackRating(currentTrack.rating ?? null);
+    }
+  }, [currentTrack]);
+
+  // Close cast menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (castMenuRef.current && !castMenuRef.current.contains(event.target as Node)) {
+        setCastMenuOpen(false);
+      }
+    };
+    if (castMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [castMenuOpen, setCastMenuOpen]);
+
+  const handleRatingChange = useCallback(async (newRating: number | null) => {
+    if (!currentTrack) return;
+    setTrackRating(newRating);
+    try {
+      const updated = await api.tracks.updateRating(currentTrack.id, newRating);
+      usePlayerStore.setState((state) => {
+        const currentTrack = state.currentTrack;
+        if (currentTrack && currentTrack.id === updated.id) {
+          return { currentTrack: updated };
+        }
+        return {};
+      });
+    } catch (e) {
+      console.error('Failed to update rating:', e);
+      setTrackRating(currentTrack.rating ?? null);
+    }
+  }, [currentTrack]);
+
   if (!currentTrack) return null;
 
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
@@ -128,6 +174,89 @@ export default function NowPlaying() {
             </svg>
           </button>
 
+          {/* Cast button */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20" ref={castMenuRef}>
+            <button
+              onClick={() => {
+                if (!castMenuOpen) {
+                  fetchTargets();
+                }
+                setCastMenuOpen(!castMenuOpen);
+              }}
+              style={{ touchAction: 'manipulation' }}
+              className={`px-3 py-1.5 rounded-full text-sm transition-all active:scale-95 flex items-center gap-1.5 ${
+                isCasting
+                  ? 'bg-brand-500 text-white'
+                  : 'bg-white/10 text-white/60 hover:bg-white/20'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" />
+              </svg>
+              {isCasting ? activeTarget?.name || 'Casting' : 'Cast'}
+            </button>
+
+            {/* Cast dropdown */}
+            <AnimatePresence>
+              {castMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-surface-1 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50"
+                >
+                  <div className="p-3 border-b border-white/5">
+                    <p className="text-xs font-medium text-secondary uppercase tracking-wider">Cast Targets</p>
+                  </div>
+                  {targets.length === 0 ? (
+                    <div className="p-4 text-center">
+                      <p className="text-sm text-tertiary">No cast targets registered</p>
+                      <p className="text-xs text-tertiary mt-1">Add targets in Settings</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-60 overflow-y-auto">
+                      {targets.map((target) => (
+                        <button
+                          key={target.id}
+                          onClick={() => {
+                            if (isCasting && activeTarget?.id === target.id) {
+                              stopCasting();
+                            } else if (currentTrack) {
+                              castPlay(target.id, currentTrack.id);
+                            }
+                          }}
+                          className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div className={`w-2 h-2 rounded-full ${
+                            activeTarget?.id === target.id && isCasting
+                              ? 'bg-brand-500'
+                              : 'bg-white/20'
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-primary truncate">{target.name}</p>
+                            <p className="text-xs text-tertiary">{target.protocol} - {target.host}:{target.port}</p>
+                          </div>
+                          {activeTarget?.id === target.id && isCasting && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                stopCasting();
+                              }}
+                              className="text-xs text-accent-500 hover:text-accent-400"
+                            >
+                              Stop
+                            </button>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           {/* Lyrics button */}
           <button
             onClick={toggleLyrics}
@@ -173,7 +302,10 @@ export default function NowPlaying() {
                 {currentTrack.title}
               </motion.h2>
               <p className="text-secondary truncate">{currentTrack.artist}</p>
-              <p className="text-tertiary text-sm truncate">{currentTrack.album}</p>
+              <p className="text-tertiary text-sm truncate mb-2">{currentTrack.album}</p>
+              <div className="flex justify-center">
+                <StarRating rating={trackRating} onChange={handleRatingChange} size="md" />
+              </div>
             </div>
 
             {/* Audio info */}
@@ -210,36 +342,45 @@ export default function NowPlaying() {
 
             {/* Progress bar */}
             <div className="w-full mb-4">
-              <div
-                className="relative w-full h-1 bg-white/10 rounded-full cursor-pointer group"
-                style={{ touchAction: 'none' }}
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const percent = (e.clientX - rect.left) / rect.width;
-                  seek(percent * duration);
-                }}
-                onTouchStart={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const touch = e.touches[0];
-                  const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                  seek(percent * duration);
-                }}
-                onTouchMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const touch = e.touches[0];
-                  const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                  seek(percent * duration);
-                }}
-              >
-                <motion.div
-                  className="absolute h-full bg-brand-500 rounded-full"
-                  style={{ width: `${progressPercent}%` }}
+              {currentTrack.waveform_peaks ? (
+                <WaveformSeekBar
+                  trackId={currentTrack.id}
+                  duration={duration}
+                  currentTime={progress}
+                  onSeek={seek}
                 />
+              ) : (
                 <div
-                  className="absolute w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -translate-y-1/2 top-1/2"
-                  style={{ left: `calc(${progressPercent}% - 6px)` }}
-                />
-              </div>
+                  className="relative w-full h-1 bg-white/10 rounded-full cursor-pointer group"
+                  style={{ touchAction: 'none' }}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const percent = (e.clientX - rect.left) / rect.width;
+                    seek(percent * duration);
+                  }}
+                  onTouchStart={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const touch = e.touches[0];
+                    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+                    seek(percent * duration);
+                  }}
+                  onTouchMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const touch = e.touches[0];
+                    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+                    seek(percent * duration);
+                  }}
+                >
+                  <motion.div
+                    className="absolute h-full bg-brand-500 rounded-full"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                  <div
+                    className="absolute w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -translate-y-1/2 top-1/2"
+                    style={{ left: `calc(${progressPercent}% - 6px)` }}
+                  />
+                </div>
+              )}
               <div className="flex justify-between mt-2 text-xs text-tertiary">
                 <span>{formatDuration(progress)}</span>
                 <span>{formatDuration(duration)}</span>

@@ -38,6 +38,7 @@ export interface Track {
   folder: string;
   library_id: string;
   fingerprint?: string;
+  waveform_peaks?: string;
 }
 
 export interface Album {
@@ -254,6 +255,12 @@ export interface DeviceScanResult {
   total_scanned: number;
 }
 
+export interface TranscodeConfig {
+  enabled: boolean;
+  format: string;
+  bitrate: number;
+}
+
 export interface PlayerState {
   currentTrack: Track | null;
   queue: QueueItem[];
@@ -283,4 +290,37 @@ export interface TransferPlatform {
   import_formats: string[];
   description: string;
   color: string;
+}
+
+export interface UserInfo {
+  id: string;
+  username: string;
+  role: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: UserInfo;
+}
+
+export interface SmartPlaylistRule {
+  field: string;
+  op: string;
+  value: string;
+}
+
+export interface SmartPlaylistConfig {
+  rules: SmartPlaylistRule[];
+  match_all: boolean;
+}
+
+export interface CastTarget {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  protocol: string;
+  is_connected: boolean;
+  current_track_id: string | null;
+  volume: number;
 }

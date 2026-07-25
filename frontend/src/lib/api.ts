@@ -19,6 +19,9 @@ import type {
   DeviceTrack,
   DeviceScanResult,
   TransferPlatform,
+  UserInfo,
+  LoginResponse,
+  CastTarget,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -28,6 +31,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     ...options,
   });
 
@@ -40,6 +44,20 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  auth: {
+    login: (username: string, password: string) =>
+      fetchJson<LoginResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    logout: () => fetchJson('/auth/logout', { method: 'POST' }),
+    me: () => fetchJson<UserInfo>('/auth/me'),
+    listUsers: () => fetchJson<UserInfo[]>('/auth/users'),
+    createUser: (data: { username: string; password: string; role?: string }) =>
+      fetchJson('/auth/users', { method: 'POST', body: JSON.stringify(data) }),
+    deleteUser: (id: string) => fetchJson(`/auth/users/${id}`, { method: 'DELETE' }),
+  },
+
   libraries: {
     list: () => fetchJson<Library[]>('/libraries'),
     create: (data: { name: string; path: string }) =>
@@ -78,6 +96,12 @@ export const api = {
       fetchJson(`/tracks/${id}/play`, { method: 'POST' }),
     streamUrl: (id: string) => `${BASE_URL}/tracks/${id}/stream`,
     artworkUrl: (id: string) => `${BASE_URL}/tracks/${id}/artwork`,
+    waveformUrl: (id: string) => `${BASE_URL}/tracks/${id}/waveform`,
+    updateRating: (id: string, rating: number | null) =>
+      fetchJson<Track>(`/tracks/${id}/rating`, {
+        method: 'PUT',
+        body: JSON.stringify({ rating }),
+      }),
     getLyrics: (id: string) => fetchJson<LyricsData>(`/tracks/${id}/lyrics`),
     fetchLyrics: (id: string) =>
       fetchJson<LyricsData>(`/tracks/${id}/lyrics/fetch`, { method: 'POST' }),
@@ -85,6 +109,15 @@ export const api = {
       fetchJson(`/tracks/${id}/lyrics`, {
         method: 'PUT',
         body: JSON.stringify({ lyrics }),
+      }),
+    findDuplicates: () =>
+      fetchJson<{ groups: number; total_duplicates: number; duplicates: Record<string, Track[]> }>('/tracks/duplicates'),
+    findSimilar: () =>
+      fetchJson<{ groups: number; duplicates: Array<{ title: string; artist: string; count: number; tracks: Track[] }> }>('/tracks/similar'),
+    deleteDuplicates: (trackIds: string[]) =>
+      fetchJson<{ deleted: number; message: string }>('/tracks/duplicates/delete', {
+        method: 'POST',
+        body: JSON.stringify({ track_ids: trackIds }),
       }),
   },
 
@@ -179,6 +212,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    evaluateSmart: (id: string) =>
+      fetchJson<Track[]>(`/playlists/${id}/smart/evaluate`),
+    updateSmartRules: (id: string, rules: SmartPlaylistRule[], matchAll: boolean) =>
+      fetchJson<Playlist>(`/playlists/${id}/smart/rules`, {
+        method: 'PUT',
+        body: JSON.stringify({ rules, match_all: matchAll }),
+      }),
   },
 
   settings: {
@@ -207,6 +247,16 @@ export const api = {
       }),
   },
 
+  transcode: {
+    get: () => fetchJson<TranscodeConfig>('/settings/transcode'),
+    update: (data: TranscodeConfig) =>
+      fetchJson<TranscodeConfig>('/settings/transcode', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    streamUrl: (id: string) => `${BASE_URL}/tracks/${id}/stream/transcoded`,
+  },
+
   import: {
     formats: () => fetchJson<{ formats: ImportFormat[] }>('/import/formats'),
     preview: (platform: string, content: string) =>
@@ -233,6 +283,27 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playlist_id: playlistId, target_platform: targetPlatform }),
+      }),
+  },
+
+  cast: {
+    listTargets: () => fetchJson<CastTarget[]>('/cast/targets'),
+    registerTarget: (data: Omit<CastTarget, 'id' | 'is_connected' | 'current_track_id'>) =>
+      fetchJson<CastTarget>('/cast/targets', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    unregisterTarget: (id: string) =>
+      fetchJson(`/cast/targets/${id}`, { method: 'DELETE' }),
+    play: (targetId: string, trackId: string) =>
+      fetchJson<{ success: boolean; target: CastTarget; stream_url: string }>('/cast/play', {
+        method: 'POST',
+        body: JSON.stringify({ target_id: targetId, track_id: trackId }),
+      }),
+    control: (targetId: string, action: string, value?: number) =>
+      fetchJson<{ success: boolean; target: CastTarget }>('/cast/control', {
+        method: 'POST',
+        body: JSON.stringify({ target_id: targetId, action, value }),
       }),
   },
 };

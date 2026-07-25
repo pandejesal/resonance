@@ -55,6 +55,32 @@ pub mod db {
         pub async fn run_migrations(&self) -> Result<(), sqlx::Error> {
             migrate!("./migrations").run(&self.pool).await?;
             info!("Database migrations completed");
+
+            // Create default admin user if no users exist
+            let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+                .fetch_one(&self.pool)
+                .await?;
+
+            if user_count.0 == 0 {
+                use argon2::{Argon2, password_hash::{PasswordHasher, SaltString, rand_core::OsRng}};
+
+                let salt = SaltString::generate(&mut OsRng);
+                let argon2 = Argon2::default();
+                let password_hash = argon2
+                    .hash_password(b"admin", &salt)
+                    .unwrap()
+                    .to_string();
+
+                let id = uuid::Uuid::new_v4().to_string();
+                sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, 'admin', ?, 'admin')")
+                    .bind(&id)
+                    .bind(&password_hash)
+                    .execute(&self.pool)
+                    .await?;
+
+                info!("Created default admin user (username: admin, password: admin)");
+            }
+
             Ok(())
         }
     }
@@ -112,6 +138,7 @@ pub fn create_schema() -> String {
         folder TEXT NOT NULL,
         library_id TEXT NOT NULL,
         fingerprint TEXT,
+        waveform_peaks TEXT,
         FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
     );
 

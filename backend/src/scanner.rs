@@ -3,6 +3,8 @@ use dashmap::DashMap;
 use lofty::prelude::*;
 use log::warn;
 use rayon::prelude::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
@@ -103,7 +105,10 @@ impl Scanner {
                 }
 
                 match extract_metadata(path, library_id) {
-                    Ok(track) => {
+                    Ok(mut track) => {
+                        let file_path_str = path.to_string_lossy().to_string();
+                        track.waveform_peaks = compute_waveform_peaks(&file_path_str);
+                        track.fingerprint = compute_fingerprint(&file_path_str);
                         state.files_processed.fetch_add(1, Ordering::Relaxed);
                         Some(track)
                     }
@@ -212,4 +217,142 @@ pub fn extract_artwork(path: &Path) -> Result<Option<Vec<u8>>, Box<dyn std::erro
     }
 
     Ok(None)
+}
+
+pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+    use symphonia::core::audio::SampleBuffer;
+
+    let file = std::fs::File::open(file_path).ok()?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let hint = Hint::new();
+    let meta_opts: MetadataOptions = Default::default();
+    let fmt_opts: FormatOptions = Default::default();
+
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &fmt_opts, &meta_opts)
+        .ok()?;
+
+    let mut format = probed.format;
+    let track = format.default_track()?;
+    let track_id = track.id;
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .ok()?;
+
+    let sample_rate = track.codec_params.sample_rate? as f64;
+    let channels = track
+        .codec_params
+        .channels
+        .map(|c| c.count())
+        .unwrap_or(2);
+    let chunk_duration_secs = 0.05; // 50ms chunks
+    let samples_per_chunk = (sample_rate * chunk_duration_secs) as usize;
+
+    let mut peaks: Vec<f32> = Vec::new();
+    let mut chunk_samples: Vec<f32> = Vec::new();
+    let mut max_in_chunk: f32 = 0.0;
+
+    loop {
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+
+        match decoder.decode(&packet) {
+            Ok(audio_buf_ref) => {
+                let spec = *audio_buf_ref.spec();
+                let frames = audio_buf_ref.frames();
+                let mut sample_buf = SampleBuffer::<f32>::new(frames as u64, spec);
+                sample_buf.copy_interleaved_ref(audio_buf_ref.clone());
+
+                let samples = sample_buf.samples();
+                // Mix to mono if needed
+                let mono: Vec<f32> = if channels > 1 {
+                    samples.chunks(channels)
+                        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+                        .collect()
+                } else {
+                    samples.to_vec()
+                };
+
+                for &sample in &mono {
+                    let s = sample.abs();
+                    if s > max_in_chunk {
+                        max_in_chunk = s;
+                    }
+                    chunk_samples.push(s);
+
+                    if chunk_samples.len() >= samples_per_chunk {
+                        peaks.push(max_in_chunk);
+                        chunk_samples.clear();
+                        max_in_chunk = 0.0;
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    // Flush remaining samples
+    if !chunk_samples.is_empty() {
+        peaks.push(max_in_chunk);
+    }
+
+    if peaks.is_empty() {
+        return None;
+    }
+
+    // Downsample to ~2000 peaks max for storage
+    let target_peaks = 2000.min(peaks.len());
+    if peaks.len() > target_peaks {
+        let ratio = peaks.len() as f64 / target_peaks as f64;
+        let downsampled: Vec<f32> = (0..target_peaks)
+            .map(|i| {
+                let start = (i as f64 * ratio) as usize;
+                let end = ((i + 1) as f64 * ratio) as usize;
+                peaks[start..end.min(peaks.len())]
+                    .iter()
+                    .cloned()
+                    .fold(0.0f32, f32::max)
+            })
+            .collect();
+        Some(serde_json::to_string(&downsampled).unwrap_or_default())
+    } else {
+        Some(serde_json::to_string(&peaks).unwrap_or_default())
+    }
+}
+
+pub fn compute_fingerprint(file_path: &str) -> Option<String> {
+    let data = std::fs::read(file_path).ok()?;
+    let mut hasher = DefaultHasher::new();
+
+    // Hash first 64KB
+    let head = &data[..65536.min(data.len())];
+    head.hash(&mut hasher);
+
+    // Hash last 64KB
+    if data.len() > 65536 {
+        let tail = &data[data.len() - 65536..];
+        tail.hash(&mut hasher);
+    }
+
+    // Hash file size
+    data.len().hash(&mut hasher);
+
+    // Hash middle of file
+    if data.len() > 131072 {
+        let mid = &data[data.len() / 2..data.len() / 2 + 65536];
+        mid.hash(&mut hasher);
+    }
+
+    Some(format!("{:016x}", hasher.finish()))
 }

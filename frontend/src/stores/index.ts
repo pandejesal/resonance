@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Track, RepeatMode, QueueItem, Theme, ViewMode } from '../types';
+import type { Track, RepeatMode, QueueItem, Theme, ViewMode, UserInfo, CastTarget } from '../types';
 import { api } from '../lib/api';
 import { shuffleArray } from '../lib/utils';
 import { audioEngine, EQ_PRESETS } from '../lib/audio-engine';
@@ -98,6 +98,18 @@ export const usePlayerStore = create<PlayerStore>()(
         });
         api.tracks.play(track.id).catch(() => {});
 
+        // Update MediaSession metadata
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            artwork: [
+              { src: `/api/tracks/${track.id}/artwork`, sizes: '512x512', type: 'image/jpeg' },
+            ],
+          });
+        }
+
         set({
           currentTrack: track,
           queue: newQueue,
@@ -129,6 +141,18 @@ export const usePlayerStore = create<PlayerStore>()(
         });
         api.tracks.play(track.id).catch(() => {});
 
+        // Update MediaSession metadata
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            artwork: [
+              { src: `/api/tracks/${track.id}/artwork`, sizes: '512x512', type: 'image/jpeg' },
+            ],
+          });
+        }
+
         set({
           currentTrack: track,
           queue,
@@ -149,7 +173,13 @@ export const usePlayerStore = create<PlayerStore>()(
             audio.play().catch((e) => console.warn('Play failed:', e));
           });
         }
-        set({ isPlaying: !isPlaying });
+        const newPlaying = !isPlaying;
+        set({ isPlaying: newPlaying });
+
+        // Update MediaSession playback state
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = newPlaying ? 'playing' : 'paused';
+        }
       },
 
       next: () => {
@@ -242,11 +272,35 @@ export const usePlayerStore = create<PlayerStore>()(
               progress: 0,
               duration: (crossfadeAudio.duration || 0) * 1000,
             });
+
+            // Update MediaSession metadata for next track
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.metadata = new MediaMetadata({
+                title: nextTrack.title,
+                artist: nextTrack.artist,
+                album: nextTrack.album,
+                artwork: [
+                  { src: `/api/tracks/${nextTrack.id}/artwork`, sizes: '512x512', type: 'image/jpeg' },
+                ],
+              });
+            }
           }, crossfadeDuration * 1000);
         } else {
           audio.src = `/api/tracks/${nextTrack.id}/stream`;
           audio.play().catch(() => {});
           api.tracks.play(nextTrack.id).catch(() => {});
+
+          // Update MediaSession metadata for next track
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: nextTrack.title,
+              artist: nextTrack.artist,
+              album: nextTrack.album,
+              artwork: [
+                { src: `/api/tracks/${nextTrack.id}/artwork`, sizes: '512x512', type: 'image/jpeg' },
+              ],
+            });
+          }
 
           set({
             currentTrack: nextTrack,
@@ -275,6 +329,18 @@ export const usePlayerStore = create<PlayerStore>()(
         audio.play().catch(() => {});
         api.tracks.play(prevTrack.id).catch(() => {});
 
+        // Update MediaSession metadata for previous track
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: prevTrack.title,
+            artist: prevTrack.artist,
+            album: prevTrack.album,
+            artwork: [
+              { src: `/api/tracks/${prevTrack.id}/artwork`, sizes: '512x512', type: 'image/jpeg' },
+            ],
+          });
+        }
+
         set({
           currentTrack: prevTrack,
           queueIndex: prevIndex,
@@ -288,6 +354,15 @@ export const usePlayerStore = create<PlayerStore>()(
         if (!audio) return;
         audio.currentTime = time / 1000;
         set({ progress: time });
+
+        // Update MediaSession position state
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.setPositionState({
+            duration: audio.duration || 0,
+            playbackRate: audio.playbackRate,
+            position: audio.currentTime || 0,
+          });
+        }
       },
 
       setVolume: (volume) => {
@@ -475,4 +550,164 @@ export const useUIStore = create<UIStore>()(
       }),
     }
   )
+);
+
+interface AuthState {
+  user: UserInfo | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  checkAuth: () => Promise<void>;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      isAuthenticated: false,
+      isLoading: true,
+
+      login: async (username: string, password: string) => {
+        const response = await api.auth.login(username, password);
+        set({ user: response.user, isAuthenticated: true });
+      },
+
+      logout: async () => {
+        try {
+          await api.auth.logout();
+        } catch {
+          // Ignore logout errors
+        }
+        set({ user: null, isAuthenticated: false });
+      },
+
+      checkAuth: async () => {
+        try {
+          const user = await api.auth.me();
+          set({ user, isAuthenticated: true, isLoading: false });
+        } catch {
+          set({ user: null, isAuthenticated: false, isLoading: false });
+        }
+      },
+    }),
+    {
+      name: 'resonance-auth',
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
+    }
+  )
+);
+
+interface CastState {
+  targets: CastTarget[];
+  activeTarget: CastTarget | null;
+  isCasting: boolean;
+  castMenuOpen: boolean;
+  fetchTargets: () => Promise<void>;
+  registerTarget: (target: Omit<CastTarget, 'id' | 'is_connected' | 'current_track_id'>) => Promise<void>;
+  unregisterTarget: (id: string) => Promise<void>;
+  castPlay: (targetId: string, trackId: string) => Promise<void>;
+  castControl: (targetId: string, action: string, value?: number) => Promise<void>;
+  stopCasting: () => void;
+  setCastMenuOpen: (open: boolean) => void;
+}
+
+export const useCastStore = create<CastState>()(
+  (set, get) => ({
+    targets: [],
+    activeTarget: null,
+    isCasting: false,
+    castMenuOpen: false,
+
+    fetchTargets: async () => {
+      try {
+        const targets = await api.cast.listTargets();
+        set({ targets });
+      } catch (e) {
+        console.error('Failed to fetch cast targets:', e);
+      }
+    },
+
+    registerTarget: async (targetData) => {
+      try {
+        const target = await api.cast.registerTarget(targetData);
+        set((state) => ({
+          targets: [...state.targets, target],
+        }));
+      } catch (e) {
+        console.error('Failed to register cast target:', e);
+        throw e;
+      }
+    },
+
+    unregisterTarget: async (id) => {
+      try {
+        await api.cast.unregisterTarget(id);
+        set((state) => ({
+          targets: state.targets.filter((t) => t.id !== id),
+          activeTarget: state.activeTarget?.id === id ? null : state.activeTarget,
+          isCasting: state.activeTarget?.id === id ? false : state.isCasting,
+        }));
+      } catch (e) {
+        console.error('Failed to unregister cast target:', e);
+      }
+    },
+
+    castPlay: async (targetId, trackId) => {
+      try {
+        const result = await api.cast.play(targetId, trackId);
+        const target = result.target;
+        set({
+          activeTarget: target,
+          isCasting: true,
+          castMenuOpen: false,
+        });
+        // Update the targets list with updated target state
+        set((state) => ({
+          targets: state.targets.map((t) =>
+            t.id === target.id ? target : t
+          ),
+        }));
+      } catch (e) {
+        console.error('Failed to cast play:', e);
+      }
+    },
+
+    castControl: async (targetId, action, value) => {
+      try {
+        const result = await api.cast.control(targetId, action, value);
+        if (action === 'stop') {
+          set({
+            activeTarget: null,
+            isCasting: false,
+          });
+        } else if (result.target) {
+          set({ activeTarget: result.target });
+          set((state) => ({
+            targets: state.targets.map((t) =>
+              t.id === result.target.id ? result.target : t
+            ),
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to cast control:', e);
+      }
+    },
+
+    stopCasting: () => {
+      const { activeTarget } = get();
+      if (activeTarget) {
+        get().castControl(activeTarget.id, 'stop');
+      }
+      set({
+        activeTarget: null,
+        isCasting: false,
+      });
+    },
+
+    setCastMenuOpen: (open) => set({ castMenuOpen: open }),
+  })
 );
