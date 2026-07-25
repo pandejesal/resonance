@@ -139,6 +139,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/import/device", web::post().to(handlers::import_device_music))
             .route("/api/transfer/export", web::post().to(handlers::export_playlist))
             .route("/api/transfer/platforms", web::get().to(handlers::get_transfer_platforms))
+            .route("/api/health", web::get().to(handlers::health_check))
             .service(static_files)
     })
     .bind((host.as_str(), port))?

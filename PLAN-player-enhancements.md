@@ -1,12 +1,13 @@
 # Player Enhancements Plan
 
 ## Current State
-- Audio: Single `HTMLAudioElement` created in `MiniPlayer.tsx`, shared via Zustand store
-- Volume: Set directly on `audio.volume` property
-- Crossfade: State exists (`crossfade`, `crossfadeDuration`) but NOT implemented
-- Gapless: NOT implemented — `next()` sets `audio.src` causing a gap between tracks
-- Equalizer: No implementation
-- Visualization: Fake random bars, not based on actual audio data
+- Audio: `HTMLAudioElement` → `MediaElementSourceNode` → `BiquadFilterNode ×10` → `GainNode` → `AnalyserNode` → `destination`
+- Volume: `audioEngine.setVolume(volume)` via `GainNode.gain`
+- Crossfade: ✅ **Implemented (v0.5.3)** — dual audio elements, `crossOrigin='anonymous'`, `canplaythrough` listener, gain node ramping, cleanup on completion, restores volume + EQ
+- Gapless: ✅ **Implemented (v0.5.3)** — pre-load next track, swap at `ended` event
+- Equalizer: ✅ **Backend wired** — `BiquadFilterNode ×10` in audio pipeline
+- Equalizer UI: ❌ **Not implemented** — no slider page
+- Visualization: ❌ **Fake random bars** — not wired to `AnalyserNode.getByteFrequencyData()`
 - Backend streaming: `actix_files::NamedFile` with `Accept-Ranges: bytes` — range requests work
 
 ## Architecture

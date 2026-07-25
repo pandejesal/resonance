@@ -31,6 +31,7 @@ pub mod db {
 
             sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await?;
             sqlx::query("PRAGMA synchronous=NORMAL").execute(&pool).await?;
+            sqlx::query("PRAGMA busy_timeout=5000").execute(&pool).await?;
             sqlx::query("PRAGMA cache_size=-64000").execute(&pool).await?;
             sqlx::query("PRAGMA temp_store=MEMORY").execute(&pool).await?;
             sqlx::query("PRAGMA mmap_size=268435456").execute(&pool).await?;

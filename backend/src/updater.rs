@@ -41,8 +41,17 @@ struct GitHubCompare {
     status: String,
 }
 
+fn get_bundled_version() -> String {
+    std::fs::read_to_string("VERSION")
+        .unwrap_or_else(|_| "0.0.0".to_string())
+        .trim()
+        .to_string()
+}
+
 pub async fn get_updater_status(db: &SqlitePool) -> UpdateStatus {
-    let current_version = get_state(db, "current_version").await.unwrap_or_else(|| "0.1.0".to_string());
+    let current_version = get_state(db, "current_version")
+        .await
+        .unwrap_or_else(|| get_bundled_version());
     let current_commit = get_state(db, "current_commit").await.unwrap_or_default();
     let latest_version = get_state(db, "latest_version").await.unwrap_or_default();
     let latest_commit = get_state(db, "latest_commit").await.unwrap_or_default();

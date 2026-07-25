@@ -80,7 +80,7 @@ export default function Sidebar() {
         {/* Footer */}
         <div className="p-4 border-t border-white/5">
           <div className="text-xs text-tertiary text-center">
-            Resonance v0.5.3
+            Resonance v0.5.4
           </div>
         </div>
       </motion.aside>

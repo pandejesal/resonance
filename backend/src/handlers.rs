@@ -2016,3 +2016,17 @@ pub async fn get_transfer_platforms() -> HttpResponse {
         ]
     }))
 }
+
+pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
+    let db_ok = sqlx::query("SELECT 1").execute(&data.db).await.is_ok();
+    let version = std::fs::read_to_string("VERSION")
+        .unwrap_or_else(|_| "0.0.0".to_string())
+        .trim()
+        .to_string();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": if db_ok { "ok" } else { "degraded" },
+        "db": if db_ok { "connected" } else { "disconnected" },
+        "version": version
+    }))
+}

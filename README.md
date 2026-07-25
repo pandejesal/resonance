@@ -11,8 +11,29 @@ A premium, self-hosted music archival system that prioritizes speed, audio quali
 - **Smart organization** - By artist, album, genre, composer, year, folder, mood, BPM
 - **Instant search** - Results appear while typing across all metadata
 - **Gapless playback** - Seamless transitions between tracks
-- **ReplayGain & Crossfade** - Optional audio enhancement features
+- **Crossfade** - Configurable fade between tracks (1-12 seconds)
+- **Equalizer** - 10-band EQ with presets (Rock, Pop, Jazz, etc.)
 - **Touch-optimized** - Swipe navigation, pull-to-refresh, gestures
+- **Scrobbling** - Last.fm and ListenBrainz integration
+- **Lyrics** - Synced lyrics from LRCLIB with auto-scroll
+- **Platform import** - Import playlists from Spotify, YouTube Music, Apple Music, SoundCloud
+- **Native apps** - Android (JNI), iOS (Tauri), Desktop (Tauri/WebView2)
+
+## Roadmap
+
+Planned features in development:
+
+- **Subsonic/OpenSubsonic API** - Stream from any Subsonic client (Symfonium, play:Sub, Amperfy)
+- **Smart playlists** - Rule-based playlists ("not played in 30 days", "4★+", genre+year rules)
+- **Ratings** - 1-5 star ratings with per-user history
+- **Audio-reactive visualization** - Real frequency data from AnalyserNode
+- **ReplayGain** - Per-track and per-album gain normalization
+- **Duplicate detection** - Acoustic fingerprinting via MusicBrainz/AcoustID
+- **Waveform peaks** - Server-computed seek bar visualization
+- **Multi-room output** - Chromecast, AirPlay, UPnP/DLNA
+- **Auth / multi-user** - Basic accounts with per-user playlists and history
+- **Filesystem watcher** - Auto-rescan on file changes (via `notify` crate)
+- **WebSocket push** - Real-time scan progress and multi-device sync (via `actix-ws`)
 
 ## Supported Formats
 

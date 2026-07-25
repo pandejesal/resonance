@@ -29,6 +29,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/resonance-backend .
 COPY --from=frontend-builder /app/dist ./static
 COPY backend/migrations ./migrations
+COPY VERSION .
 
 ENV RUST_LOG=info
 ENV DATABASE_URL=/app/data/resonance.db
@@ -38,5 +39,8 @@ ENV PORT=8080
 VOLUME ["/app/data", "/music"]
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8080/api/health || exit 1
 
 CMD ["./resonance-backend"]
