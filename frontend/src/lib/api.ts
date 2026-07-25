@@ -293,6 +293,7 @@ export const api = {
       fetch(`${BASE_URL}/transfer/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ playlist_id: playlistId, target_platform: targetPlatform }),
       }),
   },

@@ -158,7 +158,18 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>) ->
 
         let tracks = Scanner::scan_files_parallel(files, &lib_id, &scan_state);
 
-        let mut tx = db.begin().await.unwrap();
+        let mut tx = match db.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                log::error!("scan_library transaction begin failed: {}", e);
+                sqlx::query("UPDATE libraries SET is_scanning = FALSE WHERE id = ?")
+                    .bind(&lib_id)
+                    .execute(&db)
+                    .await
+                    .ok();
+                return;
+            }
+        };
 
         for track in &tracks {
             let _ = sqlx::query(
@@ -435,19 +446,35 @@ pub async fn update_track(
     }
 
     let sql = format!("UPDATE tracks SET {} WHERE id = ?", updates.join(", "));
-    let result = sqlx::query(&sql)
-        .bind(&body.title)
-        .bind(&body.artist)
-        .bind(&body.album)
-        .bind(&body.genre)
-        .bind(&body.year)
-        .bind(&body.rating)
-        .bind(&body.mood)
-        .bind(&body.bpm)
-        .bind(&body.lyrics)
-        .bind(&id)
-        .execute(&data.db)
-        .await;
+    let mut query = sqlx::query(&sql);
+    if body.title.is_some() {
+        query = query.bind(&body.title);
+    }
+    if body.artist.is_some() {
+        query = query.bind(&body.artist);
+    }
+    if body.album.is_some() {
+        query = query.bind(&body.album);
+    }
+    if body.genre.is_some() {
+        query = query.bind(&body.genre);
+    }
+    if body.year.is_some() {
+        query = query.bind(&body.year);
+    }
+    if body.rating.is_some() {
+        query = query.bind(&body.rating);
+    }
+    if body.mood.is_some() {
+        query = query.bind(&body.mood);
+    }
+    if body.bpm.is_some() {
+        query = query.bind(&body.bpm);
+    }
+    if body.lyrics.is_some() {
+        query = query.bind(&body.lyrics);
+    }
+    let result = query.bind(&id).execute(&data.db).await;
 
     match result {
         Ok(_) => {
@@ -548,7 +575,7 @@ pub async fn stream_track(
             file_path.exists()
         );
         return HttpResponse::NotFound()
-            .json(serde_json::json!({"error": "File not found", "path": track.file_path}));
+            .json(serde_json::json!({"error": "File not found"}));
     }
 
     let mime = get_mime_type(&track.format);
@@ -1403,7 +1430,7 @@ pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>) 
 
 async fn get_playlist_track_ids(db: &SqlitePool, playlist_id: &str) -> Vec<(String, i32)> {
     sqlx::query_as::<_, (String, i32)>(
-        "SELECT track_id, 0 FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
+        "SELECT pt.track_id, t.play_count FROM playlist_tracks pt JOIN tracks t ON pt.track_id = t.id WHERE pt.playlist_id = ? ORDER BY pt.position",
     )
     .bind(playlist_id)
     .fetch_all(db)
@@ -1430,9 +1457,17 @@ async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> String {
 }
 
 async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[String]) {
+    let mut tx = match db.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            log::error!("save_playlist_order transaction begin failed: {}", e);
+            return;
+        }
+    };
+
     let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
         .bind(playlist_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await;
 
     for (i, track_id) in track_ids.iter().enumerate() {
@@ -1442,7 +1477,7 @@ async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[St
         .bind(playlist_id)
         .bind(track_id)
         .bind(i as i32)
-        .execute(db)
+        .execute(&mut *tx)
         .await;
     }
 
@@ -1451,8 +1486,10 @@ async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[St
     )
     .bind(track_ids.len() as i32)
     .bind(playlist_id)
-    .execute(db)
+    .execute(&mut *tx)
     .await;
+
+    let _ = tx.commit().await;
 }
 
 fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {

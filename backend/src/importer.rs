@@ -487,6 +487,7 @@ pub fn parse_soundcloud(content: &str) -> Result<ImportPreview, String> {
 
 pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
     let mut tracks = Vec::new();
+    let mut pending_extinf: Option<(String, String)> = None;
     let mut title = "M3U Playlist".to_string();
 
     for line in content.lines() {
@@ -504,15 +505,21 @@ pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
                     } else {
                         ("Unknown".to_string(), artist_title)
                     };
-                    tracks.push(ImportTrack {
-                        title: track_title,
-                        artist,
-                        album: None,
-                        duration_ms: None,
-                        platform_id: None,
-                    });
+                    pending_extinf = Some((artist, track_title));
                 }
             }
+        } else if !line.is_empty() && !line.starts_with('#') {
+            let (artist, track_title) = pending_extinf.take().unwrap_or_else(|| {
+                let name = line.rsplit('/').next().unwrap_or(line).to_string();
+                ("Unknown".to_string(), name)
+            });
+            tracks.push(ImportTrack {
+                title: track_title,
+                artist,
+                album: None,
+                duration_ms: None,
+                platform_id: None,
+            });
         }
     }
 
@@ -606,6 +613,10 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
         for (id, db_title, db_artist, _db_album) in &db_tracks {
             let norm_db_title = normalize(db_title);
             let norm_db_artist = normalize(db_artist);
+
+            if norm_db_title.is_empty() || norm_db_artist.is_empty() {
+                continue;
+            }
 
             if norm_title == norm_db_title && norm_artist == norm_db_artist {
                 best_match = Some((id.clone(), "exact".to_string(), 1.0));

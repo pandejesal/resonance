@@ -87,7 +87,7 @@ export default function App() {
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
 
   useEffect(() => {
-    document.documentElement.className = theme === 'dark' ? '' : theme;
+    document.documentElement.className = theme;
   }, [theme]);
 
   useEffect(() => {

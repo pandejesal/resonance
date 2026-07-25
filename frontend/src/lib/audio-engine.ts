@@ -79,8 +79,8 @@ class AudioEngine {
   }
 
   setVolume(volume: number): void {
-    if (this.gainNode) {
-      this.gainNode.gain.setValueAtTime(volume, this.ctx!.currentTime);
+    if (this.gainNode && this.ctx) {
+      this.gainNode.gain.setValueAtTime(volume, this.ctx.currentTime);
     }
   }
 
@@ -95,8 +95,8 @@ class AudioEngine {
 
   setEQBand(index: number, gain: number): void {
     this._eqBands[index] = gain;
-    if (this.filters[index] && this._eqEnabled) {
-      this.filters[index].gain.setValueAtTime(gain, this.ctx!.currentTime);
+    if (this.filters[index] && this._eqEnabled && this.ctx) {
+      this.filters[index].gain.setValueAtTime(gain, this.ctx.currentTime);
     }
   }
 
@@ -108,11 +108,11 @@ class AudioEngine {
     const gains = EQ_PRESETS[preset];
     if (!gains) return;
     this._eqBands = [...gains];
-    this.filters.forEach((filter, i) => {
-      if (this._eqEnabled) {
+    if (this._eqEnabled && this.ctx) {
+      this.filters.forEach((filter, i) => {
         filter.gain.setValueAtTime(gains[i], this.ctx!.currentTime);
-      }
-    });
+      });
+    }
   }
 
   getFrequencyData(): Uint8Array {
@@ -146,6 +146,14 @@ class AudioEngine {
 
   destroy(): void {
     if (this.ctx) {
+      this.source?.disconnect();
+      this.filters.forEach((f) => f.disconnect());
+      this.gainNode?.disconnect();
+      this.analyser?.disconnect();
+      this.source = null;
+      this.filters = [];
+      this.gainNode = null;
+      this.analyser = null;
       this.ctx.close();
       this.ctx = null;
       this.connected = false;

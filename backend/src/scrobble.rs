@@ -183,7 +183,8 @@ impl ScrobbleService {
             .await?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await.unwrap_or_default();
+        let body_text = response.text().await.unwrap_or_default();
+        let body: serde_json::Value = serde_json::from_str(&body_text).unwrap_or_default();
 
         if status.is_success() {
             if let Some(error) = body.get("error") {
@@ -200,7 +201,7 @@ impl ScrobbleService {
             info!("Last.fm scrobble successful: {} - {}", artist, track);
             Ok(())
         } else {
-            Err(format!("Last.fm HTTP {}: {}", status, body).into())
+            Err(format!("Last.fm HTTP {}: {}", status, body_text).into())
         }
     }
 

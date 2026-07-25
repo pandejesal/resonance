@@ -262,7 +262,6 @@ export const usePlayerStore = create<PlayerStore>()(
             if (get().eqEnabled) {
               get().eqBands.forEach((gain, i) => audioEngine.setEQBand(i, gain));
             }
-            gainNode.gain.setValueAtTime(get().volume, ctx.currentTime);
 
             set({
               audio: crossfadeAudio,
@@ -375,8 +374,8 @@ export const usePlayerStore = create<PlayerStore>()(
       toggleShuffle: () => {
         const { shuffle, queue, queueIndex } = get();
 
-        if (!shuffle && queue.length > 1) {
-          // Turning shuffle ON with a queue > 1
+        if (!shuffle && queue.length > 1 && queueIndex >= 0) {
+          // Turning shuffle ON with a queue > 1 and a valid current track
           const current = queue[queueIndex];
           const rest = queue.filter((_, i) => i !== queueIndex);
           const shuffled = shuffleArray(rest);
@@ -386,7 +385,7 @@ export const usePlayerStore = create<PlayerStore>()(
             queueIndex: 0,
           });
         } else {
-          // Turning shuffle OFF (or can't shuffle with < 2 items)
+          // Turning shuffle OFF (or can't shuffle with < 2 items or no current track)
           set({ shuffle: false });
         }
       },

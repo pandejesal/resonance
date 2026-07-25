@@ -329,13 +329,17 @@ export default function SettingsPage() {
       const target = e.target as HTMLInputElement;
       const file = target.files?.[0];
       if (!file) return;
-      const text = await file.text();
-      const profile = JSON.parse(text);
-      if (profile.profile_name) console.log('Profile:', profile.profile_name);
-      if (profile.target_name) console.log('Target:', profile.target_name);
-      if (profile.preamp != null) console.log('Preamp:', profile.preamp);
-      if (Array.isArray(profile.filters)) {
-        console.log('Filters loaded:', profile.filters.length);
+      try {
+        const text = await file.text();
+        const profile = JSON.parse(text);
+        if (profile.profile_name) console.log('Profile:', profile.profile_name);
+        if (profile.target_name) console.log('Target:', profile.target_name);
+        if (profile.preamp != null) console.log('Preamp:', profile.preamp);
+        if (Array.isArray(profile.filters)) {
+          console.log('Filters loaded:', profile.filters.length);
+        }
+      } catch (err) {
+        console.error('Failed to parse AutoEQ profile:', err);
       }
     };
     input.click();
