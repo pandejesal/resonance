@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
 import type { ImportPreview, ImportFormat, ImportConfirmTrack } from '../types';
@@ -412,7 +413,7 @@ export default function ImportPage() {
             </p>
             <div className="flex gap-3 justify-center">
               <button onClick={reset} className="btn-secondary">Import Another</button>
-              <a href="/playlists" className="btn-primary">View Playlists</a>
+              <Link to="/playlists" className="btn-primary">View Playlists</Link>
             </div>
           </motion.div>
         )}

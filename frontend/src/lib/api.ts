@@ -30,11 +30,12 @@ const BASE_URL = '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${url}`, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...options?.headers,
     },
     credentials: 'include',
-    ...options,
   });
 
   if (!response.ok) {

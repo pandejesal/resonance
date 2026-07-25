@@ -75,8 +75,12 @@ impl Scanner {
     }
 
     pub fn collect_files(path: &str) -> Vec<PathBuf> {
+        let root = match std::fs::canonicalize(path) {
+            Ok(p) => p,
+            Err(_) => return Vec::new(),
+        };
         WalkDir::new(path)
-            .follow_links(true)
+            .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
@@ -85,6 +89,12 @@ impl Scanner {
                     .extension()
                     .and_then(|ext| ext.to_str())
                     .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                    .unwrap_or(false)
+            })
+            .filter(|e| {
+                // Ensure resolved path stays under library root
+                e.path().canonicalize()
+                    .map(|p| p.starts_with(&root))
                     .unwrap_or(false)
             })
             .map(|e| e.into_path())

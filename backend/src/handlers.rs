@@ -98,7 +98,11 @@ pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>) 
     }
 }
 
-pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+
     let library_id = path.into_inner();
 
     let library = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
@@ -112,6 +116,15 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>) ->
             return HttpResponse::NotFound().json(serde_json::json!({"error": "Library not found"}))
         }
     };
+
+    // Guard against concurrent scans of the same library
+    {
+        let scanner = data.scanner.lock();
+        if scanner.is_scanning(&library_id) {
+            return HttpResponse::Conflict()
+                .json(serde_json::json!({"error": "Library is already being scanned"}));
+        }
+    }
 
     let start = std::time::Instant::now();
 
@@ -227,7 +240,15 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>) ->
             .ok();
         }
 
-        tx.commit().await.ok();
+        if let Err(e) = tx.commit().await {
+            log::error!("scan_library transaction commit failed for {}: {}", lib_id, e);
+            sqlx::query("UPDATE libraries SET is_scanning = FALSE WHERE id = ?")
+                .bind(&lib_id)
+                .execute(&db)
+                .await
+                .ok();
+            return;
+        }
 
         sqlx::query("UPDATE libraries SET is_scanning = FALSE, track_count = ?, last_scan = datetime('now') WHERE id = ?")
             .bind(tracks.len() as i32)
@@ -1535,12 +1556,18 @@ pub struct BrowseEntry {
     pub is_dir: bool,
 }
 
-pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
-    let path_str = query.path.as_deref().unwrap_or("/");
+pub async fn browse_directory(
+    data: web::Data<AppState>,
+    query: web::Query<BrowseQuery>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
 
+    let path_str = query.path.as_deref().unwrap_or("/");
     let path = PathBuf::from(path_str);
 
-    // Canonicalize to resolve symlinks and .. segments, then verify it's a directory
     let canonical = match path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
@@ -1554,10 +1581,25 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
             .json(serde_json::json!({"error": "Path is not a directory"}));
     }
 
-    // Use canonical path for listing
+    // Restrict browsing to configured library paths
+    let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+        .fetch_all(&data.db)
+        .await
+        .unwrap_or_default();
+    let allowed = libraries.iter().any(|lib| {
+        PathBuf::from(&lib.path)
+            .canonicalize()
+            .map(|p| canonical.starts_with(&p))
+            .unwrap_or(false)
+    });
+    if !allowed && canonical != PathBuf::from("/") && canonical != PathBuf::from("C:\\") {
+        // Allow root listing only as fallback, but block anything outside library paths
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Path is outside configured libraries"}));
+    }
+
     let mut entries: Vec<BrowseEntry> = Vec::new();
 
-    // Add parent directory link
     if let Some(parent) = canonical.parent() {
         entries.push(BrowseEntry {
             name: "..".to_string(),
@@ -1573,12 +1615,9 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
                 Err(_) => continue,
             };
             let name = entry.file_name().to_string_lossy().to_string();
-
-            // Skip hidden files
             if name.starts_with('.') {
                 continue;
             }
-
             if metadata.is_dir() {
                 let entry_path = entry.path().to_string_lossy().to_string();
                 entries.push(BrowseEntry {
@@ -1590,8 +1629,9 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
         }
     }
 
-    // Sort directories alphabetically
-    entries[1..].sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    if entries.len() > 1 {
+        entries[1..].sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    }
 
     HttpResponse::Ok().json(serde_json::json!({
         "current": canonical.to_string_lossy(),
@@ -2166,10 +2206,11 @@ pub async fn export_playlist(
         }
     };
 
+    let safe_name = filename.replace('"', "").replace('\n', "").replace('\r', "");
     HttpResponse::Ok()
         .insert_header((
             "Content-Disposition",
-            format!("attachment; filename=\"{}\"", filename),
+            format!("attachment; filename=\"{}\"", safe_name),
         ))
         .insert_header(("Content-Type", content_type))
         .body(content)
@@ -2588,6 +2629,8 @@ pub async fn stream_track_transcoded(
 
             let child = std::process::Command::new("ffmpeg")
                 .args([
+                    "-hide_banner", "-loglevel", "error",
+                    "--",
                     "-i", &t.file_path,
                     "-c:a", output_format,
                     "-b:a", &format!("{}k", bitrate),
@@ -2600,14 +2643,17 @@ pub async fn stream_track_transcoded(
 
             match child {
                 Ok(mut proc) => {
-                    let stdout = proc.stdout.take().unwrap();
+                    let stdout = proc.stdout.take().unwrap_or_else(|| {
+                        panic!("stdout should be piped")
+                    });
                     let stream = actix_web::web::block(move || {
                         let mut data = Vec::new();
                         use std::io::Read;
                         let mut reader = std::io::BufReader::new(stdout);
-                        reader.read_to_end(&mut data).unwrap_or(0);
+                        let _ = reader.read_to_end(&mut data);
                         data
                     }).await.unwrap_or_default();
+                    let _ = proc.wait();
 
                     let content_type = match format.as_str() {
                         "aac" => "audio/aac",
@@ -2873,7 +2919,7 @@ pub async fn cast_control(
 
 pub async fn find_duplicates(data: web::Data<AppState>) -> HttpResponse {
     let duplicates = sqlx::query_as::<_, Track>(
-        "SELECT t1.* FROM tracks t1 INNER JOIN (SELECT fingerprint, COUNT(*) as cnt FROM tracks WHERE fingerprint IS NOT NULL GROUP BY fingerprint HAVING cnt > 1) t2 ON t1.fingerprint = t2.fingerprint ORDER BY t1.fingerprint"
+        "SELECT t1.* FROM tracks t1 INNER JOIN (SELECT fingerprint, COUNT(*) as cnt FROM tracks WHERE fingerprint IS NOT NULL GROUP BY fingerprint HAVING cnt > 1) t2 ON t1.fingerprint = t2.fingerprint ORDER BY t1.fingerprint LIMIT 1000"
     )
     .fetch_all(&data.db)
     .await
@@ -2966,7 +3012,9 @@ pub async fn delete_duplicates_batch(
 fn hash_password(password: &str) -> String {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    argon2.hash_password(password.as_bytes(), &salt).unwrap().to_string()
+    argon2.hash_password(password.as_bytes(), &salt)
+        .expect("Argon2 hashing should not fail")
+        .to_string()
 }
 
 fn verify_password(password: &str, hash: &str) -> bool {

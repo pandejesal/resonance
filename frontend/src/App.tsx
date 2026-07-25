@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useUIStore, usePlayerStore, useAuthStore } from './stores';
+import { useUIStore, useAuthStore } from './stores';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MiniPlayer from './components/MiniPlayer';
@@ -43,14 +43,13 @@ function BackButtonHandler() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [nowPlayingOpen, toggleNowPlaying, navigate]);
+  }, [nowPlayingOpen, toggleNowPlaying]);
 
   return null;
 }
 
 function AnimatedRoutes() {
   const location = useLocation();
-  const { playTrack } = usePlayerStore();
 
   return (
     <AnimatePresence mode="wait">

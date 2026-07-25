@@ -21,6 +21,19 @@ pub async fn ws_handler(
     body: web::Payload,
     clients: web::Data<Arc<WsClients>>,
 ) -> Result<HttpResponse, actix_web::Error> {
+    // Authenticate WebSocket connection
+    let token = req.cookie("auth_token")
+        .map(|c| c.value().to_string())
+        .or_else(|| {
+            req.headers().get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|v| v.to_string())
+        });
+    if token.is_none() || crate::auth::validate_token(&token.unwrap()).is_none() {
+        return Ok(HttpResponse::Unauthorized().finish());
+    }
+
     let (response, mut session, mut msg_stream) = actix_ws::handle(&req, body)?;
 
     let client_id = Uuid::new_v4().to_string();

@@ -183,8 +183,19 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       next: () => {
-        const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless } = get();
-        if (!audio || queue.length === 0) return;
+        const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless, isCrossfading } = get();
+        if (!audio || queue.length === 0 || isCrossfading) return;
+
+        // Handle repeat one - replay current track
+        if (repeat === 'one' && queueIndex >= 0 && queueIndex < queue.length) {
+          audio.currentTime = 0;
+          audioEngine.resume().then(() => {
+            audio.play().catch((e) => console.warn('Play failed:', e));
+          });
+          api.tracks.play(queue[queueIndex].track.id).catch(() => {});
+          set({ isPlaying: true, progress: 0 });
+          return;
+        }
 
         let nextIndex;
         if (shuffle) {
@@ -224,10 +235,9 @@ export const usePlayerStore = create<PlayerStore>()(
           crossfadeAudio.src = `/api/tracks/${nextTrack.id}/stream`;
           crossfadeAudio.volume = 1;
 
-          const crossfadeSource = ctx.createMediaElementSource(crossfadeAudio);
+          // Don't create a separate MediaElementSource - route through existing engine
           const crossfadeGain = ctx.createGain();
           crossfadeGain.gain.value = 0;
-          crossfadeSource.connect(crossfadeGain);
           crossfadeGain.connect(ctx.destination);
 
           crossfadeAudio.addEventListener('canplaythrough', () => {
@@ -242,15 +252,18 @@ export const usePlayerStore = create<PlayerStore>()(
           crossfadeGain.gain.setValueAtTime(0, now);
           crossfadeGain.gain.linearRampToValueAtTime(get().volume, now + crossfadeDuration);
 
+          let cleaned = false;
           const cleanup = () => {
+            if (cleaned) return;
+            cleaned = true;
             crossfadeAudio.pause();
-            crossfadeSource.disconnect();
             crossfadeGain.disconnect();
             audio.removeEventListener('ended', cleanup);
+            crossfadeAudio.removeEventListener('ended', cleanup);
             set({ crossfadeAudio: null, isCrossfading: false });
           };
 
-          crossfadeAudio.addEventListener('ended', cleanup);
+          crossfadeAudio.addEventListener('ended', cleanup, { once: true });
           audio.addEventListener('ended', cleanup, { once: true });
 
           setTimeout(() => {
@@ -286,7 +299,9 @@ export const usePlayerStore = create<PlayerStore>()(
           }, crossfadeDuration * 1000);
         } else {
           audio.src = `/api/tracks/${nextTrack.id}/stream`;
-          audio.play().catch(() => {});
+          audioEngine.resume().then(() => {
+            audio.play().catch((e) => console.warn('Play failed:', e));
+          });
           api.tracks.play(nextTrack.id).catch(() => {});
 
           // Update MediaSession metadata for next track
@@ -325,7 +340,9 @@ export const usePlayerStore = create<PlayerStore>()(
 
         const prevTrack = queue[prevIndex].track;
         audio.src = `/api/tracks/${prevTrack.id}/stream`;
-        audio.play().catch(() => {});
+        audioEngine.resume().then(() => {
+          audio.play().catch((e) => console.warn('Play failed:', e));
+        });
         api.tracks.play(prevTrack.id).catch(() => {});
 
         // Update MediaSession metadata for previous track
@@ -410,11 +427,30 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       removeFromQueue: (index) => {
-        const { queue, queueIndex } = get();
+        const { queue, queueIndex, audio } = get();
         const newQueue = queue.filter((_, i) => i !== index);
         let newIndex = queueIndex;
-        if (index < queueIndex) newIndex--;
-        if (index === queueIndex) newIndex = Math.min(newIndex, newQueue.length - 1);
+
+        if (index < queueIndex) {
+          newIndex--;
+        } else if (index === queueIndex) {
+          // Removing the currently playing track
+          if (newQueue.length === 0) {
+            // Queue is now empty
+            if (audio) audio.pause();
+            set({ queue: [], queueIndex: -1, currentTrack: null, isPlaying: false });
+            return;
+          }
+          newIndex = Math.min(newIndex, newQueue.length - 1);
+          // Update current track to the new track at newIndex
+          const newTrack = newQueue[newIndex].track;
+          if (audio) {
+            audio.src = `/api/tracks/${newTrack.id}/stream`;
+          }
+          set({ queue: newQueue, queueIndex: newIndex, currentTrack: newTrack });
+          return;
+        }
+
         set({ queue: newQueue, queueIndex: Math.max(0, newIndex) });
       },
 
