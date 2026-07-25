@@ -117,7 +117,7 @@ export default function NowPlaying() {
 
           {/* Close button */}
           <button
-            onClick={toggleNowPlaying}
+            onPointerDown={(e) => { e.stopPropagation(); toggleNowPlaying(); }}
             style={{ touchAction: 'manipulation' }}
             className="absolute top-4 left-4 z-20 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
           >

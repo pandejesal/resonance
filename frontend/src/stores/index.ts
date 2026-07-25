@@ -156,15 +156,27 @@ export const usePlayerStore = create<PlayerStore>()(
         const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless } = get();
         if (!audio || queue.length === 0) return;
 
-        let nextIndex = queueIndex + 1;
-
-        if (nextIndex >= queue.length) {
-          if (repeat === 'all') {
-            nextIndex = 0;
-          } else {
+        let nextIndex;
+        if (shuffle) {
+          const availableIndices = queue
+            .map((_, i) => i)
+            .filter(i => i !== queueIndex);
+          if (availableIndices.length === 0) {
             audio.pause();
             set({ isPlaying: false });
             return;
+          }
+          nextIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+        } else {
+          nextIndex = queueIndex + 1;
+          if (nextIndex >= queue.length) {
+            if (repeat === 'all') {
+              nextIndex = 0;
+            } else {
+              audio.pause();
+              set({ isPlaying: false });
+              return;
+            }
           }
         }
 
@@ -178,9 +190,9 @@ export const usePlayerStore = create<PlayerStore>()(
           set({ isCrossfading: true });
 
           const crossfadeAudio = new Audio();
+          crossfadeAudio.crossOrigin = 'anonymous';
           crossfadeAudio.src = `/api/tracks/${nextTrack.id}/stream`;
           crossfadeAudio.volume = 1;
-          crossfadeAudio.load();
 
           const crossfadeSource = ctx.createMediaElementSource(crossfadeAudio);
           const crossfadeGain = ctx.createGain();
@@ -188,7 +200,10 @@ export const usePlayerStore = create<PlayerStore>()(
           crossfadeSource.connect(crossfadeGain);
           crossfadeGain.connect(ctx.destination);
 
-          crossfadeAudio.play().catch(() => {});
+          crossfadeAudio.addEventListener('canplaythrough', () => {
+            crossfadeAudio.play().catch(() => {});
+          }, { once: true });
+          crossfadeAudio.load();
           api.tracks.play(nextTrack.id).catch(() => {});
 
           const now = ctx.currentTime;
@@ -225,7 +240,7 @@ export const usePlayerStore = create<PlayerStore>()(
               queueIndex: nextIndex,
               isPlaying: true,
               progress: 0,
-              duration: crossfadeAudio.duration * 1000,
+              duration: (crossfadeAudio.duration || 0) * 1000,
             });
           }, crossfadeDuration * 1000);
         } else {
