@@ -161,11 +161,13 @@ pub struct MatchedTrack {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SpotifyTrack {
     pub track: Option<SpotifyTrackInner>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SpotifyTrackInner {
     pub name: String,
     pub artists: Vec<SpotifyArtist>,
@@ -176,27 +178,32 @@ pub struct SpotifyTrackInner {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SpotifyArtist {
     pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SpotifyAlbum {
     pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SpotifyPlaylist {
     pub name: Option<String>,
     pub tracks: Option<SpotifyPlaylistTracks>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SpotifyPlaylistTracks {
     pub items: Vec<SpotifyTrack>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct YoutubeMusicTrack {
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -206,12 +213,14 @@ pub struct YoutubeMusicTrack {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct YoutubeMusicPlaylist {
     pub title: Option<String>,
     pub content: Option<Vec<YoutubeMusicTrack>>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct AppleMusicTrack {
     pub name: Option<String>,
     pub artist: Option<String>,
@@ -221,12 +230,14 @@ pub struct AppleMusicTrack {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct AppleMusicPlaylist {
     pub name: Option<String>,
     pub tracks: Option<Vec<AppleMusicTrack>>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SoundCloudTrack {
     pub title: Option<String>,
     pub user: Option<SoundCloudUser>,
@@ -235,6 +246,7 @@ pub struct SoundCloudTrack {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SoundCloudUser {
     pub username: Option<String>,
 }

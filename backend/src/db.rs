@@ -86,6 +86,7 @@ pub mod db {
     }
 }
 
+#[allow(dead_code)]
 pub fn create_schema() -> String {
     r#"
     CREATE TABLE IF NOT EXISTS libraries (

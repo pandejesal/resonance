@@ -35,12 +35,6 @@ struct CommitInfo {
     message: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct GitHubCompare {
-    ahead_by: i32,
-    status: String,
-}
-
 fn get_bundled_version() -> String {
     std::fs::read_to_string("VERSION")
         .unwrap_or_else(|_| "0.0.0".to_string())

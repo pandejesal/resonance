@@ -89,20 +89,6 @@ fn parse_time_tag(tag: &str) -> Option<u32> {
     Some(minutes * 60 * 1000 + seconds * 1000 + millis)
 }
 
-pub fn to_lrc(lines: &[LrcLine]) -> String {
-    let mut result = String::new();
-    for line in lines {
-        let minutes = line.time_ms / 60_000;
-        let seconds = (line.time_ms % 60_000) / 1000;
-        let millis = line.time_ms % 1000;
-        result.push_str(&format!(
-            "[{:02}:{:02}.{:03}]{}\n",
-            minutes, seconds, millis, line.text
-        ));
-    }
-    result
-}
-
 pub async fn fetch_from_lrclib(
     client: &Client,
     artist: &str,

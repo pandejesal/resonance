@@ -35,6 +35,7 @@ impl Scanner {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_scanning(&self, library_id: &str) -> bool {
         self.libraries
             .get(library_id)
@@ -66,6 +67,7 @@ impl Scanner {
         state
     }
 
+    #[allow(dead_code)]
     pub fn stop_scanning(&self, library_id: &str) {
         if let Some(state) = self.libraries.get(library_id) {
             state.is_scanning.store(false, Ordering::Relaxed);

@@ -22,6 +22,8 @@ import type {
   UserInfo,
   LoginResponse,
   CastTarget,
+  SmartPlaylistRule,
+  TranscodeConfig,
 } from '../types';
 
 const BASE_URL = '/api';

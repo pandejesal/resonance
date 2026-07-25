@@ -128,6 +128,7 @@ pub struct Playlist {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code)]
 pub struct PlaylistTrack {
     pub playlist_id: String,
     pub track_id: String,
@@ -147,6 +148,7 @@ pub struct Library {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code)]
 pub struct ScanProgress {
     pub library_id: String,
     pub files_found: i32,
@@ -158,6 +160,7 @@ pub struct ScanProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AudioInfo {
     pub format: String,
     pub codec: String,
@@ -170,6 +173,7 @@ pub struct AudioInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct QueryParams {
     pub page: Option<i32>,
     pub per_page: Option<i32>,
@@ -261,6 +265,7 @@ pub struct DedupePlaylistRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct GeneratePlaylistRequest {
     pub name: String,
     pub source: String, // "library", "genre", "artist", "mood", "recently_played", "unplayed", "top_rated"
@@ -289,6 +294,7 @@ pub struct PlaylistToolResult {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct WSMessage {
     pub msg_type: String,
     pub data: serde_json::Value,
@@ -308,6 +314,7 @@ pub struct ImportConfirmRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ImportConfirmTrack {
     pub title: String,
     pub artist: String,

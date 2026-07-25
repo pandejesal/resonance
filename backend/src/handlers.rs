@@ -1860,6 +1860,7 @@ pub async fn confirm_import(
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 pub struct DeviceTrack {
     pub path: String,
     pub title: String,

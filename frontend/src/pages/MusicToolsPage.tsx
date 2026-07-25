@@ -132,8 +132,8 @@ export default function MusicToolsPage() {
               <div className="flex flex-wrap gap-2">
                 {selectedTracks.map((track, i) => (
                   <span key={i} className="inline-flex items-center gap-1 px-2 py-1 bg-surface-2 rounded-lg text-xs">
-                    <span className={`w-4 h-4 rounded text-[8px] font-bold text-white flex items-center justify-center ${platformColor(track.platform)}`}>
-                      {platformIcon(track.platform)}
+                    <span className={`w-4 h-4 rounded text-[8px] font-bold text-white flex items-center justify-center ${platformColor(track.platform || '')}`}>
+                      {platformIcon(track.platform || '')}
                     </span>
                     {track.artist} - {track.title}
                     <button onClick={() => toggleTrack(track)} className="ml-1 text-tertiary hover:text-accent-400">×</button>
@@ -171,8 +171,8 @@ export default function MusicToolsPage() {
                   <p className="text-sm font-medium text-primary truncate">{track.title}</p>
                   <p className="text-xs text-secondary truncate">{track.artist} · {track.album}</p>
                 </div>
-                <span className={`w-7 h-7 rounded-md text-[10px] font-bold text-white flex items-center justify-center shrink-0 ${platformColor(track.platform)}`}>
-                  {platformIcon(track.platform)}
+                <span className={`w-7 h-7 rounded-md text-[10px] font-bold text-white flex items-center justify-center shrink-0 ${platformColor(track.platform || '')}`}>
+                  {platformIcon(track.platform || '')}
                 </span>
                 <span className="text-xs text-tertiary shrink-0">{formatDuration(track.duration_ms)}</span>
                 {track.url && (

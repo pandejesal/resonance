@@ -26,19 +26,6 @@ fn playlist_id_enc(id: &str) -> String {
     format!("pl{}", id)
 }
 
-fn strip_prefix(id: &str) -> &str {
-    if id.len() > 2
-        && (id.starts_with("s")
-            || id.starts_with("al")
-            || id.starts_with("ar")
-            || id.starts_with("pl"))
-    {
-        &id[2..]
-    } else {
-        id
-    }
-}
-
 fn strip_song_prefix(id: &str) -> &str {
     if id.starts_with('s') && id.len() > 1 {
         &id[1..]
@@ -49,14 +36,6 @@ fn strip_song_prefix(id: &str) -> &str {
 
 fn strip_album_prefix(id: &str) -> &str {
     if id.starts_with("al") && id.len() > 2 {
-        &id[2..]
-    } else {
-        id
-    }
-}
-
-fn strip_artist_prefix(id: &str) -> &str {
-    if id.starts_with("ar") && id.len() > 2 {
         &id[2..]
     } else {
         id

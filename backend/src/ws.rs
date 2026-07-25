@@ -9,11 +9,13 @@ use crate::models::{Track, WSMessage};
 
 pub type WsClients = DashMap<String, actix_ws::Session>;
 
+#[allow(dead_code)]
 pub struct WsSession {
     client_id: String,
     subscriptions: HashSet<String>,
 }
 
+#[allow(dead_code)]
 pub async fn ws_handler(
     req: HttpRequest,
     body: web::Payload,

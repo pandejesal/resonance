@@ -39,6 +39,9 @@ export interface Track {
   library_id: string;
   fingerprint?: string;
   waveform_peaks?: string;
+  platform?: string;
+  thumbnail?: string;
+  url?: string;
 }
 
 export interface Album {
