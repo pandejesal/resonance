@@ -117,8 +117,10 @@ export default function NowPlaying() {
 
           {/* Close button */}
           <button
-            onPointerDown={(e) => { e.stopPropagation(); toggleNowPlaying(); }}
-            style={{ touchAction: 'manipulation' }}
+            onPointerDown={(e) => { e.stopPropagation(); }}
+            onTouchStart={(e) => { e.stopPropagation(); toggleNowPlaying(); }}
+            onClick={(e) => { e.stopPropagation(); toggleNowPlaying(); }}
+            style={{ touchAction: 'manipulation', pointerEvents: 'auto' }}
             className="absolute top-4 left-4 z-20 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

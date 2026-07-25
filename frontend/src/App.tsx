@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useUIStore } from './stores';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { useUIStore, usePlayerStore } from './stores';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MiniPlayer from './components/MiniPlayer';
@@ -22,6 +22,28 @@ import EqualizerPage from './pages/EqualizerPage';
 import TransferPage from './pages/TransferPage';
 import ImportPage from './pages/ImportPage';
 
+function BackButtonHandler() {
+  const navigate = useNavigate();
+  const { nowPlayingOpen, toggleNowPlaying } = useUIStore();
+
+  useEffect(() => {
+    window.history.pushState({ page: 'resonance' }, '', window.location.href);
+
+    const handlePopState = () => {
+      if (nowPlayingOpen) {
+        toggleNowPlaying();
+      } else {
+        window.history.pushState({ page: 'resonance' }, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [nowPlayingOpen, toggleNowPlaying, navigate]);
+
+  return null;
+}
+
 export default function App() {
   const { theme } = useUIStore();
 
@@ -31,6 +53,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <BackButtonHandler />
       <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">
         <UpdateBanner />
 
