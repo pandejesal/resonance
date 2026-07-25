@@ -22,6 +22,12 @@ pub struct AppState {
     pub cast_targets: Arc<Mutex<HashMap<String, CastTarget>>>,
 }
 
+pub fn sanitize_sql(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != '\'' && *c != '"' && *c != ';' && *c != '\\' && *c != '\0')
+        .collect::<String>()
+}
+
 pub async fn get_libraries(data: web::Data<AppState>) -> HttpResponse {
     let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries ORDER BY name")
         .fetch_all(&data.db)
@@ -277,32 +283,25 @@ pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String
 pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams>) -> HttpResponse {
     let per_page = query.per_page.unwrap_or(50).min(500);
 
-    // Input validation: strip dangerous characters from string parameters
-    let sanitize = |s: &str| -> String {
-        s.chars()
-            .filter(|c| *c != '\'' && *c != '"' && *c != ';' && *c != '\\' && *c != '\0')
-            .collect::<String>()
-    };
-
     let mut where_clauses = vec!["1=1".to_string()];
 
     if let Some(ref artist) = query.artist {
-        where_clauses.push(format!("artist = '{}'", sanitize(artist)));
+        where_clauses.push(format!("artist = '{}'", sanitize_sql(artist)));
     }
     if let Some(ref album) = query.album {
-        where_clauses.push(format!("album = '{}'", sanitize(album)));
+        where_clauses.push(format!("album = '{}'", sanitize_sql(album)));
     }
     if let Some(ref genre) = query.genre {
-        where_clauses.push(format!("genre = '{}'", sanitize(genre)));
+        where_clauses.push(format!("genre = '{}'", sanitize_sql(genre)));
     }
     if let Some(year) = query.year {
         where_clauses.push(format!("year = {}", year));
     }
     if let Some(ref folder) = query.folder {
-        where_clauses.push(format!("folder LIKE '{}%'", sanitize(folder)));
+        where_clauses.push(format!("folder LIKE '{}%'", sanitize_sql(folder)));
     }
     if let Some(ref mood) = query.mood {
-        where_clauses.push(format!("mood = '{}'", sanitize(mood)));
+        where_clauses.push(format!("mood = '{}'", sanitize_sql(mood)));
     }
     if let Some(min_rating) = query.min_rating {
         where_clauses.push(format!("rating >= {}", min_rating));
@@ -1198,17 +1197,17 @@ pub async fn generate_playlist(
     match body.source.as_str() {
         "genre" => {
             if let Some(ref genre) = body.source_value {
-                where_clauses.push(format!("genre = '{}'", genre.replace('\'', "''")));
+                where_clauses.push(format!("genre = '{}'", sanitize_sql(genre)));
             }
         }
         "artist" => {
             if let Some(ref artist) = body.source_value {
-                where_clauses.push(format!("artist LIKE '%{}%'", artist.replace('\'', "''")));
+                where_clauses.push(format!("artist LIKE '%{}%'", sanitize_sql(artist)));
             }
         }
         "mood" => {
             if let Some(ref mood) = body.source_value {
-                where_clauses.push(format!("mood = '{}'", mood.replace('\'', "''")));
+                where_clauses.push(format!("mood = '{}'", sanitize_sql(mood)));
             }
         }
         "recently_played" => {
@@ -1503,15 +1502,26 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
     let path_str = query.path.as_deref().unwrap_or("/");
 
     let path = PathBuf::from(path_str);
-    if !path.is_dir() {
+
+    // Canonicalize to resolve symlinks and .. segments, then verify it's a directory
+    let canonical = match path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Path does not exist or is not accessible"}));
+        }
+    };
+
+    if !canonical.is_dir() {
         return HttpResponse::BadRequest()
             .json(serde_json::json!({"error": "Path is not a directory"}));
     }
 
+    // Use canonical path for listing
     let mut entries: Vec<BrowseEntry> = Vec::new();
 
     // Add parent directory link
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = canonical.parent() {
         entries.push(BrowseEntry {
             name: "..".to_string(),
             path: parent.to_string_lossy().to_string(),
@@ -1519,7 +1529,7 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
         });
     }
 
-    if let Ok(read_dir) = std::fs::read_dir(&path) {
+    if let Ok(read_dir) = std::fs::read_dir(&canonical) {
         for entry in read_dir.flatten() {
             let metadata = match entry.metadata() {
                 Ok(m) => m,
@@ -1547,7 +1557,7 @@ pub async fn browse_directory(query: web::Query<BrowseQuery>) -> HttpResponse {
     entries[1..].sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     HttpResponse::Ok().json(serde_json::json!({
-        "current": path_str,
+        "current": canonical.to_string_lossy(),
         "entries": entries,
     }))
 }
@@ -2500,6 +2510,7 @@ pub async fn update_transcode_settings(
 pub async fn stream_track_transcoded(
     data: web::Data<AppState>,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
     let id = path.into_inner();
 
@@ -2509,7 +2520,7 @@ pub async fn stream_track_transcoded(
         .unwrap_or_else(|_| "false".to_string()) == "true";
 
     if !transcode_enabled {
-        return stream_track_raw(&data.db, &id).await;
+        return stream_track_raw(&data.db, &id, &req).await;
     }
 
     let format = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_format'")
@@ -2574,7 +2585,7 @@ pub async fn stream_track_transcoded(
                         .body(stream)
                 }
                 Err(_) => {
-                    stream_track_raw(&data.db, &id).await
+                    stream_track_raw(&data.db, &id, &req).await
                 }
             }
         }
@@ -2582,7 +2593,7 @@ pub async fn stream_track_transcoded(
     }
 }
 
-async fn stream_track_raw(db: &SqlitePool, id: &str) -> HttpResponse {
+async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpResponse {
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(id)
         .fetch_one(db)
@@ -2602,11 +2613,20 @@ async fn stream_track_raw(db: &SqlitePool, id: &str) -> HttpResponse {
 
     let mime = get_mime_type(&track.format);
 
-    match std::fs::read(file_path) {
-        Ok(data) => HttpResponse::Ok()
-            .content_type(mime)
-            .append_header(("Accept-Ranges", "bytes"))
-            .body(data),
+    match actix_files::NamedFile::open(file_path) {
+        Ok(f) => {
+            let mut response = f.into_response(req);
+            response.headers_mut().insert(
+                HeaderName::from_static("accept-ranges"),
+                HeaderValue::from_static("bytes"),
+            );
+            response.headers_mut().insert(
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_str(mime)
+                    .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+            );
+            response
+        }
         Err(_) => HttpResponse::NotFound().finish(),
     }
 }

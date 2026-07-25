@@ -168,6 +168,7 @@ export default function NowPlaying() {
             onClick={(e) => { e.stopPropagation(); toggleNowPlaying(); }}
             style={{ touchAction: 'manipulation', pointerEvents: 'auto' }}
             className="absolute top-4 left-4 z-20 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
+            aria-label="Close full player"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -257,13 +258,14 @@ export default function NowPlaying() {
             </AnimatePresence>
           </div>
 
-          {/* Lyrics button */}
+            {/* Lyrics button */}
           <button
             onClick={toggleLyrics}
             style={{ touchAction: 'manipulation' }}
             className={`absolute top-4 right-4 z-20 px-3 py-1.5 rounded-full text-sm transition-all active:scale-95 ${
               lyricsOpen ? 'bg-brand-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
             }`}
+            aria-label={lyricsOpen ? 'Hide lyrics' : 'Show lyrics'}
           >
             Lyrics
           </button>
@@ -393,6 +395,7 @@ export default function NowPlaying() {
                 onClick={previous}
                 style={{ touchAction: 'manipulation' }}
                 className="p-3 text-white/60 hover:text-white active:text-white active:scale-90 transition-all"
+                aria-label="Previous track"
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -403,6 +406,7 @@ export default function NowPlaying() {
                 onClick={togglePlay}
                 style={{ touchAction: 'manipulation' }}
                 className="w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center active:scale-90 transition-transform"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
                   <svg className="w-7 h-7 text-black" fill="currentColor" viewBox="0 0 24 24">
@@ -419,6 +423,7 @@ export default function NowPlaying() {
                 onClick={next}
                 style={{ touchAction: 'manipulation' }}
                 className="p-3 text-white/60 hover:text-white active:text-white active:scale-90 transition-all"
+                aria-label="Next track"
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -434,6 +439,7 @@ export default function NowPlaying() {
                 className={`p-2 transition-colors active:scale-90 ${
                   shuffle ? 'text-brand-500' : 'text-white/50 hover:text-white'
                 }`}
+                aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
@@ -446,6 +452,7 @@ export default function NowPlaying() {
                 className={`p-2 transition-colors active:scale-90 ${
                   repeat !== 'off' ? 'text-brand-500' : 'text-white/50 hover:text-white'
                 }`}
+                aria-label={`Repeat: ${repeat}`}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   {repeat === 'one' ? (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { useUIStore, usePlayerStore, useAuthStore, useCastStore } from '../stores';
@@ -38,7 +38,7 @@ export default function SettingsPage() {
   const [updaterUpdating, setUpdaterUpdating] = useState(false);
   const [updaterMessage, setUpdaterMessage] = useState('');
   const [deviceScanning, setDeviceScanning] = useState(false);
-  const [deviceScanResult, setDeviceScanResult] = useState<string>('');
+  const [deviceScanResult, setDeviceScanResult] = useState('');
   const { user } = useAuthStore();
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -58,6 +58,7 @@ export default function SettingsPage() {
   const [newCastHost, setNewCastHost] = useState('');
   const [newCastPort, setNewCastPort] = useState('8008');
   const [newCastProtocol, setNewCastProtocol] = useState('chromecast');
+  const scanPollRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
   useEffect(() => {
     api.libraries.list()
@@ -86,6 +87,10 @@ export default function SettingsPage() {
         .catch(console.error)
         .finally(() => setUsersLoading(false));
     }
+
+    return () => {
+      Object.values(scanPollRefs.current).forEach(clearInterval);
+    };
   }, [user]);
 
   const handleAdd = async () => {
@@ -105,19 +110,28 @@ export default function SettingsPage() {
     try {
       await api.libraries.scan(id);
 
+      // Clear any existing poll for this library
+      if (scanPollRefs.current[id]) {
+        clearInterval(scanPollRefs.current[id]);
+      }
+
       const poll = setInterval(async () => {
         try {
           const progress = await api.libraries.scanProgress(id);
           setScanProgress((prev) => ({ ...prev, [id]: progress }));
           if (!progress.is_scanning) {
             clearInterval(poll);
+            delete scanPollRefs.current[id];
             const libs = await api.libraries.list();
             setLibraries(libs);
           }
         } catch {
           clearInterval(poll);
+          delete scanPollRefs.current[id];
         }
       }, 1000);
+
+      scanPollRefs.current[id] = poll;
     } catch (e) {
       console.error('Failed to start scan:', e);
     }

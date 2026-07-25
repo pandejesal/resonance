@@ -37,6 +37,7 @@ export default function QueuePanel() {
                 <button
                   onClick={clearQueue}
                   className="text-xs text-secondary hover:text-primary transition-colors"
+                  aria-label="Clear queue"
                 >
                   Clear
                 </button>
@@ -44,6 +45,7 @@ export default function QueuePanel() {
               <button
                 onClick={toggleQueue}
                 className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+                aria-label="Close queue"
               >
                 <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -167,6 +169,7 @@ function QueueItemRow({
       <button
         onClick={onRemove}
         className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 transition-all"
+        aria-label={`Remove ${item.track.title} from queue`}
       >
         <svg className="w-4 h-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

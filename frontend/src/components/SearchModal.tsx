@@ -75,6 +75,9 @@ export default function SearchModal() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
             onClick={toggleSearch}
+            role="button"
+            aria-label="Close search"
+            tabIndex={-1}
           />
 
           <motion.div
@@ -97,6 +100,7 @@ export default function SearchModal() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search songs, artists, albums..."
                   className="flex-1 bg-transparent text-primary placeholder-tertiary outline-none text-lg"
+                  aria-label="Search music library"
                 />
                 <kbd className="hidden sm:block text-xs text-tertiary px-2 py-1 rounded-lg bg-white/5">
                   ESC
