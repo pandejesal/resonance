@@ -227,6 +227,7 @@ export default function MiniPlayer() {
         <button
           onClick={toggleNowPlaying}
           className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 album-shadow active:scale-95 transition-transform"
+          aria-label="Open full player"
         >
           {currentTrack.has_artwork ? (
             <img
@@ -270,6 +271,7 @@ export default function MiniPlayer() {
           <button
             onClick={previous}
             className="p-3 text-white/60 hover:text-white active:text-white transition-colors"
+            aria-label="Previous track"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -279,6 +281,7 @@ export default function MiniPlayer() {
           <button
             onClick={togglePlay}
             className="w-11 h-11 rounded-full bg-white flex items-center justify-center active:scale-90 transition-transform"
+            aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
               <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24">
@@ -294,6 +297,7 @@ export default function MiniPlayer() {
           <button
             onClick={next}
             className="p-3 text-white/60 hover:text-white active:text-white transition-colors"
+            aria-label="Next track"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -303,6 +307,7 @@ export default function MiniPlayer() {
           <button
             onClick={toggleQueue}
             className={`p-3 transition-colors ${queueOpen ? 'text-brand-500' : 'text-white/60 hover:text-white'}`}
+            aria-label={queueOpen ? 'Close queue' : 'Open queue'}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />

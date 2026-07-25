@@ -51,8 +51,9 @@ class MainActivity : AppCompatActivity() {
             val path = getPathFromUri(it)
             Log.i(TAG, "Selected folder: $path")
             webView.post {
+                // Use JSONObject.quote() to prevent JavaScript injection
                 webView.evaluateJavascript(
-                    "if(window.__onFolderSelected) window.__onFolderSelected('$path');",
+                    "if(window.__onFolderSelected) window.__onFolderSelected(${org.json.JSONObject.quote(path)});",
                     null
                 )
             }
@@ -102,15 +103,16 @@ class MainActivity : AppCompatActivity() {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            allowFileAccess = true
-            allowContentAccess = true
             mediaPlaybackRequiresUserGesture = false
-            allowFileAccessFromFileURLs = true
-            allowUniversalAccessFromFileURLs = true
+
+            // Security: disable file access (not needed for HTTP-loaded UI)
+            allowFileAccess = false
+            allowContentAccess = false
+            allowFileAccessFromFileURLs = false
+            allowUniversalAccessFromFileURLs = false
 
             // Performance optimizations for POCO C31 (Helio G35)
             cacheMode = WebSettings.LOAD_DEFAULT
-            setRenderPriority(WebSettings.RenderPriority.HIGH)
             databaseEnabled = true
 
             // Proper viewport for 720x1560 display
@@ -189,19 +191,20 @@ class MainActivity : AppCompatActivity() {
     private fun requestMiuiAutostartIfNeeded() {
         if (!isMiui()) return
 
-        val autostartAllowed = try {
+        val prefs = getPrefs()
+        if (prefs.getBoolean("miui_autostart_shown", false)) return
+
+        try {
             val intent = Intent()
             intent.setClassName(
                 "com.miui.securitycenter",
                 "com.miui.permcenter.autostart.AutoStartManagementActivity"
             )
             startActivity(intent)
-            true
+            prefs.edit().putBoolean("miui_autostart_shown", true).apply()
         } catch (e: Exception) {
-            // Not a MIUI device or activity not found
-            false
+            Log.w(TAG, "MIUI autostart settings not available: ${e.message}")
         }
-        Log.i(TAG, "MIUI autostart prompt shown: $autostartAllowed")
     }
 
     /**
@@ -362,7 +365,14 @@ class MainActivity : AppCompatActivity() {
         </html>
     """.trimIndent()
 
-    private fun getErrorHtml(error: String): String = """
+    private fun getErrorHtml(error: String): String {
+        // HTML-escape the error string to prevent XSS
+        val safeError = error
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+        return """
         <!DOCTYPE html>
         <html>
         <head>
@@ -398,7 +408,7 @@ class MainActivity : AppCompatActivity() {
           <button class="btn-primary" onclick="connect()">Connect</button>
           <button class="btn-secondary" onclick="retry()">Retry Local</button>
           <p class="status" id="status"></p>
-          <p class="err">$error</p>
+          <p class="err">$safeError</p>
         </div>
         <script>
         function connect(){
@@ -416,6 +426,7 @@ class MainActivity : AppCompatActivity() {
         </body>
         </html>
     """.trimIndent()
+    }
 
     // ── JavaScript Bridge ────────────────────────────────────────────
 

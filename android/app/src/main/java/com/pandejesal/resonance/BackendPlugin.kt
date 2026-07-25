@@ -6,7 +6,10 @@ import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 
-class BackendPlugin(private val context: Context) {
+class BackendPlugin(context: Context) {
+
+    // Use applicationContext to prevent Activity leak
+    private val context = context.applicationContext
 
     companion object {
         private const val TAG = "BackendPlugin"

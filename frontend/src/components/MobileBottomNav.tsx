@@ -88,6 +88,8 @@ export default function MobileBottomNav() {
                     navigate(tab.path);
                   }
                 }}
+                aria-label={tab.label}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors',
                   active ? 'text-brand-500' : 'text-white/50'

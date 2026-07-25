@@ -277,25 +277,32 @@ pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String
 pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams>) -> HttpResponse {
     let per_page = query.per_page.unwrap_or(50).min(500);
 
+    // Input validation: strip dangerous characters from string parameters
+    let sanitize = |s: &str| -> String {
+        s.chars()
+            .filter(|c| *c != '\'' && *c != '"' && *c != ';' && *c != '\\' && *c != '\0')
+            .collect::<String>()
+    };
+
     let mut where_clauses = vec!["1=1".to_string()];
 
     if let Some(ref artist) = query.artist {
-        where_clauses.push(format!("artist = '{}'", artist.replace('\'', "''")));
+        where_clauses.push(format!("artist = '{}'", sanitize(artist)));
     }
     if let Some(ref album) = query.album {
-        where_clauses.push(format!("album = '{}'", album.replace('\'', "''")));
+        where_clauses.push(format!("album = '{}'", sanitize(album)));
     }
     if let Some(ref genre) = query.genre {
-        where_clauses.push(format!("genre = '{}'", genre.replace('\'', "''")));
+        where_clauses.push(format!("genre = '{}'", sanitize(genre)));
     }
     if let Some(year) = query.year {
         where_clauses.push(format!("year = {}", year));
     }
     if let Some(ref folder) = query.folder {
-        where_clauses.push(format!("folder LIKE '{}%'", folder.replace('\'', "''")));
+        where_clauses.push(format!("folder LIKE '{}%'", sanitize(folder)));
     }
     if let Some(ref mood) = query.mood {
-        where_clauses.push(format!("mood = '{}'", mood.replace('\'', "''")));
+        where_clauses.push(format!("mood = '{}'", sanitize(mood)));
     }
     if let Some(min_rating) = query.min_rating {
         where_clauses.push(format!("rating >= {}", min_rating));

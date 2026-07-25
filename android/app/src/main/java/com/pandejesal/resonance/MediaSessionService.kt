@@ -28,6 +28,7 @@ class MediaSessionService : Service() {
         private const val ACTION_STOP = "com.pandejesal.resonance.STOP"
         private const val ACTION_MEDIA_COMMAND = "com.pandejesal.resonance.MEDIA_COMMAND"
 
+        @Volatile
         var instance: MediaSessionService? = null
             private set
 
@@ -41,7 +42,9 @@ class MediaSessionService : Service() {
         }
     }
 
+    @Volatile
     private var artworkBitmap: Bitmap? = null
+    private var artworkThread: Thread? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -55,8 +58,14 @@ class MediaSessionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Handle media control actions from notification buttons
         when (intent?.action) {
-            ACTION_PLAY, ACTION_PAUSE, ACTION_NEXT, ACTION_PREV, ACTION_STOP -> {
+            ACTION_PLAY, ACTION_PAUSE, ACTION_NEXT, ACTION_PREV -> {
                 sendCommand(intent.action!!)
+                return START_NOT_STICKY
+            }
+            ACTION_STOP -> {
+                sendCommand(ACTION_STOP)
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
                 return START_NOT_STICKY
             }
         }
@@ -79,7 +88,9 @@ class MediaSessionService : Service() {
     }
 
     private fun loadArtworkAsync(artworkUrl: String) {
-        Thread {
+        // Cancel any previous artwork load
+        artworkThread?.interrupt()
+        artworkThread = Thread {
             try {
                 val fullUrl = if (artworkUrl.startsWith("/")) {
                     "http://127.0.0.1:8080$artworkUrl"
@@ -91,14 +102,23 @@ class MediaSessionService : Service() {
                     connectTimeout = 5000
                     readTimeout = 5000
                 }
-                connection.getInputStream().use { stream ->
-                    artworkBitmap = BitmapFactory.decodeStream(stream)
+                try {
+                    connection.getInputStream().use { stream ->
+                        artworkBitmap = BitmapFactory.decodeStream(stream)
+                    }
+                    Log.d(TAG, "Artwork loaded successfully")
+                } finally {
+                    (connection as? java.net.HttpURLConnection)?.disconnect()
                 }
-                Log.d(TAG, "Artwork loaded successfully")
+            } catch (e: InterruptedException) {
+                Log.d(TAG, "Artwork load cancelled")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to load artwork: ${e.message}")
             }
-        }.start()
+        }.apply {
+            name = "artwork-loader"
+            start()
+        }
     }
 
     private fun buildNotification(title: String, artist: String, isPlaying: Boolean): Notification {
@@ -203,6 +223,9 @@ class MediaSessionService : Service() {
 
     override fun onDestroy() {
         instance = null
+        artworkThread?.interrupt()
+        artworkBitmap?.recycle()
+        artworkBitmap = null
         Log.i(TAG, "MediaSessionService destroyed")
         super.onDestroy()
     }

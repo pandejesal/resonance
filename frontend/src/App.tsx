@@ -9,6 +9,7 @@ import NowPlaying from './components/NowPlaying';
 import QueuePanel from './components/QueuePanel';
 import SearchModal from './components/SearchModal';
 import UpdateBanner from './components/UpdateBanner';
+import ErrorBoundary from './components/ErrorBoundary';
 import MobileBottomNav from './components/MobileBottomNav';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
@@ -112,17 +113,19 @@ export default function App() {
   return (
     <BrowserRouter>
       <BackButtonHandler />
-      <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">
-        <UpdateBanner />
+        <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">
+          <UpdateBanner />
 
-        <div className="flex flex-1 min-h-0">
-          <Sidebar />
+          <div className="flex flex-1 min-h-0">
+            <Sidebar />
 
-          <div className="flex-1 flex flex-col min-h-0 lg:ml-64">
-            <Header />
-            <AnimatedRoutes />
+            <div className="flex-1 flex flex-col min-h-0 lg:ml-64">
+              <Header />
+              <ErrorBoundary>
+                <AnimatedRoutes />
+              </ErrorBoundary>
+            </div>
           </div>
-        </div>
 
         <MiniPlayer />
         <MobileBottomNav />

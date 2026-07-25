@@ -83,7 +83,10 @@ pub async fn start_server(
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allow_any_origin()
+            .allowed_origin("http://localhost:5173")
+            .allowed_origin("http://127.0.0.1:5173")
+            .allowed_origin("http://127.0.0.1:8080")
+            .allowed_origin("http://localhost:8080")
             .allow_any_method()
             .allow_any_header()
             .supports_credentials()
