@@ -56,13 +56,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-tauri-msi
-          path: src-tauri/target/release/bundle/msi/*.msi
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            target/release/bundle/msi/*.msi
 
       - name: Upload Portable EXE
         uses: actions/upload-artifact@v4
         with:
           name: windows-tauri-exe
-          path: src-tauri/target/release/resonance.exe
+          path: |
+            src-tauri/target/release/resonance.exe
+            target/release/resonance.exe
 
   build-linux:
     runs-on: ubuntu-latest
