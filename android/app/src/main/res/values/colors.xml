@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand colors -->
+    <color name="brand_primary">#1DB954</color>
+    <color name="brand_dark">#158A3E</color>
+    <color name="accent_red">#E53935</color>
+
+    <!-- Surface colors -->
+    <color name="surface_0">#0F0F14</color>
+    <color name="surface_1">#16161E</color>
+    <color name="surface_2">#1E1E2A</color>
+
+    <!-- Launcher icon background -->
+    <color name="ic_launcher_background">#1DB954</color>
+</resources>
