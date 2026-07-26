@@ -21,6 +21,27 @@ use scanner::Scanner;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+async fn spa_fallback(
+    req: actix_web::HttpRequest,
+    static_dir: actix_web::web::Data<String>,
+    index_path: actix_web::web::Data<String>,
+) -> actix_web::HttpResponse {
+    let path = req.path();
+    if path.starts_with("/api/") || path.starts_with("/rest/") {
+        return actix_web::HttpResponse::NotFound().json(serde_json::json!({"error": "Not found"}));
+    }
+    let file_path = format!("{}{}", static_dir.get_ref(), path);
+    if std::path::Path::new(&file_path).is_file() {
+        actix_files::NamedFile::open(&file_path)
+            .expect("File should exist")
+            .into_response(&req)
+    } else {
+        actix_files::NamedFile::open(index_path.get_ref())
+            .expect("index.html not found")
+            .into_response(&req)
+    }
+}
+
 pub async fn start_server(
     database_url: &str,
     host: &str,
@@ -94,16 +115,15 @@ pub async fn start_server(
             .max_age(3600);
 
         let index_path = format!("{}/index.html", static_dir_owned);
-        let static_files = actix_files::Files::new("/", &static_dir_owned)
-            .index_file("index.html")
-            .default_handler(
-                actix_files::NamedFile::open(&index_path).expect("index.html not found"),
-            );
+        let static_dir_data = web::Data::new(static_dir_owned.clone());
+        let index_path_data = web::Data::new(index_path);
 
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
             .app_data(state.clone())
+            .app_data(static_dir_data)
+            .app_data(index_path_data)
             .configure(subsonic::configure)
             .route("/api/auth/login", web::post().to(handlers::login_handler))
             .route("/api/auth/logout", web::post().to(handlers::logout_handler))
@@ -316,7 +336,7 @@ pub async fn start_server(
             .route("/api/stats/database", web::get().to(handlers::get_database_stats))
             .route("/api/ws", web::get().to(ws::ws_handler))
             .app_data(web::Data::new(ws_clients.clone()))
-            .service(static_files)
+            .default_service(web::to(spa_fallback))
     })
     .bind((host, port))?
     .run()
@@ -403,17 +423,15 @@ pub mod android {
                         .max_age(3600);
 
                     let index_path = format!("{}/index.html", static_dir_owned);
-                    let static_files = actix_files::Files::new("/", &static_dir_owned)
-                        .index_file("index.html")
-                        .default_handler(
-                            actix_files::NamedFile::open(&index_path)
-                                .expect("index.html not found"),
-                        );
+                    let static_dir_data = web::Data::new(static_dir_owned.clone());
+                    let index_path_data = web::Data::new(index_path);
 
                     App::new()
                         .wrap(cors)
                         .wrap(middleware::Logger::default())
                         .app_data(state.clone())
+                        .app_data(static_dir_data)
+                        .app_data(index_path_data)
                         .configure(subsonic::configure)
                         .route("/api/auth/login", web::post().to(handlers::login_handler))
                         .route("/api/auth/logout", web::post().to(handlers::logout_handler))
@@ -626,7 +644,7 @@ pub mod android {
                         .route("/api/stats/database", web::get().to(handlers::get_database_stats))
                         .route("/api/ws", web::get().to(ws::ws_handler))
                         .app_data(web::Data::new(ws_clients.clone()))
-                        .service(static_files)
+                        .default_service(web::to(spa_fallback))
                 })
                 .bind((host.as_str(), port_u16));
 
