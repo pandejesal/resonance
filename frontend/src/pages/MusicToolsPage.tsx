@@ -17,9 +17,12 @@ export default function MusicToolsPage() {
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const resp = await fetch(`/api/tools/search?q=${encodeURIComponent(query)}&platform=${platform}&limit=30`);
-      const data = await resp.json();
-      setResults(data.tracks || []);
+      const data = await api.search(query, 30);
+      let tracks = data.tracks || [];
+      if (platform !== 'all') {
+        tracks = tracks.filter((t: Track) => (t.platform || 'local') === platform);
+      }
+      setResults(tracks);
     } catch (e) {
       console.error('Search failed:', e);
     } finally {
@@ -217,20 +220,13 @@ function TransferTab() {
     if (!playlistId.trim()) return;
     setTransferring(true);
     try {
-      const resp = await fetch('/api/tools/transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_platform: source,
-          source_playlist_id: playlistId,
-          target_platform: target,
-          target_playlist_name: playlistName || 'Transferred with Resonance',
-          source_token: token || undefined,
-          target_token: targetToken || undefined,
-        }),
+      setProgress({
+        status: 'not_implemented',
+        total: 0,
+        matched: 0,
+        not_found: 0,
+        message: 'Cross-platform playlist transfer requires server-side OAuth integration. Use the Import page to import playlists from files.',
       });
-      const data = await resp.json();
-      setProgress(data.progress || data);
     } catch (e) {
       console.error('Transfer failed:', e);
     } finally {
@@ -286,14 +282,17 @@ function TransferTab() {
 
       {progress && (
         <div className="surface-card p-4">
-          <h3 className="font-medium text-primary mb-2">Transfer Progress</h3>
+          <h3 className="font-medium text-primary mb-2">Transfer Status</h3>
           <div className="space-y-1 text-sm">
-            <p className="text-secondary">Status: <span className="text-primary">{progress.status}</span></p>
-            <p className="text-secondary">Total: <span className="text-primary">{progress.total}</span></p>
-            <p className="text-secondary">Matched: <span className="text-brand-400">{progress.matched}</span></p>
-            <p className="text-secondary">Not Found: <span className="text-accent-400">{progress.not_found}</span></p>
-            {progress.playlist_url && (
-              <p className="text-secondary">URL: <a href={progress.playlist_url} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">{progress.playlist_url}</a></p>
+            {progress.message ? (
+              <p className="text-secondary">{progress.message}</p>
+            ) : (
+              <>
+                <p className="text-secondary">Status: <span className="text-primary">{progress.status}</span></p>
+                <p className="text-secondary">Total: <span className="text-primary">{progress.total}</span></p>
+                <p className="text-secondary">Matched: <span className="text-brand-400">{progress.matched}</span></p>
+                <p className="text-secondary">Not Found: <span className="text-accent-400">{progress.not_found}</span></p>
+              </>
             )}
           </div>
         </div>
@@ -324,34 +323,80 @@ function PlaylistUtilsTab() {
 
   const applyTool = async (tool: string) => {
     setActiveTool(tool);
-    try {
-      const resp = await fetch('/api/tools/playlist-tool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tracks, tool }),
-      });
-      const data = await resp.json();
-      if (data.tracks) setResult(data.tracks);
-      if (data.analysis) setAnalysis(data.analysis);
-    } catch (e) {
-      console.error(e);
+    let output = [...tracks];
+    let analysisResult = analysis;
+
+    switch (tool) {
+      case 'shuffle':
+        output = [...tracks].sort(() => Math.random() - 0.5);
+        break;
+      case 'smart_shuffle':
+        output = [...tracks].sort(() => Math.random() - 0.5);
+        break;
+      case 'sort_artist':
+        output = [...tracks].sort((a, b) => (a.artist || '').localeCompare(b.artist || ''));
+        break;
+      case 'sort_title':
+        output = [...tracks].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        break;
+      case 'sort_duration':
+        output = [...tracks].sort((a, b) => (a.duration_ms || 0) - (b.duration_ms || 0));
+        break;
+      case 'sort_album':
+        output = [...tracks].sort((a, b) => (a.album || '').localeCompare(b.album || ''));
+        break;
+      case 'deduplicate': {
+        const seen = new Set<string>();
+        output = tracks.filter(t => {
+          const key = `${t.title}::${t.artist}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        break;
+      }
+      case 'analyze': {
+        const artistSet = new Set(tracks.map(t => t.artist).filter(Boolean));
+        const titleMap = new Map<string, Track[]>();
+        tracks.forEach(t => {
+          const key = `${t.title}::${t.artist}`;
+          const arr = titleMap.get(key) || [];
+          arr.push(t);
+          titleMap.set(key, arr);
+        });
+        const dupes = Array.from(titleMap.entries()).filter(([, v]) => v.length > 1);
+        analysisResult = {
+          total_tracks: tracks.length,
+          unique_artists: artistSet.size,
+          duplicates: dupes.map(([, v]) => v[0]),
+        };
+        setAnalysis(analysisResult);
+        output = tracks;
+        break;
+      }
+      case 'group_artist': {
+        const sorted = [...tracks].sort((a, b) => (a.artist || '').localeCompare(b.artist || ''));
+        output = sorted;
+        break;
+      }
+      case 'group_album': {
+        const sorted = [...tracks].sort((a, b) => (a.album || '').localeCompare(b.album || ''));
+        output = sorted;
+        break;
+      }
     }
+    setResult(output);
   };
 
   const handleExport = async () => {
     try {
-      const resp = await fetch('/api/tools/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tracks: result, name: 'Resonance Export' }),
-      });
-      const data = await resp.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = 'playlist.json';
       a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
     }
@@ -446,13 +491,15 @@ function SpotifyToolsTab() {
     if (!token.trim()) return;
     setLoading(true);
     try {
-      const resp = await fetch('/api/tools/spotify/playlists', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
+      const resp = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+        headers: { 'Authorization': `Bearer ${token}` },
       });
+      if (!resp.ok) {
+        console.error('Spotify API error:', resp.status);
+        return;
+      }
       const data = await resp.json();
-      setPlaylists(data.playlists || []);
+      setPlaylists(data.items || []);
     } catch (e) {
       console.error(e);
     }
@@ -492,11 +539,11 @@ function SpotifyToolsTab() {
         <div className="surface-card p-4">
           <h3 className="font-medium text-primary mb-3">Your Playlists ({playlists.length})</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {playlists.map((pl, i) => (
+            {playlists.map((pl: any, i: number) => (
               <div key={i} className="p-3 rounded-xl bg-surface-2 hover:bg-surface-3 transition-colors cursor-pointer">
-                {pl.image_url && <img src={pl.image_url} alt="" className="w-full aspect-square rounded-lg object-cover mb-2" />}
+                {pl.images?.[0]?.url && <img src={pl.images[0].url} alt="" className="w-full aspect-square rounded-lg object-cover mb-2" />}
                 <p className="text-sm font-medium text-primary truncate">{pl.name}</p>
-                <p className="text-xs text-tertiary">{pl.track_count} tracks</p>
+                <p className="text-xs text-tertiary">{pl.tracks?.total || 0} tracks</p>
               </div>
             ))}
           </div>
