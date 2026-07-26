@@ -4,10 +4,12 @@ mod handlers;
 mod importer;
 mod lyrics;
 mod models;
+mod ratelimit;
 mod scanner;
 mod scrobble;
 mod subsonic;
 mod updater;
+mod watcher;
 mod ws;
 
 use actix_cors::Cors;
