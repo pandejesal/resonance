@@ -21,13 +21,6 @@ use scanner::Scanner;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-const PUBLIC_ROUTES: &[&str] = &[
-    "/api/auth/login",
-    "/api/auth/register",
-    "/api/auth/guest",
-    "/api/health",
-];
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();

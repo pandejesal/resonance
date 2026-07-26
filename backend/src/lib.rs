@@ -21,36 +21,6 @@ use scanner::Scanner;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub fn is_auth_valid(req: &actix_web::HttpRequest) -> bool {
-    let token = req.cookie("auth_token")
-        .map(|c| c.value().to_string())
-        .or_else(|| {
-            req.headers().get("Authorization")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.strip_prefix("Bearer "))
-                .map(|v| v.to_string())
-        });
-
-    token.and_then(|t| crate::auth::validate_token(&t)).is_some()
-}
-
-pub fn require_auth_from_request(req: &actix_web::HttpRequest) -> Result<crate::models::UserInfo, actix_web::HttpResponse> {
-    let token = req.cookie("auth_token")
-        .map(|c| c.value().to_string())
-        .or_else(|| {
-            req.headers().get("Authorization")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.strip_prefix("Bearer "))
-                .map(|v| v.to_string())
-        });
-
-    match token.and_then(|t| crate::auth::validate_token(&t)) {
-        Some(user) => Ok(user),
-        None => Err(actix_web::HttpResponse::Unauthorized()
-            .json(serde_json::json!({"error": "Authentication required"}))),
-    }
-}
-
 pub async fn start_server(
     database_url: &str,
     host: &str,
@@ -425,7 +395,8 @@ pub mod android {
                 let static_dir_owned = static_dir2.clone();
                 let server = HttpServer::new(move || {
                     let cors = Cors::default()
-                        .allow_any_origin()
+                        .allowed_origin("http://127.0.0.1:8080")
+                        .allowed_origin("http://localhost:8080")
                         .allow_any_method()
                         .allow_any_header()
                         .supports_credentials()

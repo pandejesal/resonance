@@ -3519,6 +3519,7 @@ pub async fn login_handler(
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
+        .secure(false)
         .max_age(actix_web::cookie::time::Duration::days(7))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3535,6 +3536,7 @@ pub async fn logout_handler() -> HttpResponse {
     let cookie = actix_web::cookie::Cookie::build("auth_token", "")
         .path("/")
         .http_only(true)
+        .secure(false)
         .max_age(actix_web::cookie::time::Duration::seconds(-1))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3579,6 +3581,11 @@ pub async fn create_user(
     let id = uuid::Uuid::new_v4().to_string();
     let password_hash = hash_password(&body.password);
     let role = body.role.as_deref().unwrap_or("user");
+
+    if !["user", "admin", "guest"].contains(&role) {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Invalid role. Must be one of: user, admin, guest"}));
+    }
 
     let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
         .bind(&id)
@@ -3666,7 +3673,13 @@ pub async fn delete_user(
         .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        Ok(r) => {
+            if r.rows_affected() == 0 {
+                HttpResponse::NotFound().json(serde_json::json!({"error": "User not found"}))
+            } else {
+                HttpResponse::Ok().json(serde_json::json!({"success": true}))
+            }
+        }
         Err(e) => HttpResponse::InternalServerError()
             .json(serde_json::json!({"error": e.to_string()})),
     }
@@ -3681,6 +3694,18 @@ pub async fn register_handler(
     if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
         return HttpResponse::TooManyRequests()
             .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
+    if body.username.trim().is_empty() || body.username.len() < 3 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Username must be at least 3 characters"}));
+    }
+    if body.username.len() > 50 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Username must be 50 characters or fewer"}));
+    }
+    if body.password.is_empty() || body.password.len() < 4 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Password must be at least 4 characters"}));
+    }
+    if body.password.len() > 128 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Password must be 128 characters or fewer"}));
     }
     let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
         .bind(&body.username)
@@ -3714,6 +3739,7 @@ pub async fn register_handler(
             let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
                 .path("/")
                 .http_only(true)
+                .secure(false)
                 .max_age(actix_web::cookie::time::Duration::days(7))
                 .same_site(actix_web::cookie::SameSite::Lax)
                 .finish();
@@ -3761,11 +3787,12 @@ pub async fn guest_login_handler(
         username: guest_username.to_string(),
         role: "guest".to_string(),
     };
-    let token = crate::auth::create_token(&user_info);
+    let token = crate::auth::create_guest_token();
 
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
+        .secure(false)
         .max_age(actix_web::cookie::time::Duration::hours(24))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();

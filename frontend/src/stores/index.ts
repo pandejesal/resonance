@@ -650,6 +650,7 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // Ignore logout errors
         }
+        localStorage.removeItem('resonance-auth');
         set({ user: null, isAuthenticated: false, isGuest: false });
       },
 
@@ -672,6 +673,14 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'resonance-auth' && e.newValue === null) {
+      useAuthStore.getState().logout();
+    }
+  });
+}
 
 interface CastState {
   targets: CastTarget[];
