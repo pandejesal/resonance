@@ -163,7 +163,14 @@ async fn main() -> std::io::Result<()> {
             .route("/api/genres", web::get().to(handlers::get_genres))
             .route("/api/folders", web::get().to(handlers::get_folders))
             .route("/api/search", web::get().to(handlers::search))
+            .route("/api/tracks/recently-played", web::get().to(handlers::get_recently_played))
+            .route("/api/tracks/most-played", web::get().to(handlers::get_most_played))
             .route("/api/stats", web::get().to(handlers::get_stats))
+            .route("/api/history", web::get().to(handlers::get_listening_history))
+            .route(
+                "/api/tracks/{id}/play/record",
+                web::post().to(handlers::record_play),
+            )
             .route("/api/playlists", web::get().to(handlers::get_playlists))
             .route("/api/playlists", web::post().to(handlers::create_playlist))
             .route(
@@ -295,6 +302,8 @@ async fn main() -> std::io::Result<()> {
                 "/api/playlists/{id}/smart/rules",
                 web::put().to(handlers::update_smart_playlist_rules),
             )
+            .route("/api/tracks/batch-delete", web::post().to(handlers::batch_delete_tracks))
+            .route("/api/tracks/batch-rating", web::put().to(handlers::batch_update_rating))
             .route(
                 "/api/tracks/duplicates",
                 web::get().to(handlers::find_duplicates),
@@ -316,6 +325,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/cast/play", web::post().to(handlers::cast_play))
             .route("/api/cast/control", web::post().to(handlers::cast_control))
             .route("/api/health", web::get().to(handlers::health_check))
+            .route("/api/stats/database", web::get().to(handlers::get_database_stats))
             .service(static_files)
     })
     .bind((host.as_str(), port))?

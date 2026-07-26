@@ -16,6 +16,7 @@ export default function LibraryPage() {
   const [sort, setSort] = useState<string>('date_added');
   const [order, setOrder] = useState<string>('DESC');
   const [filter, setFilter] = useState<string>('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { viewMode } = useUIStore();
   const observerRef = useRef<HTMLDivElement>(null);
   const filterTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -95,6 +96,50 @@ export default function LibraryPage() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = tracks.length > 0 && tracks.every(t => selectedIds.has(t.id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(tracks.map(t => t.id)));
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await api.tracks.batchDelete(Array.from(selectedIds));
+      setTracks(prev => prev.filter(t => !selectedIds.has(t.id)));
+      setTotal(prev => prev - selectedIds.size);
+      setSelectedIds(new Set());
+    } catch (e) {
+      console.error('Failed to batch delete:', e);
+    }
+  };
+
+  const handleBatchRate = async (rating: number) => {
+    if (selectedIds.size === 0) return;
+    try {
+      await api.tracks.batchRate(Array.from(selectedIds), rating);
+      setTracks(prev =>
+        prev.map(t => selectedIds.has(t.id) ? { ...t, rating } : t)
+      );
+      setSelectedIds(new Set());
+    } catch (e) {
+      console.error('Failed to batch rate:', e);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -107,6 +152,19 @@ export default function LibraryPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Select All */}
+          {tracks.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className={cn(
+                'btn-secondary px-3 text-sm',
+                allSelected && 'bg-brand-600/20 text-brand-400 border-brand-500/40'
+              )}
+            >
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+          )}
+
           {/* Search */}
           <div className="relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -161,7 +219,11 @@ export default function LibraryPage() {
         </div>
       ) : tracks.length > 0 ? (
         <>
-          <TrackList tracks={tracks} />
+          <TrackList
+            tracks={tracks}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+          />
 
           {/* Infinite scroll sentinel */}
           <div ref={observerRef} className="h-4" />
@@ -183,6 +245,33 @@ export default function LibraryPage() {
       ) : (
         <div className="text-center py-12 text-secondary">
           {filter ? 'No tracks match your filter' : 'No tracks found. Scan a library to get started.'}
+        </div>
+      )}
+
+      {/* Floating Batch Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-900 border border-white/10 rounded-xl px-6 py-3 shadow-2xl flex items-center gap-4 z-50">
+          <span className="text-sm text-secondary whitespace-nowrap">
+            {selectedIds.size} track{selectedIds.size !== 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={handleBatchDelete}
+            className="px-3 py-1.5 text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition-colors"
+          >
+            Delete Selected
+          </button>
+          <button
+            onClick={() => handleBatchRate(5)}
+            className="px-3 py-1.5 text-sm font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/20 transition-colors"
+          >
+            Rate 5★
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="px-3 py-1.5 text-sm font-medium bg-white/5 text-secondary border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Clear Selection
+          </button>
         </div>
       )}
     </div>

@@ -211,6 +211,7 @@ pub struct SearchResults {
     pub tracks: Vec<Track>,
     pub albums: Vec<Album>,
     pub artists: Vec<Artist>,
+    pub playlists: Vec<Playlist>,
     pub total: i64,
 }
 

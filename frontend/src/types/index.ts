@@ -107,6 +107,7 @@ export interface SearchResults {
   tracks: Track[];
   albums: Album[];
   artists: Artist[];
+  playlists: Playlist[];
   total: number;
 }
 
@@ -326,4 +327,11 @@ export interface CastTarget {
   is_connected: boolean;
   current_track_id: string | null;
   volume: number;
+}
+
+export interface ListeningHistoryEntry {
+  track_id: string;
+  title: string;
+  artist: string;
+  played_at: string;
 }

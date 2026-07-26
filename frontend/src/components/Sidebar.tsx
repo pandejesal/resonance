@@ -12,6 +12,7 @@ const navItems = [
   { path: '/genres', label: 'Genres', icon: GenresIcon },
   { path: '/folders', label: 'Folders', icon: FoldersIcon },
   { path: '/playlists', label: 'Playlists', icon: PlaylistsIcon },
+  { path: '/history', label: 'History', icon: HistoryIcon },
   { path: '/stats', label: 'Statistics', icon: StatsIcon },
   { path: '/tools', label: 'Music Tools', icon: ToolsIcon },
   { path: '/import', label: 'Import', icon: ImportIcon },
@@ -175,6 +176,14 @@ function PlaylistsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+    </svg>
+  );
+}
+
+function HistoryIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   );
 }

@@ -812,14 +812,58 @@ pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, r
     .await
     .unwrap_or_default();
 
-    let total = tracks.len() as i64 + albums.len() as i64 + artists.len() as i64;
+    let playlists = sqlx::query_as::<_, Playlist>(
+        "SELECT * FROM playlists WHERE name LIKE ?1 OR description LIKE ?1 ORDER BY name LIMIT ?2"
+    )
+    .bind(&q)
+    .bind(limit / 2)
+    .fetch_all(&data.db)
+    .await
+    .unwrap_or_default();
+
+    let total = tracks.len() as i64 + albums.len() as i64 + artists.len() as i64 + playlists.len() as i64;
 
     HttpResponse::Ok().json(SearchResults {
         tracks,
         albums,
         artists,
+        playlists,
         total,
     })
+}
+
+pub async fn get_recently_played(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20).min(100);
+    let tracks = sqlx::query_as::<_, Track>(
+        "SELECT t.* FROM tracks t INNER JOIN listening_history lh ON t.id = lh.track_id GROUP BY t.id ORDER BY MAX(lh.played_at) DESC LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(&data.db)
+    .await
+    .unwrap_or_default();
+    HttpResponse::Ok().json(tracks)
+}
+
+pub async fn get_most_played(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20).min(100);
+    let tracks = sqlx::query_as::<_, Track>(
+        "SELECT * FROM tracks WHERE play_count > 0 ORDER BY play_count DESC LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(&data.db)
+    .await
+    .unwrap_or_default();
+    HttpResponse::Ok().json(tracks)
 }
 
 pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
@@ -1045,6 +1089,46 @@ fn get_mime_type(format: &str) -> &str {
         "dsf" | "dff" => "audio/dsd",
         _ => "application/octet-stream",
     }
+}
+
+// ── Listening History ──────────────────────────────────────────────
+
+pub async fn get_listening_history(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(50).min(200);
+    let rows = sqlx::query_as::<_, (String, String, String, Option<i64>)>(
+        "SELECT lh.track_id, t.title, t.artist, lh.played_at FROM listening_history lh JOIN tracks t ON lh.track_id = t.id ORDER BY lh.played_at DESC LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(&data.db)
+    .await
+    .unwrap_or_default();
+    let history: Vec<serde_json::Value> = rows.iter().map(|(id, title, artist, played)| {
+        serde_json::json!({"track_id": id, "title": title, "artist": artist, "played_at": played})
+    }).collect();
+    HttpResponse::Ok().json(history)
+}
+
+pub async fn record_play(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    let track_id = path.into_inner();
+    let _ = sqlx::query("INSERT INTO listening_history (track_id) VALUES (?)")
+        .bind(&track_id)
+        .execute(&data.db)
+        .await;
+    let _ = sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
+        .bind(&track_id)
+        .execute(&data.db)
+        .await;
+    HttpResponse::Ok().json(serde_json::json!({"ok": true}))
 }
 
 // ── Playlist Tools ────────────────────────────────────────────────
@@ -1484,6 +1568,55 @@ pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>, 
         "genres": genres,
         "formats": formats,
     }))
+}
+
+// ── Batch Operations ─────────────────────────────────────────────
+
+pub async fn batch_delete_tracks(
+    data: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    let ids = body.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let ids: Vec<String> = ids.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    if ids.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+    }
+    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+    let query = format!("DELETE FROM tracks WHERE id IN ({})", placeholders.join(","));
+    let mut q = sqlx::query(&query);
+    for id in &ids { q = q.bind(id); }
+    match q.execute(&data.db).await {
+        Ok(r) => HttpResponse::Ok().json(serde_json::json!({"deleted": r.rows_affected()})),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn batch_update_rating(
+    data: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    let ids = body.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let rating = body.get("rating").and_then(|v| v.as_i64());
+    let ids: Vec<String> = ids.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    let rating = match rating {
+        Some(r) if (0..=5).contains(&r) => r as i32,
+        _ => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid rating (0-5)"})),
+    };
+    if ids.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+    }
+    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+    let query = format!("UPDATE tracks SET rating = ? WHERE id IN ({})", placeholders.join(","));
+    let mut q = sqlx::query(&query).bind(rating);
+    for id in &ids { q = q.bind(id); }
+    match q.execute(&data.db).await {
+        Ok(r) => HttpResponse::Ok().json(serde_json::json!({"updated": r.rows_affected()})),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+    }
 }
 
 // ── Helper functions ──────────────────────────────────────────────
@@ -2831,16 +2964,72 @@ async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpR
 }
 
 pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
-    let db_ok = sqlx::query("SELECT 1").execute(&data.db).await.is_ok();
-    let version = std::fs::read_to_string("VERSION")
-        .unwrap_or_else(|_| "0.0.0".to_string())
-        .trim()
-        .to_string();
+    let db_ok = sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(&data.db)
+        .await
+        .is_ok();
+    
+    let track_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let library_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM libraries")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let scanning = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM libraries WHERE is_scanning = 1)")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(false);
 
+    let version = env!("CARGO_PKG_VERSION");
+    
     HttpResponse::Ok().json(serde_json::json!({
         "status": if db_ok { "ok" } else { "degraded" },
-        "db": if db_ok { "connected" } else { "disconnected" },
-        "version": version
+        "version": version,
+        "database": if db_ok { "connected" } else { "disconnected" },
+        "tracks": track_count,
+        "libraries": library_count,
+        "users": user_count,
+        "scanning": scanning,
+    }))
+}
+
+pub async fn get_database_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
+    
+    let total_size: i64 = sqlx::query_scalar("SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let total_plays: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(play_count), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let total_duration: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(duration_ms), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let total_size_bytes: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    HttpResponse::Ok().json(serde_json::json!({
+        "database_size_bytes": total_size,
+        "total_plays": total_plays,
+        "total_duration_ms": total_duration,
+        "total_size_bytes": total_size_bytes,
     }))
 }
 
@@ -3191,7 +3380,13 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
 pub async fn login_handler(
     data: web::Data<AppState>,
     body: web::Json<LoginRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
+        return HttpResponse::TooManyRequests()
+            .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ?")
         .bind(&body.username)
         .fetch_optional(&data.db)
@@ -3385,7 +3580,13 @@ pub async fn delete_user(
 pub async fn register_handler(
     data: web::Data<AppState>,
     body: web::Json<CreateUserRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
+        return HttpResponse::TooManyRequests()
+            .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
     let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
         .bind(&body.username)
         .fetch_optional(&data.db)
@@ -3436,7 +3637,13 @@ pub async fn register_handler(
 
 pub async fn guest_login_handler(
     data: web::Data<AppState>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
+        return HttpResponse::TooManyRequests()
+            .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
     let guest_username = "guest";
     let guest_id = "guest";
 

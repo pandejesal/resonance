@@ -24,6 +24,7 @@ import type {
   CastTarget,
   SmartPlaylistRule,
   TranscodeConfig,
+  ListeningHistoryEntry,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -130,6 +131,22 @@ export const api = {
       fetchJson<{ deleted: number; message: string }>('/tracks/duplicates/delete', {
         method: 'POST',
         body: JSON.stringify({ track_ids: trackIds }),
+      }),
+    recordPlay: (id: string) =>
+      fetchJson(`/tracks/${id}/play/record`, { method: 'POST' }),
+    recentlyPlayed: (limit?: number) =>
+      fetchJson<Track[]>(`/tracks/recently-played?limit=${limit || 20}`),
+    mostPlayed: (limit?: number) =>
+      fetchJson<Track[]>(`/tracks/most-played?limit=${limit || 20}`),
+    batchDelete: (ids: string[]) =>
+      fetchJson<{ deleted: number }>('/tracks/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+    batchRate: (ids: string[], rating: number) =>
+      fetchJson<{ updated: number }>('/tracks/batch-rating', {
+        method: 'PUT',
+        body: JSON.stringify({ ids, rating }),
       }),
   },
 
@@ -318,5 +335,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ target_id: targetId, action, value }),
       }),
+  },
+
+  history: {
+    get: (limit?: number) =>
+      fetchJson<ListeningHistoryEntry[]>(`/history?limit=${limit || 50}`),
   },
 };

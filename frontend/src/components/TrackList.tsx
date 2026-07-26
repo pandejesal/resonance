@@ -9,11 +9,14 @@ interface TrackListProps {
   showAlbum?: boolean;
   showArtwork?: boolean;
   showRating?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
   className?: string;
 }
 
-export default function TrackList({ tracks, showAlbum = true, showArtwork = true, showRating = true, className }: TrackListProps) {
+export default function TrackList({ tracks, showAlbum = true, showArtwork = true, showRating = true, selectedIds, onToggleSelect, className }: TrackListProps) {
   const { playTrack, currentTrack, isPlaying } = usePlayerStore();
+  const selectionMode = selectedIds !== undefined && onToggleSelect !== undefined;
 
   return (
     <div className={cn('space-y-1', className)}>
@@ -28,13 +31,47 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
             transition={{ delay: Math.min(index * 0.02, 0.5) }}
             className={cn(
               'group flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all duration-200',
-              isActive
-                ? 'bg-brand-600/20 text-brand-400'
-                : 'hover:bg-white/5 text-primary'
+              selectionMode && selectedIds?.has(track.id)
+                ? 'bg-brand-600/20 ring-1 ring-brand-500/40'
+                : isActive
+                  ? 'bg-brand-600/20 text-brand-400'
+                  : 'hover:bg-white/5 text-primary'
             )}
-            onClick={() => playTrack(track, tracks)}
+            onClick={() => {
+              if (selectionMode) {
+                onToggleSelect(track.id);
+              } else {
+                playTrack(track, tracks);
+              }
+            }}
           >
+            {/* Checkbox */}
+            {selectionMode && (
+              <div className="w-6 flex-shrink-0 flex items-center justify-center">
+                <div
+                  className={cn(
+                    'w-4 h-4 rounded border-2 flex items-center justify-center transition-all',
+                    selectedIds?.has(track.id)
+                      ? 'bg-brand-500 border-brand-500'
+                      : 'border-white/30 group-hover:border-white/50'
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSelect(track.id);
+                  }}
+                >
+                  {selectedIds?.has(track.id) && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Track number / Play indicator */}
+            {!selectionMode && (
+              <>
             <div className="w-8 text-center text-sm text-tertiary group-hover:hidden">
               {isActive && isPlaying ? (
                 <div className="flex items-center justify-center gap-[2px]">
@@ -60,6 +97,8 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
                 <path d="M8 5v14l11-7z" />
               </svg>
             </div>
+              </>
+            )}
 
             {/* Artwork */}
             {showArtwork && (

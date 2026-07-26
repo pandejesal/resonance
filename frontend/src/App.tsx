@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useUIStore, useAuthStore } from './stores';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MiniPlayer from './components/MiniPlayer';
@@ -25,6 +26,7 @@ import PlaylistToolsPage from './pages/PlaylistToolsPage';
 import EqualizerPage from './pages/EqualizerPage';
 import TransferPage from './pages/TransferPage';
 import ImportPage from './pages/ImportPage';
+import HistoryPage from './pages/HistoryPage';
 
 function BackButtonHandler() {
   const navigate = useNavigate();
@@ -74,6 +76,7 @@ function AnimatedRoutes() {
           <Route path="/equalizer" element={<EqualizerPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/transfer" element={<TransferPage />} />
+          <Route path="/history" element={<HistoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </motion.div>
@@ -92,6 +95,8 @@ export default function App() {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  useKeyboardShortcuts();
 
   if (isLoading) {
     return (
