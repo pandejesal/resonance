@@ -273,7 +273,18 @@ jobs:
       - name: Build Android APK
         run: |
           cd frontend/android
-          gradle assembleDebug --no-configuration-cache
+          chmod +x gradlew
+          ./gradlew clean assembleDebug
+
+      - name: Verify APK Signature
+        run: |
+          APK=frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK not found at $APK"
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK"
+          echo "APK signature verified successfully"
 
       - name: Verify APK
         run: |
