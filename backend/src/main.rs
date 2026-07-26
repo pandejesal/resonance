@@ -120,6 +120,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/auth/login", web::post().to(handlers::login_handler))
             .route("/api/auth/logout", web::post().to(handlers::logout_handler))
             .route("/api/auth/me", web::get().to(handlers::get_current_user))
+            .route("/api/auth/register", web::post().to(handlers::register_handler))
+            .route("/api/auth/guest", web::post().to(handlers::guest_login_handler))
             .route("/api/auth/users", web::get().to(handlers::list_users))
             .route("/api/auth/users", web::post().to(handlers::create_user))
             .route("/api/auth/users/{id}", web::delete().to(handlers::delete_user))

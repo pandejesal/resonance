@@ -30,3 +30,8 @@ docker-compose.override.yml
 # OS
 .DS_Store
 Thumbs.db
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal

@@ -421,6 +421,14 @@ pub mod android {
                         .wrap(middleware::Logger::default())
                         .app_data(state.clone())
                         .configure(subsonic::configure)
+                        .route("/api/auth/login", web::post().to(handlers::login_handler))
+                        .route("/api/auth/logout", web::post().to(handlers::logout_handler))
+                        .route("/api/auth/me", web::get().to(handlers::get_current_user))
+                        .route("/api/auth/register", web::post().to(handlers::register_handler))
+                        .route("/api/auth/guest", web::post().to(handlers::guest_login_handler))
+                        .route("/api/auth/users", web::get().to(handlers::list_users))
+                        .route("/api/auth/users", web::post().to(handlers::create_user))
+                        .route("/api/auth/users/{id}", web::delete().to(handlers::delete_user))
                         .route("/api/libraries", web::get().to(handlers::get_libraries))
                         .route("/api/libraries", web::post().to(handlers::create_library))
                         .route(
@@ -570,6 +578,26 @@ pub mod android {
                         .route(
                             "/api/import/device",
                             web::post().to(handlers::import_device_music),
+                        )
+                        .route(
+                            "/api/transfer/export",
+                            web::post().to(handlers::export_playlist),
+                        )
+                        .route(
+                            "/api/transfer/platforms",
+                            web::get().to(handlers::get_transfer_platforms),
+                        )
+                        .route(
+                            "/api/tracks/{id}/rating",
+                            web::put().to(handlers::update_track_rating),
+                        )
+                        .route(
+                            "/api/playlists/{id}/smart/evaluate",
+                            web::get().to(handlers::evaluate_smart_playlist),
+                        )
+                        .route(
+                            "/api/playlists/{id}/smart/rules",
+                            web::put().to(handlers::update_smart_playlist_rules),
                         )
                         .route(
                             "/api/tracks/duplicates",
