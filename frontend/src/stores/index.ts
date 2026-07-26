@@ -82,7 +82,7 @@ export const usePlayerStore = create<PlayerStore>()(
         const { audio, shuffle } = get();
         if (!audio) return;
 
-        const newQueue = queue
+        let newQueue = queue
           ? queue.map((t) => ({ track: t, addedAt: Date.now() }))
           : [{ track, addedAt: Date.now() }];
 
@@ -90,6 +90,15 @@ export const usePlayerStore = create<PlayerStore>()(
         if (queue) {
           startIndex = queue.findIndex((t) => t.id === track.id);
           if (startIndex === -1) startIndex = 0;
+
+          // Apply shuffle if enabled, same logic as playQueue
+          if (shuffle && newQueue.length > 1) {
+            const current = newQueue[startIndex];
+            const rest = newQueue.filter((_, i) => i !== startIndex);
+            const shuffled = shuffleArray(rest);
+            newQueue = [current, ...shuffled];
+            startIndex = 0;
+          }
         }
 
         audio.src = `/api/tracks/${track.id}/stream`;
@@ -168,17 +177,22 @@ export const usePlayerStore = create<PlayerStore>()(
 
         if (isPlaying) {
           audio.pause();
+          set({ isPlaying: false });
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'paused';
+          }
         } else {
           audioEngine.resume().then(() => {
-            audio.play().catch((e) => console.warn('Play failed:', e));
+            audio.play().then(() => {
+              set({ isPlaying: true });
+              if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'playing';
+              }
+            }).catch((e) => {
+              console.warn('Play failed:', e);
+              set({ isPlaying: false });
+            });
           });
-        }
-        const newPlaying = !isPlaying;
-        set({ isPlaying: newPlaying });
-
-        // Update MediaSession playback state
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = newPlaying ? 'playing' : 'paused';
         }
       },
 

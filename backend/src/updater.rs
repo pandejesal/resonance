@@ -45,7 +45,7 @@ fn get_bundled_version() -> String {
 pub async fn get_updater_status(db: &SqlitePool) -> UpdateStatus {
     let current_version = get_state(db, "current_version")
         .await
-        .unwrap_or_else(|| get_bundled_version());
+        .unwrap_or_else(get_bundled_version);
     let current_commit = get_state(db, "current_commit").await.unwrap_or_default();
     let latest_version = get_state(db, "latest_version").await.unwrap_or_default();
     let latest_commit = get_state(db, "latest_commit").await.unwrap_or_default();

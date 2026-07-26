@@ -45,7 +45,7 @@ pub fn parse_lrc(content: &str) -> Vec<LrcLine> {
 
         if let Some(ms) = time_ms {
             let trimmed = text.trim();
-            if !trimmed.is_empty() || lines.last().map_or(true, |l: &LrcLine| !l.text.is_empty()) {
+            if !trimmed.is_empty() || lines.last().is_none_or(|l: &LrcLine| !l.text.is_empty()) {
                 lines.push(LrcLine {
                     time_ms: ms,
                     text: trimmed.to_string(),

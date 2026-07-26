@@ -12,6 +12,12 @@ pub struct ScrobbleService {
     client: Client,
 }
 
+impl Default for ScrobbleService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScrobbleService {
     pub fn new() -> Self {
         Self {

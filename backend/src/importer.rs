@@ -623,12 +623,11 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
                 break;
             }
 
-            if norm_title.contains(&norm_db_title) || norm_db_title.contains(&norm_title) {
-                if norm_artist.contains(&norm_db_artist) || norm_db_artist.contains(&norm_artist) {
-                    if best_match.as_ref().map_or(true, |(_, _, conf)| *conf < 0.9) {
-                        best_match = Some((id.clone(), "fuzzy".to_string(), 0.9));
-                    }
-                }
+            if (norm_title.contains(&norm_db_title) || norm_db_title.contains(&norm_title))
+                && (norm_artist.contains(&norm_db_artist) || norm_db_artist.contains(&norm_artist))
+                && best_match.as_ref().is_none_or(|(_, _, conf)| *conf < 0.9)
+            {
+                best_match = Some((id.clone(), "fuzzy".to_string(), 0.9));
             }
 
             if (norm_title.contains(&norm_db_title) || norm_db_title.contains(&norm_title))

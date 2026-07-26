@@ -12,7 +12,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct AppState {
@@ -28,7 +28,8 @@ pub fn sanitize_sql(s: &str) -> String {
         .collect::<String>()
 }
 
-pub async fn get_libraries(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries ORDER BY name")
         .fetch_all(&data.db)
         .await;
@@ -44,7 +45,9 @@ pub async fn get_libraries(data: web::Data<AppState>) -> HttpResponse {
 pub async fn create_library(
     data: web::Data<AppState>,
     body: web::Json<CreateLibraryRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = uuid::Uuid::new_v4().to_string();
     let result = sqlx::query("INSERT INTO libraries (id, name, path) VALUES (?, ?, ?)")
         .bind(&id)
@@ -71,7 +74,8 @@ pub async fn create_library(
     }
 }
 
-pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
 
     let lib = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
@@ -201,30 +205,30 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, re
             .bind(&track.album)
             .bind(&track.album_artist)
             .bind(&track.genre)
-            .bind(&track.year)
-            .bind(&track.track_number)
-            .bind(&track.disc_number)
-            .bind(&track.duration_ms)
+            .bind(track.year)
+            .bind(track.track_number)
+            .bind(track.disc_number)
+            .bind(track.duration_ms)
             .bind(&track.file_path)
             .bind(&track.file_name)
-            .bind(&track.file_size)
+            .bind(track.file_size)
             .bind(&track.file_modified)
             .bind(&track.format)
-            .bind(&track.sample_rate)
-            .bind(&track.bit_depth)
-            .bind(&track.bitrate)
-            .bind(&track.channels)
+            .bind(track.sample_rate)
+            .bind(track.bit_depth)
+            .bind(track.bitrate)
+            .bind(track.channels)
             .bind(&track.codec)
             .bind(&track.composer)
             .bind(&track.lyricist)
             .bind(&track.mood)
-            .bind(&track.bpm)
-            .bind(&track.rating)
-            .bind(&track.play_count)
-            .bind(&track.skip_count)
+            .bind(track.bpm)
+            .bind(track.rating)
+            .bind(track.play_count)
+            .bind(track.skip_count)
             .bind(&track.last_played)
             .bind(&track.date_added)
-            .bind(&track.has_artwork)
+            .bind(track.has_artwork)
             .bind(&track.artwork_hash)
             .bind(&track.lyrics)
             .bind(&track.comment)
@@ -288,7 +292,8 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, re
     }))
 }
 
-pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let library_id = path.into_inner();
     let scanner = data.scanner.lock();
 
@@ -312,7 +317,8 @@ pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String
     }
 }
 
-pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams>) -> HttpResponse {
+pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let per_page = query.per_page.unwrap_or(50).min(500);
 
     let mut where_clauses = vec!["1=1".to_string()];
@@ -411,7 +417,8 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
     })
 }
 
-pub async fn get_track(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn get_track(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(&id)
@@ -428,7 +435,9 @@ pub async fn update_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<UpdateTrackRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
 
     let mut updates = vec![];
@@ -481,16 +490,16 @@ pub async fn update_track(
         query = query.bind(&body.genre);
     }
     if body.year.is_some() {
-        query = query.bind(&body.year);
+        query = query.bind(body.year);
     }
     if body.rating.is_some() {
-        query = query.bind(&body.rating);
+        query = query.bind(body.rating);
     }
     if body.mood.is_some() {
         query = query.bind(&body.mood);
     }
     if body.bpm.is_some() {
-        query = query.bind(&body.bpm);
+        query = query.bind(body.bpm);
     }
     if body.lyrics.is_some() {
         query = query.bind(&body.lyrics);
@@ -515,7 +524,8 @@ pub async fn update_track(
     }
 }
 
-pub async fn play_track(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn play_track(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
 
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
@@ -574,6 +584,7 @@ pub async fn stream_track(
     path: web::Path<String>,
     req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(&id)
@@ -619,7 +630,8 @@ pub async fn stream_track(
     }
 }
 
-pub async fn get_waveform(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn get_waveform(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
     let result = sqlx::query_scalar::<_, Option<String>>("SELECT waveform_peaks FROM tracks WHERE id = ?")
         .bind(&id)
@@ -635,7 +647,8 @@ pub async fn get_waveform(data: web::Data<AppState>, path: web::Path<String>) ->
     }
 }
 
-pub async fn get_artwork(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn get_artwork(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
 
     let cached = sqlx::query_as::<_, (Vec<u8>, String)>(
@@ -682,7 +695,8 @@ pub async fn get_artwork(data: web::Data<AppState>, path: web::Path<String>) -> 
     }
 }
 
-pub async fn get_albums(data: web::Data<AppState>, query: web::Query<QueryParams>) -> HttpResponse {
+pub async fn get_albums(data: web::Data<AppState>, query: web::Query<QueryParams>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(50).min(500);
     let offset = (page - 1) * per_page;
@@ -731,7 +745,9 @@ pub async fn get_albums(data: web::Data<AppState>, query: web::Query<QueryParams
 pub async fn get_artists(
     data: web::Data<AppState>,
     query: web::Query<QueryParams>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(50).min(500);
     let offset = (page - 1) * per_page;
@@ -762,7 +778,8 @@ pub async fn get_artists(
     })
 }
 
-pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>) -> HttpResponse {
+pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let q = format!("%{}%", query.q.replace('\'', "''"));
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = query.offset.unwrap_or(0);
@@ -805,7 +822,8 @@ pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>) -
     })
 }
 
-pub async fn get_genres(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let genres = sqlx::query_scalar::<_, String>(
         "SELECT DISTINCT genre FROM tracks WHERE genre IS NOT NULL AND genre != '' ORDER BY genre",
     )
@@ -816,7 +834,8 @@ pub async fn get_genres(data: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(genres)
 }
 
-pub async fn get_folders(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let folders =
         sqlx::query_scalar::<_, String>("SELECT DISTINCT folder FROM tracks ORDER BY folder")
             .fetch_all(&data.db)
@@ -826,7 +845,8 @@ pub async fn get_folders(data: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(folders)
 }
 
-pub async fn get_stats(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let total_tracks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
         .fetch_one(&data.db)
         .await
@@ -888,7 +908,9 @@ pub async fn get_stats(data: web::Data<AppState>) -> HttpResponse {
 pub async fn create_playlist(
     data: web::Data<AppState>,
     body: web::Json<CreatePlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = uuid::Uuid::new_v4().to_string();
 
     let result = sqlx::query(
@@ -921,7 +943,8 @@ pub async fn create_playlist(
     }
 }
 
-pub async fn get_playlists(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlists =
         sqlx::query_as::<_, Playlist>("SELECT * FROM playlists ORDER BY sort_order, name")
             .fetch_all(&data.db)
@@ -939,7 +962,9 @@ pub async fn add_track_to_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<AddTrackToPlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
     let position = body.position.unwrap_or(0);
 
@@ -971,7 +996,9 @@ pub async fn add_track_to_playlist(
 pub async fn get_playlist_tracks(
     data: web::Data<AppState>,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
 
     let tracks = sqlx::query_as::<_, Track>(
@@ -985,7 +1012,8 @@ pub async fn get_playlist_tracks(
     HttpResponse::Ok().json(tracks)
 }
 
-pub async fn delete_playlist(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn delete_playlist(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
     let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
         .bind(&id)
@@ -1025,7 +1053,9 @@ pub async fn shuffle_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<ShufflePlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
     let mode = body.mode.as_deref().unwrap_or("smart");
 
@@ -1079,7 +1109,7 @@ pub async fn shuffle_playlist(
         _ => {
             // "smart" shuffle: interleave high and low play-count tracks
             let mut by_play: Vec<(String, i32)> = tracks;
-            by_play.sort_by(|a, b| b.1.cmp(&a.1));
+            by_play.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
             let mut result = Vec::new();
             let mut low = by_play.len() / 2;
             let mut high = 0;
@@ -1117,7 +1147,9 @@ pub async fn sort_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<SortPlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
 
     let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
@@ -1176,7 +1208,9 @@ pub async fn dedupe_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<DedupePlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
     let strategy = body.strategy.as_deref().unwrap_or("title_artist");
 
@@ -1237,7 +1271,9 @@ pub async fn dedupe_playlist(
 pub async fn generate_playlist(
     data: web::Data<AppState>,
     body: web::Json<GeneratePlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let count = body.count.unwrap_or(20).min(100);
 
     let mut where_clauses = vec!["1=1".to_string()];
@@ -1337,7 +1373,9 @@ pub async fn share_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<SharePlaylistRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
 
     let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
@@ -1393,7 +1431,8 @@ pub async fn share_playlist(
     })
 }
 
-pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let playlist_id = path.into_inner();
     let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
 
@@ -1431,7 +1470,7 @@ pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>) 
     }
 
     let mut top_artists: Vec<_> = artists.into_iter().collect();
-    top_artists.sort_by(|a, b| b.1.cmp(&a.1));
+    top_artists.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
     top_artists.truncate(5);
 
     HttpResponse::Ok().json(serde_json::json!({
@@ -1592,7 +1631,7 @@ pub async fn browse_directory(
             .map(|p| canonical.starts_with(&p))
             .unwrap_or(false)
     });
-    if !allowed && canonical != PathBuf::from("/") && canonical != PathBuf::from("C:\\") {
+    if !allowed && canonical != Path::new("/") && canonical != Path::new("C:\\") {
         // Allow root listing only as fallback, but block anything outside library paths
         return HttpResponse::Forbidden()
             .json(serde_json::json!({"error": "Path is outside configured libraries"}));
@@ -1630,7 +1669,7 @@ pub async fn browse_directory(
     }
 
     if entries.len() > 1 {
-        entries[1..].sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries[1..].sort_by_key(|a| a.name.to_lowercase());
     }
 
     HttpResponse::Ok().json(serde_json::json!({
@@ -1639,7 +1678,8 @@ pub async fn browse_directory(
     }))
 }
 
-pub async fn get_scrobbling_settings(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_scrobbling_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let config = scrobble::get_scrobbling_config(&data.db).await;
     HttpResponse::Ok().json(config)
 }
@@ -1647,7 +1687,11 @@ pub async fn get_scrobbling_settings(data: web::Data<AppState>) -> HttpResponse 
 pub async fn update_scrobbling_settings(
     data: web::Data<AppState>,
     body: web::Json<UpdateScrobblingRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let mut config = scrobble::get_scrobbling_config(&data.db).await;
 
     if let Some(ref lastfm) = body.lastfm {
@@ -1668,7 +1712,11 @@ pub async fn update_scrobbling_settings(
 pub async fn test_scrobbling(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let service = query.get("service").map(|s| s.as_str()).unwrap_or("all");
     let config = scrobble::get_scrobbling_config(&data.db).await;
     let mut results = serde_json::Map::new();
@@ -1702,7 +1750,10 @@ pub async fn test_scrobbling(
     }))
 }
 
-pub async fn get_lyrics(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn get_lyrics(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
@@ -1744,7 +1795,11 @@ pub async fn update_lyrics(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<UpdateLyricsRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let result = sqlx::query("UPDATE tracks SET lyrics = ? WHERE id = ?")
@@ -1760,7 +1815,10 @@ pub async fn update_lyrics(
     }
 }
 
-pub async fn fetch_lyrics(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
+pub async fn fetch_lyrics(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
@@ -1818,12 +1876,18 @@ pub async fn fetch_lyrics(data: web::Data<AppState>, path: web::Path<String>) ->
     }
 }
 
-pub async fn get_updater_status(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_updater_status(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let status = updater::get_updater_status(&data.db).await;
     HttpResponse::Ok().json(status)
 }
 
-pub async fn check_for_updates(data: web::Data<AppState>) -> HttpResponse {
+pub async fn check_for_updates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     match updater::check_for_updates(&data.db).await {
         Ok(status) => HttpResponse::Ok().json(status),
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -1832,7 +1896,10 @@ pub async fn check_for_updates(data: web::Data<AppState>) -> HttpResponse {
     }
 }
 
-pub async fn apply_update(data: web::Data<AppState>) -> HttpResponse {
+pub async fn apply_update(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     match updater::apply_update(&data.db).await {
         Ok(message) => HttpResponse::Ok().json(serde_json::json!({
             "success": true,
@@ -1844,7 +1911,10 @@ pub async fn apply_update(data: web::Data<AppState>) -> HttpResponse {
     }
 }
 
-pub async fn get_updater_config(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_updater_config(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let config = updater::get_updater_config(&data.db).await;
     HttpResponse::Ok().json(config)
 }
@@ -1852,7 +1922,11 @@ pub async fn get_updater_config(data: web::Data<AppState>) -> HttpResponse {
 pub async fn update_updater_config(
     data: web::Data<AppState>,
     body: web::Json<updater::UpdaterConfig>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     updater::save_updater_config(&data.db, &body).await;
     let config = updater::get_updater_config(&data.db).await;
     HttpResponse::Ok().json(serde_json::json!({
@@ -1864,7 +1938,11 @@ pub async fn update_updater_config(
 pub async fn preview_import(
     data: web::Data<AppState>,
     body: web::Json<ImportPreviewRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let mut preview = match body.platform.as_str() {
         "spotify" => match crate::importer::parse_spotify(&body.content) {
             Ok(p) => p,
@@ -1903,7 +1981,11 @@ pub async fn preview_import(
 pub async fn confirm_import(
     data: web::Data<AppState>,
     body: web::Json<ImportConfirmRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = uuid::Uuid::new_v4().to_string();
 
     let result = sqlx::query(
@@ -1978,7 +2060,11 @@ pub struct DeviceScanRequest {
 pub async fn import_device_music(
     data: web::Data<AppState>,
     body: web::Json<DeviceScanRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let library_id = if let Some(id) = &body.library_id {
         id.clone()
     } else {
@@ -2081,7 +2167,10 @@ pub async fn import_device_music(
     }))
 }
 
-pub async fn get_import_formats() -> HttpResponse {
+pub async fn get_import_formats(req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     HttpResponse::Ok().json(serde_json::json!({
         "formats": [
             {
@@ -2139,7 +2228,11 @@ pub struct ExportRequest {
 pub async fn export_playlist(
     data: web::Data<AppState>,
     body: web::Json<ExportRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist =
         sqlx::query_as::<_, (String, String)>("SELECT id, name FROM playlists WHERE id = ?")
             .bind(&body.playlist_id)
@@ -2206,7 +2299,7 @@ pub async fn export_playlist(
         }
     };
 
-    let safe_name = filename.replace('"', "").replace('\n', "").replace('\r', "");
+    let safe_name = filename.replace(['"', '\n', '\r'], "");
     HttpResponse::Ok()
         .insert_header((
             "Content-Disposition",
@@ -2216,7 +2309,10 @@ pub async fn export_playlist(
         .body(content)
 }
 
-pub async fn get_transfer_platforms() -> HttpResponse {
+pub async fn get_transfer_platforms(req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     HttpResponse::Ok().json(serde_json::json!({
         "platforms": [
             {
@@ -2259,11 +2355,15 @@ pub async fn update_track_rating(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<UpdateRatingRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let rating = if let Some(r) = body.rating {
-        if r < 0 || r > 5 {
+        if !(0..=5).contains(&r) {
             return HttpResponse::BadRequest()
                 .json(serde_json::json!({"error": "Rating must be between 0 and 5"}));
         }
@@ -2299,7 +2399,11 @@ pub async fn update_track_rating(
 pub async fn evaluate_smart_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let playlist = sqlx::query_as::<_, Playlist>("SELECT * FROM playlists WHERE id = ?")
@@ -2426,14 +2530,14 @@ pub async fn evaluate_smart_playlist(
             }
             "genre" => {
                 match rule.op.as_str() {
-                    "eq" => (format!("genre = ?"), Some(rule.value.clone())),
-                    "neq" => (format!("genre <> ?"), Some(rule.value.clone())),
+                    "eq" => ("genre = ?".to_string(), Some(rule.value.clone())),
+                    "neq" => ("genre <> ?".to_string(), Some(rule.value.clone())),
                     "contains" => (
-                        format!("genre LIKE ?"),
+                        "genre LIKE ?".to_string(),
                         Some(format!("%{}%", rule.value)),
                     ),
                     "not_contains" => (
-                        format!("genre NOT LIKE ?"),
+                        "genre NOT LIKE ?".to_string(),
                         Some(format!("%{}%", rule.value)),
                     ),
                     _ => continue,
@@ -2441,14 +2545,14 @@ pub async fn evaluate_smart_playlist(
             }
             "artist" => {
                 match rule.op.as_str() {
-                    "eq" => (format!("artist = ?"), Some(rule.value.clone())),
-                    "neq" => (format!("artist <> ?"), Some(rule.value.clone())),
+                    "eq" => ("artist = ?".to_string(), Some(rule.value.clone())),
+                    "neq" => ("artist <> ?".to_string(), Some(rule.value.clone())),
                     "contains" => (
-                        format!("artist LIKE ?"),
+                        "artist LIKE ?".to_string(),
                         Some(format!("%{}%", rule.value)),
                     ),
                     "not_contains" => (
-                        format!("artist NOT LIKE ?"),
+                        "artist NOT LIKE ?".to_string(),
                         Some(format!("%{}%", rule.value)),
                     ),
                     _ => continue,
@@ -2456,14 +2560,14 @@ pub async fn evaluate_smart_playlist(
             }
             "album" => {
                 match rule.op.as_str() {
-                    "eq" => (format!("album = ?"), Some(rule.value.clone())),
-                    "neq" => (format!("album <> ?"), Some(rule.value.clone())),
+                    "eq" => ("album = ?".to_string(), Some(rule.value.clone())),
+                    "neq" => ("album <> ?".to_string(), Some(rule.value.clone())),
                     "contains" => (
-                        format!("album LIKE ?"),
+                        "album LIKE ?".to_string(),
                         Some(format!("%{}%", rule.value)),
                     ),
                     "not_contains" => (
-                        format!("album NOT LIKE ?"),
+                        "album NOT LIKE ?".to_string(),
                         Some(format!("%{}%", rule.value)),
                     ),
                     _ => continue,
@@ -2500,7 +2604,11 @@ pub async fn update_smart_playlist_rules(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<SmartPlaylistConfig>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let playlist = sqlx::query_as::<_, Playlist>("SELECT * FROM playlists WHERE id = ?")
@@ -2547,7 +2655,10 @@ pub async fn update_smart_playlist_rules(
     }
 }
 
-pub async fn get_transcode_settings(data: web::Data<AppState>) -> HttpResponse {
+pub async fn get_transcode_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let result = sqlx::query_as::<_, SettingRow>("SELECT key, value FROM settings WHERE key LIKE 'transcode_%'")
         .fetch_all(&data.db)
         .await;
@@ -2566,7 +2677,11 @@ pub async fn get_transcode_settings(data: web::Data<AppState>) -> HttpResponse {
 pub async fn update_transcode_settings(
     data: web::Data<AppState>,
     body: web::Json<TranscodeConfig>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let settings = [
         ("transcode_enabled", body.enabled.to_string()),
         ("transcode_format", body.format.clone()),
@@ -2590,6 +2705,7 @@ pub async fn stream_track_transcoded(
     path: web::Path<String>,
     req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
 
     let transcode_enabled = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_enabled'")
@@ -2730,7 +2846,10 @@ pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
 
 // ── Cast Target Handlers ──────────────────────────────────────────
 
-pub async fn list_cast_targets(data: web::Data<AppState>) -> HttpResponse {
+pub async fn list_cast_targets(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let targets = data.cast_targets.lock();
     let list: Vec<&CastTarget> = targets.values().collect();
     HttpResponse::Ok().json(list)
@@ -2739,7 +2858,11 @@ pub async fn list_cast_targets(data: web::Data<AppState>) -> HttpResponse {
 pub async fn register_cast_target(
     data: web::Data<AppState>,
     body: web::Json<CastTarget>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let target = body.into_inner();
     let id = uuid::Uuid::new_v4().to_string();
     let mut targets = data.cast_targets.lock();
@@ -2762,7 +2885,11 @@ pub async fn register_cast_target(
 pub async fn unregister_cast_target(
     data: web::Data<AppState>,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
     let mut targets = data.cast_targets.lock();
     match targets.remove(&id) {
@@ -2771,10 +2898,15 @@ pub async fn unregister_cast_target(
     }
 }
 
+#[allow(clippy::await_holding_lock)]
 pub async fn cast_play(
     data: web::Data<AppState>,
     body: web::Json<CastPlayRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let req = body.into_inner();
     let mut targets = data.cast_targets.lock();
 
@@ -2850,10 +2982,15 @@ pub async fn cast_play(
     }
 }
 
+#[allow(clippy::await_holding_lock)]
 pub async fn cast_control(
     data: web::Data<AppState>,
     body: web::Json<CastControlRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let req = body.into_inner();
     let mut targets = data.cast_targets.lock();
 
@@ -2917,7 +3054,10 @@ pub async fn cast_control(
 
 // ── Duplicate Detection ───────────────────────────────────────────
 
-pub async fn find_duplicates(data: web::Data<AppState>) -> HttpResponse {
+pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let duplicates = sqlx::query_as::<_, Track>(
         "SELECT t1.* FROM tracks t1 INNER JOIN (SELECT fingerprint, COUNT(*) as cnt FROM tracks WHERE fingerprint IS NOT NULL GROUP BY fingerprint HAVING cnt > 1) t2 ON t1.fingerprint = t2.fingerprint ORDER BY t1.fingerprint LIMIT 1000"
     )
@@ -2941,7 +3081,10 @@ pub async fn find_duplicates(data: web::Data<AppState>) -> HttpResponse {
     }))
 }
 
-pub async fn find_similar_tracks(data: web::Data<AppState>) -> HttpResponse {
+pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let duplicates = sqlx::query_as::<_, (String, i64)>(
         "SELECT LOWER(title || '|||' || artist), COUNT(*) as cnt FROM tracks GROUP BY LOWER(title || '|||' || artist) HAVING cnt > 1 ORDER BY cnt DESC LIMIT 100"
     )
@@ -2985,7 +3128,11 @@ pub struct DeleteDuplicatesRequest {
 pub async fn delete_duplicates_batch(
     data: web::Data<AppState>,
     body: web::Json<DeleteDuplicatesRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     if body.track_ids.is_empty() {
         return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
     }
@@ -3017,7 +3164,7 @@ fn hash_password(password: &str) -> String {
         .to_string()
 }
 
-fn verify_password(password: &str, hash: &str) -> bool {
+pub fn verify_password(password: &str, hash: &str) -> bool {
     let parsed_hash = match PasswordHash::new(hash) {
         Ok(h) => h,
         Err(_) => return false,

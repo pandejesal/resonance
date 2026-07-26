@@ -28,6 +28,12 @@ pub struct LibraryScanState {
     pub errors: Arc<AtomicI32>,
 }
 
+impl Default for Scanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scanner {
     pub fn new() -> Self {
         Self {
@@ -270,47 +276,39 @@ pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
     let mut chunk_samples: Vec<f32> = Vec::new();
     let mut max_in_chunk: f32 = 0.0;
 
-    loop {
-        let packet = match format.next_packet() {
-            Ok(p) => p,
-            Err(_) => break,
-        };
+    while let Ok(packet) = format.next_packet() {
         if packet.track_id() != track_id {
             continue;
         }
 
-        match decoder.decode(&packet) {
-            Ok(audio_buf_ref) => {
-                let spec = *audio_buf_ref.spec();
-                let frames = audio_buf_ref.frames();
-                let mut sample_buf = SampleBuffer::<f32>::new(frames as u64, spec);
-                sample_buf.copy_interleaved_ref(audio_buf_ref.clone());
+        if let Ok(audio_buf_ref) = decoder.decode(&packet) {
+            let spec = *audio_buf_ref.spec();
+            let frames = audio_buf_ref.frames();
+            let mut sample_buf = SampleBuffer::<f32>::new(frames as u64, spec);
+            sample_buf.copy_interleaved_ref(audio_buf_ref.clone());
 
-                let samples = sample_buf.samples();
-                // Mix to mono if needed
-                let mono: Vec<f32> = if channels > 1 {
-                    samples.chunks(channels)
-                        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                        .collect()
-                } else {
-                    samples.to_vec()
-                };
+            let samples = sample_buf.samples();
+            let mono: Vec<f32> = if channels > 1 {
+                samples.chunks(channels)
+                    .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+                    .collect()
+            } else {
+                samples.to_vec()
+            };
 
-                for &sample in &mono {
-                    let s = sample.abs();
-                    if s > max_in_chunk {
-                        max_in_chunk = s;
-                    }
-                    chunk_samples.push(s);
+            for &sample in &mono {
+                let s = sample.abs();
+                if s > max_in_chunk {
+                    max_in_chunk = s;
+                }
+                chunk_samples.push(s);
 
-                    if chunk_samples.len() >= samples_per_chunk {
-                        peaks.push(max_in_chunk);
-                        chunk_samples.clear();
-                        max_in_chunk = 0.0;
-                    }
+                if chunk_samples.len() >= samples_per_chunk {
+                    peaks.push(max_in_chunk);
+                    chunk_samples.clear();
+                    max_in_chunk = 0.0;
                 }
             }
-            Err(_) => continue,
         }
     }
 
@@ -344,25 +342,34 @@ pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
 }
 
 pub fn compute_fingerprint(file_path: &str) -> Option<String> {
-    let data = std::fs::read(file_path).ok()?;
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(file_path).ok()?;
+    let file_size = file.metadata().ok()?.len();
     let mut hasher = DefaultHasher::new();
 
     // Hash first 64KB
-    let head = &data[..65536.min(data.len())];
-    head.hash(&mut hasher);
+    let mut head = [0u8; 65536];
+    let head_len = file.read(&mut head).unwrap_or(0);
+    head[..head_len].hash(&mut hasher);
 
     // Hash last 64KB
-    if data.len() > 65536 {
-        let tail = &data[data.len() - 65536..];
+    if file_size > 65536 {
+        file.seek(SeekFrom::End(-65536)).ok()?;
+        let mut tail = [0u8; 65536];
+        file.read_exact(&mut tail).ok()?;
         tail.hash(&mut hasher);
     }
 
     // Hash file size
-    data.len().hash(&mut hasher);
+    file_size.hash(&mut hasher);
 
     // Hash middle of file
-    if data.len() > 131072 {
-        let mid = &data[data.len() / 2..data.len() / 2 + 65536];
+    if file_size > 131072 {
+        let mid_pos = file_size / 2;
+        file.seek(SeekFrom::Start(mid_pos)).ok()?;
+        let mut mid = [0u8; 65536];
+        file.read_exact(&mut mid).ok()?;
         mid.hash(&mut hasher);
     }
 

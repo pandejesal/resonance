@@ -20,6 +20,36 @@ use scanner::Scanner;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub fn is_auth_valid(req: &actix_web::HttpRequest) -> bool {
+    let token = req.cookie("auth_token")
+        .map(|c| c.value().to_string())
+        .or_else(|| {
+            req.headers().get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|v| v.to_string())
+        });
+
+    token.and_then(|t| crate::auth::validate_token(&t)).is_some()
+}
+
+pub fn require_auth_from_request(req: &actix_web::HttpRequest) -> Result<crate::models::UserInfo, actix_web::HttpResponse> {
+    let token = req.cookie("auth_token")
+        .map(|c| c.value().to_string())
+        .or_else(|| {
+            req.headers().get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|v| v.to_string())
+        });
+
+    match token.and_then(|t| crate::auth::validate_token(&t)) {
+        Some(user) => Ok(user),
+        None => Err(actix_web::HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Authentication required"}))),
+    }
+}
+
 pub async fn start_server(
     database_url: &str,
     host: &str,
@@ -585,51 +615,37 @@ pub mod android {
     }
 }
 
+/// # Safety
+///
+/// The caller must pass valid, non-null, null-terminated C strings for
+/// `database_url`, `host`, and `static_dir`.
 #[no_mangle]
-pub extern "C" fn resonance_start(
+pub unsafe extern "C" fn resonance_start(
     database_url: *const std::os::raw::c_char,
     host: *const std::os::raw::c_char,
     port: u16,
     static_dir: *const std::os::raw::c_char,
 ) {
-    unsafe {
-        let db_url = std::ffi::CStr::from_ptr(database_url)
-            .to_str()
-            .unwrap_or("/data/resonance.db");
-        let host_str = std::ffi::CStr::from_ptr(host)
-            .to_str()
-            .unwrap_or("127.0.0.1");
-        let static_str = std::ffi::CStr::from_ptr(static_dir)
-            .to_str()
-            .unwrap_or("./static");
+    let db_url = std::ffi::CStr::from_ptr(database_url)
+        .to_str()
+        .unwrap_or("/data/resonance.db")
+        .to_string();
+    let host_str = std::ffi::CStr::from_ptr(host)
+        .to_str()
+        .unwrap_or("127.0.0.1")
+        .to_string();
+    let static_str = std::ffi::CStr::from_ptr(static_dir)
+        .to_str()
+        .unwrap_or("./static")
+        .to_string();
 
-        std::env::set_var("DATABASE_URL", db_url);
-        std::env::set_var("HOST", host_str);
-        std::env::set_var("PORT", port.to_string());
-        std::env::set_var("STATIC_DIR", static_str);
-    }
+    std::env::set_var("DATABASE_URL", &db_url);
+    std::env::set_var("HOST", &host_str);
+    std::env::set_var("PORT", port.to_string());
+    std::env::set_var("STATIC_DIR", &static_str);
 
     let rt = actix_rt::System::new();
-    rt.block_on(async {
-        let db_url = unsafe {
-            std::ffi::CStr::from_ptr(database_url)
-                .to_str()
-                .unwrap_or("/data/resonance.db")
-                .to_string()
-        };
-        let host_str = unsafe {
-            std::ffi::CStr::from_ptr(host)
-                .to_str()
-                .unwrap_or("127.0.0.1")
-                .to_string()
-        };
-        let static_str = unsafe {
-            std::ffi::CStr::from_ptr(static_dir)
-                .to_str()
-                .unwrap_or("./static")
-                .to_string()
-        };
-
+    rt.block_on(async move {
         if let Err(e) = start_server(&db_url, &host_str, port, &static_str).await {
             eprintln!("Server error: {}", e);
         }
