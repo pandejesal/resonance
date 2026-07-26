@@ -140,6 +140,18 @@ export default function MiniPlayer() {
       };
 
       return () => {
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.setActionHandler('play', null);
+          navigator.mediaSession.setActionHandler('pause', null);
+          navigator.mediaSession.setActionHandler('previoustrack', null);
+          navigator.mediaSession.setActionHandler('nexttrack', null);
+          navigator.mediaSession.setActionHandler('seekto', null);
+          navigator.mediaSession.setActionHandler('seekbackward', null);
+          navigator.mediaSession.setActionHandler('seekforward', null);
+        }
+        if ((window as any).__mediaCommand) {
+          delete (window as any).__mediaCommand;
+        }
         if (audioRef.current) {
           audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
           audioRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);

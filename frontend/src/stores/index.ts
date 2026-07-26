@@ -21,6 +21,7 @@ interface PlayerStore {
   audio: HTMLAudioElement | null;
   crossfadeAudio: HTMLAudioElement | null;
   isCrossfading: boolean;
+  crossfadeTimeoutId: ReturnType<typeof setTimeout> | null;
   eqEnabled: boolean;
   eqBands: number[];
   eqPreset: string;
@@ -68,6 +69,7 @@ export const usePlayerStore = create<PlayerStore>()(
       audio: null,
       crossfadeAudio: null,
       isCrossfading: false,
+      crossfadeTimeoutId: null,
       eqEnabled: false,
       eqBands: EQ_PRESETS.flat,
       eqPreset: 'flat',
@@ -197,7 +199,11 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       next: () => {
-        const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless, isCrossfading } = get();
+        const state = get();
+        if (state.crossfadeTimeoutId) {
+          clearTimeout(state.crossfadeTimeoutId);
+        }
+        const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless, isCrossfading } = state;
         if (!audio || queue.length === 0 || isCrossfading) return;
 
         // Handle repeat one - replay current track
@@ -280,7 +286,7 @@ export const usePlayerStore = create<PlayerStore>()(
           crossfadeAudio.addEventListener('ended', cleanup, { once: true });
           audio.addEventListener('ended', cleanup, { once: true });
 
-          setTimeout(() => {
+          const timeoutId = setTimeout(() => {
             audio.pause();
             audio.src = '';
             audioEngine.destroy();
@@ -297,6 +303,7 @@ export const usePlayerStore = create<PlayerStore>()(
               isPlaying: true,
               progress: 0,
               duration: (crossfadeAudio.duration || 0) * 1000,
+              crossfadeTimeoutId: null,
             });
 
             // Update MediaSession metadata for next track
@@ -311,6 +318,7 @@ export const usePlayerStore = create<PlayerStore>()(
               });
             }
           }, crossfadeDuration * 1000);
+          set({ crossfadeTimeoutId: timeoutId });
         } else {
           audio.src = `/api/tracks/${nextTrack.id}/stream`;
           audioEngine.resume().then(() => {

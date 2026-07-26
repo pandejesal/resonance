@@ -117,6 +117,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <BackButtonHandler />
+      <ErrorBoundary>
         <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">
           <UpdateBanner />
 
@@ -125,9 +126,7 @@ export default function App() {
 
             <div className="flex-1 flex flex-col min-h-0 lg:ml-64">
               <Header />
-              <ErrorBoundary>
-                <AnimatedRoutes />
-              </ErrorBoundary>
+              <AnimatedRoutes />
             </div>
           </div>
 
@@ -137,6 +136,7 @@ export default function App() {
         <QueuePanel />
         <SearchModal />
       </div>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

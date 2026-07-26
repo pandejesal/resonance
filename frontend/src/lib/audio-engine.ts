@@ -35,7 +35,10 @@ class AudioEngine {
   }
 
   init(audio: HTMLAudioElement): void {
-    if (this.ctx) return;
+    if (this.ctx) {
+      this.reconnect(audio);
+      return;
+    }
 
     this.ctx = new AudioContext();
     this.source = this.ctx.createMediaElementSource(audio);
@@ -57,10 +60,18 @@ class AudioEngine {
     this.connected = true;
   }
 
-  private reconnect(): void {
+  private reconnect(audio?: HTMLAudioElement): void {
+    if (audio && this.ctx) {
+      if (this.source) {
+        this.source.disconnect();
+        this.source = null;
+      }
+      this.source = this.ctx.createMediaElementSource(audio);
+    }
     if (!this.source || !this.gainNode || !this.analyser || !this.ctx) return;
 
     this.source.disconnect();
+    this.gainNode.disconnect();
     this.filters.forEach((f) => f.disconnect());
 
     if (this._eqEnabled) {

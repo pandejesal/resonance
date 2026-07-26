@@ -22,12 +22,6 @@ pub struct AppState {
     pub cast_targets: Arc<Mutex<HashMap<String, CastTarget>>>,
 }
 
-pub fn sanitize_sql(s: &str) -> String {
-    s.chars()
-        .filter(|c| *c != '\'' && *c != '"' && *c != ';' && *c != '\\' && *c != '\0')
-        .collect::<String>()
-}
-
 pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) { return e; }
     let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries ORDER BY name")
@@ -322,36 +316,45 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
     let per_page = query.per_page.unwrap_or(50).min(500);
 
     let mut where_clauses = vec!["1=1".to_string()];
+    let mut binds: Vec<String> = Vec::new();
 
     if let Some(ref artist) = query.artist {
-        where_clauses.push(format!("artist = '{}'", sanitize_sql(artist)));
+        where_clauses.push("artist = ?".to_string());
+        binds.push(artist.clone());
     }
     if let Some(ref album) = query.album {
-        where_clauses.push(format!("album = '{}'", sanitize_sql(album)));
+        where_clauses.push("album = ?".to_string());
+        binds.push(album.clone());
     }
     if let Some(ref genre) = query.genre {
-        where_clauses.push(format!("genre = '{}'", sanitize_sql(genre)));
+        where_clauses.push("genre = ?".to_string());
+        binds.push(genre.clone());
     }
     if let Some(year) = query.year {
-        where_clauses.push(format!("year = {}", year));
+        where_clauses.push("year = ?".to_string());
+        binds.push(year.to_string());
     }
     if let Some(ref folder) = query.folder {
-        where_clauses.push(format!("folder LIKE '{}%'", sanitize_sql(folder)));
+        where_clauses.push("folder LIKE ?".to_string());
+        binds.push(format!("{}%", folder));
     }
     if let Some(ref mood) = query.mood {
-        where_clauses.push(format!("mood = '{}'", sanitize_sql(mood)));
+        where_clauses.push("mood = ?".to_string());
+        binds.push(mood.clone());
     }
     if let Some(min_rating) = query.min_rating {
-        where_clauses.push(format!("rating >= {}", min_rating));
+        where_clauses.push("rating >= ?".to_string());
+        binds.push(min_rating.to_string());
     }
 
     let where_str = where_clauses.join(" AND ");
     let count_query = format!("SELECT COUNT(*) FROM tracks WHERE {}", where_str);
 
-    let total: i64 = sqlx::query_scalar(&count_query)
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or(0);
+    let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
+    for bind in &binds {
+        count_q = count_q.bind(bind);
+    }
+    let total = count_q.fetch_one(&data.db).await.unwrap_or(0);
 
     let sort = query.sort.as_deref().unwrap_or("date_added");
     let order = query.order.as_deref().unwrap_or("DESC");
@@ -387,9 +390,12 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
             "SELECT * FROM tracks WHERE id {} ? AND {} ORDER BY id {} LIMIT {}",
             op, where_str, order_dir, per_page
         );
-        sqlx::query_as::<_, Track>(&sql)
-            .bind(last_id)
-            .fetch_all(&data.db)
+        let mut q = sqlx::query_as::<_, Track>(&sql);
+        q = q.bind(last_id);
+        for bind in &binds {
+            q = q.bind(bind);
+        }
+        q.fetch_all(&data.db)
             .await
             .unwrap_or_default()
     } else {
@@ -399,8 +405,11 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
             "SELECT * FROM tracks WHERE {} ORDER BY {} {} LIMIT {} OFFSET {}",
             where_str, sort_col, order_dir, per_page, offset
         );
-        sqlx::query_as::<_, Track>(&sql)
-            .fetch_all(&data.db)
+        let mut q = sqlx::query_as::<_, Track>(&sql);
+        for bind in &binds {
+            q = q.bind(bind);
+        }
+        q.fetch_all(&data.db)
             .await
             .unwrap_or_default()
     };
@@ -600,6 +609,33 @@ pub async fn stream_track(
     };
 
     let file_path = std::path::Path::new(&track.file_path);
+
+    // Validate the file path is within a configured library directory
+    match file_path.canonicalize() {
+        Ok(canonical) => {
+            let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+                .fetch_all(&data.db)
+                .await
+                .unwrap_or_default();
+            let allowed = libraries.iter().any(|lib| {
+                PathBuf::from(&lib.path)
+                    .canonicalize()
+                    .map(|p| canonical.starts_with(&p))
+                    .unwrap_or(false)
+            });
+            if !allowed {
+                log::warn!("Stream: path outside libraries: {}", track.file_path);
+                return HttpResponse::Forbidden()
+                    .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+            }
+        }
+        Err(_) => {
+            log::warn!("Stream: file not found: {}", track.file_path);
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "File not found"}));
+        }
+    }
+
     if !file_path.exists() {
         log::warn!(
             "Stream: file not found: {} (exists={})",
@@ -1361,21 +1397,25 @@ pub async fn generate_playlist(
     let count = body.count.unwrap_or(20).min(100);
 
     let mut where_clauses = vec!["1=1".to_string()];
+    let mut binds: Vec<String> = Vec::new();
 
     match body.source.as_str() {
         "genre" => {
             if let Some(ref genre) = body.source_value {
-                where_clauses.push(format!("genre = '{}'", sanitize_sql(genre)));
+                where_clauses.push("genre = ?".to_string());
+                binds.push(genre.clone());
             }
         }
         "artist" => {
             if let Some(ref artist) = body.source_value {
-                where_clauses.push(format!("artist LIKE '%{}%'", sanitize_sql(artist)));
+                where_clauses.push("artist LIKE ?".to_string());
+                binds.push(format!("%{}%", artist));
             }
         }
         "mood" => {
             if let Some(ref mood) = body.source_value {
-                where_clauses.push(format!("mood = '{}'", sanitize_sql(mood)));
+                where_clauses.push("mood = ?".to_string());
+                binds.push(mood.clone());
             }
         }
         "recently_played" => {
@@ -1393,13 +1433,16 @@ pub async fn generate_playlist(
     }
 
     if let Some(min_dur) = body.min_duration_ms {
-        where_clauses.push(format!("duration_ms >= {}", min_dur));
+        where_clauses.push("duration_ms >= ?".to_string());
+        binds.push(min_dur.to_string());
     }
     if let Some(max_dur) = body.max_duration_ms {
-        where_clauses.push(format!("duration_ms <= {}", max_dur));
+        where_clauses.push("duration_ms <= ?".to_string());
+        binds.push(max_dur.to_string());
     }
     if let Some(min_rating) = body.min_rating {
-        where_clauses.push(format!("rating >= {}", min_rating));
+        where_clauses.push("rating >= ?".to_string());
+        binds.push(min_rating.to_string());
     }
 
     let where_str = where_clauses.join(" AND ");
@@ -1408,10 +1451,11 @@ pub async fn generate_playlist(
         where_str, count
     );
 
-    let tracks = sqlx::query_as::<_, Track>(&sql)
-        .fetch_all(&data.db)
-        .await
-        .unwrap_or_default();
+    let mut q = sqlx::query_as::<_, Track>(&sql);
+    for bind in &binds {
+        q = q.bind(bind);
+    }
+    let tracks = q.fetch_all(&data.db).await.unwrap_or_default();
 
     if tracks.is_empty() {
         return HttpResponse::Ok().json(PlaylistToolResult {
@@ -2869,6 +2913,32 @@ pub async fn stream_track_transcoded(
 
     match track {
         Ok(t) => {
+            // Validate the file path is within a configured library directory
+            let file_path = std::path::Path::new(&t.file_path);
+            match file_path.canonicalize() {
+                Ok(canonical) => {
+                    let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+                        .fetch_all(&data.db)
+                        .await
+                        .unwrap_or_default();
+                    let allowed = libraries.iter().any(|lib| {
+                        PathBuf::from(&lib.path)
+                            .canonicalize()
+                            .map(|p| canonical.starts_with(&p))
+                            .unwrap_or(false)
+                    });
+                    if !allowed {
+                        log::warn!("Stream transcoded: path outside libraries: {}", t.file_path);
+                        return HttpResponse::Forbidden()
+                            .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+                    }
+                }
+                Err(_) => {
+                    return HttpResponse::NotFound()
+                        .json(serde_json::json!({"error": "File not found"}));
+                }
+            }
+
             let output_format = match format.as_str() {
                 "aac" => "aac",
                 "opus" => "libopus",
@@ -2939,6 +3009,31 @@ async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpR
     };
 
     let file_path = std::path::Path::new(&track.file_path);
+
+    // Validate the file path is within a configured library directory
+    match file_path.canonicalize() {
+        Ok(canonical) => {
+            let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+                .fetch_all(db)
+                .await
+                .unwrap_or_default();
+            let allowed = libraries.iter().any(|lib| {
+                PathBuf::from(&lib.path)
+                    .canonicalize()
+                    .map(|p| canonical.starts_with(&p))
+                    .unwrap_or(false)
+            });
+            if !allowed {
+                log::warn!("Stream raw: path outside libraries: {}", track.file_path);
+                return HttpResponse::Forbidden()
+                    .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+            }
+        }
+        Err(_) => {
+            return HttpResponse::NotFound().finish();
+        }
+    }
+
     if !file_path.exists() {
         return HttpResponse::NotFound().finish();
     }

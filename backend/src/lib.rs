@@ -227,6 +227,18 @@ pub async fn start_server(
                 "/api/playlists/generate",
                 web::post().to(handlers::generate_playlist),
             )
+            .route(
+                "/api/settings/transcode",
+                web::get().to(handlers::get_transcode_settings),
+            )
+            .route(
+                "/api/settings/transcode",
+                web::put().to(handlers::update_transcode_settings),
+            )
+            .route(
+                "/api/tracks/{id}/stream/transcoded",
+                web::get().to(handlers::stream_track_transcoded),
+            )
             .route("/api/browse", web::get().to(handlers::browse_directory))
             .route(
                 "/api/settings/scrobbling",

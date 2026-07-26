@@ -6,6 +6,7 @@ mod lyrics;
 mod models;
 mod scanner;
 mod scrobble;
+mod subsonic;
 mod updater;
 mod ws;
 
@@ -117,6 +118,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(middleware::Logger::default())
             .app_data(state.clone())
+            .configure(subsonic::configure)
             .route("/api/auth/login", web::post().to(handlers::login_handler))
             .route("/api/auth/logout", web::post().to(handlers::logout_handler))
             .route("/api/auth/me", web::get().to(handlers::get_current_user))
@@ -326,6 +328,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/cast/control", web::post().to(handlers::cast_control))
             .route("/api/health", web::get().to(handlers::health_check))
             .route("/api/stats/database", web::get().to(handlers::get_database_stats))
+            .route("/api/ws", web::get().to(ws::ws_handler))
+            .app_data(web::Data::new(ws_clients.clone()))
             .service(static_files)
     })
     .bind((host.as_str(), port))?
