@@ -32,13 +32,15 @@ async fn spa_fallback(
     }
     let file_path = format!("{}{}", static_dir.get_ref(), path);
     if std::path::Path::new(&file_path).is_file() {
-        actix_files::NamedFile::open(&file_path)
-            .expect("File should exist")
-            .into_response(&req)
+        match actix_files::NamedFile::open(&file_path) {
+            Ok(f) => f.into_response(&req),
+            Err(_) => actix_web::HttpResponse::InternalServerError().finish(),
+        }
     } else {
-        actix_files::NamedFile::open(index_path.get_ref())
-            .expect("index.html not found")
-            .into_response(&req)
+        match actix_files::NamedFile::open(index_path.get_ref()) {
+            Ok(f) => f.into_response(&req),
+            Err(_) => actix_web::HttpResponse::NotFound().finish(),
+        }
     }
 }
 

@@ -33,7 +33,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8080
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/stats"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

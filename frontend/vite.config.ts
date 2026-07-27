@@ -17,6 +17,10 @@ export default defineConfig(({ command }) => ({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/rest': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
   build: {

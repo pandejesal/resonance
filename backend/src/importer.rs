@@ -487,7 +487,7 @@ pub fn parse_soundcloud(content: &str) -> Result<ImportPreview, String> {
 
 pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
     let mut tracks = Vec::new();
-    let mut pending_extinf: Option<(String, String)> = None;
+    let mut pending_extinf: Option<(String, String, Option<i64>)> = None;
     let mut title = "M3U Playlist".to_string();
 
     for line in content.lines() {
@@ -495,6 +495,7 @@ pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
         if line.starts_with("#EXTINF:") {
             if let Some(info) = line.strip_prefix("#EXTINF:") {
                 let parts: Vec<&str> = info.splitn(2, ',').collect();
+                let duration_ms = parts[0].parse::<i64>().ok().map(|s| s * 1000);
                 if parts.len() > 1 {
                     let artist_title = parts[1].trim().to_string();
                     let (artist, track_title) = if let Some(pos) = artist_title.find(" - ") {
@@ -505,19 +506,19 @@ pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
                     } else {
                         ("Unknown".to_string(), artist_title)
                     };
-                    pending_extinf = Some((artist, track_title));
+                    pending_extinf = Some((artist, track_title, duration_ms));
                 }
             }
         } else if !line.is_empty() && !line.starts_with('#') {
-            let (artist, track_title) = pending_extinf.take().unwrap_or_else(|| {
+            let (artist, track_title, duration_ms) = pending_extinf.take().unwrap_or_else(|| {
                 let name = line.rsplit('/').next().unwrap_or(line).to_string();
-                ("Unknown".to_string(), name)
+                ("Unknown".to_string(), name, None)
             });
             tracks.push(ImportTrack {
                 title: track_title,
                 artist,
                 album: None,
-                duration_ms: None,
+                duration_ms,
                 platform_id: None,
             });
         }
@@ -543,44 +544,47 @@ pub fn parse_xspf(content: &str) -> Result<ImportPreview, String> {
     let mut tracks = Vec::new();
     let mut playlist_name = "XSPF Playlist".to_string();
 
-    if let Ok(doc) = roxmltree::Document::parse(content) {
-        if let Some(root) = doc.root_element().first_child() {
-            if let Some(name_node) = root.children().find(|n| n.has_tag_name("title")) {
-                playlist_name = name_node.text().unwrap_or("XSPF Playlist").to_string();
-            }
+    let doc = match roxmltree::Document::parse(content) {
+        Ok(d) => d,
+        Err(e) => return Err(format!("Invalid XSPF XML: {}", e)),
+    };
 
-            for track_node in root.children().filter(|n| n.has_tag_name("track")) {
-                let title = track_node
-                    .children()
-                    .find(|n| n.has_tag_name("title"))
-                    .and_then(|n| n.text())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                let creator = track_node
-                    .children()
-                    .find(|n| n.has_tag_name("creator"))
-                    .and_then(|n| n.text())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                let album = track_node
-                    .children()
-                    .find(|n| n.has_tag_name("album"))
-                    .and_then(|n| n.text())
-                    .map(|s| s.to_string());
-                let duration_ms = track_node
-                    .children()
-                    .find(|n| n.has_tag_name("duration"))
-                    .and_then(|n| n.text())
-                    .and_then(|s| s.parse::<i64>().ok());
+    if let Some(root) = doc.root_element().first_child() {
+        if let Some(name_node) = root.children().find(|n| n.has_tag_name("title")) {
+            playlist_name = name_node.text().unwrap_or("XSPF Playlist").to_string();
+        }
 
-                tracks.push(ImportTrack {
-                    title,
-                    artist: creator,
-                    album,
-                    duration_ms,
-                    platform_id: None,
-                });
-            }
+        for track_node in root.children().filter(|n| n.has_tag_name("track")) {
+            let title = track_node
+                .children()
+                .find(|n| n.has_tag_name("title"))
+                .and_then(|n| n.text())
+                .unwrap_or("Unknown")
+                .to_string();
+            let creator = track_node
+                .children()
+                .find(|n| n.has_tag_name("creator"))
+                .and_then(|n| n.text())
+                .unwrap_or("Unknown")
+                .to_string();
+            let album = track_node
+                .children()
+                .find(|n| n.has_tag_name("album"))
+                .and_then(|n| n.text())
+                .map(|s| s.to_string());
+            let duration_ms = track_node
+                .children()
+                .find(|n| n.has_tag_name("duration"))
+                .and_then(|n| n.text())
+                .and_then(|s| s.parse::<i64>().ok());
+
+            tracks.push(ImportTrack {
+                title,
+                artist: creator,
+                album,
+                duration_ms,
+                platform_id: None,
+            });
         }
     }
 
@@ -618,7 +622,11 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
                 continue;
             }
 
-            if norm_title == norm_db_title && norm_artist == norm_db_artist {
+            if norm_title.is_empty() || norm_artist.is_empty() {
+                continue;
+            }
+
+        if norm_title == norm_db_title && norm_artist == norm_db_artist {
                 best_match = Some((id.clone(), "exact".to_string(), 1.0));
                 break;
             }

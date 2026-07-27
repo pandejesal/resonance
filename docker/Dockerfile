@@ -7,7 +7,7 @@ COPY src-tauri/Cargo.toml ./src-tauri/Cargo.toml
 COPY backend/migrations ./backend/migrations
 RUN mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
-RUN cargo build --release -p resonance-backend 2>/dev/null || true
+RUN cargo build --release -p resonance-backend
 
 COPY backend/src ./backend/src
 RUN touch backend/src/main.rs && cargo build --release -p resonance-backend

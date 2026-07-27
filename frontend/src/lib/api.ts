@@ -314,10 +314,8 @@ export const api = {
   transfer: {
     platforms: () => fetchJson<{ platforms: TransferPlatform[] }>('/transfer/platforms'),
     export: (playlistId: string, targetPlatform: string) =>
-      fetch(`${BASE_URL}/transfer/export`, {
+      fetchJson<any>('/transfer/export', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ playlist_id: playlistId, target_platform: targetPlatform }),
       }),
   },

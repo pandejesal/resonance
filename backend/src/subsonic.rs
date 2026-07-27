@@ -377,11 +377,13 @@ async fn get_album_list(data: web::Data<AppState>, query: web::Query<Value>, req
     };
 
     let sql = format!(
-        "SELECT * FROM albums ORDER BY {} LIMIT {} OFFSET {}",
-        order_clause, size, offset
+        "SELECT * FROM albums ORDER BY {} LIMIT ? OFFSET ?",
+        order_clause
     );
 
     let albums = sqlx::query_as::<_, Album>(&sql)
+        .bind(size)
+        .bind(offset)
         .fetch_all(&data.db)
         .await
         .unwrap_or_default();
@@ -750,6 +752,17 @@ async fn search2(data: web::Data<AppState>, query: web::Query<Value>, req: HttpR
 async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
 
+    let params: BTreeMap<String, String> = req.query_string()
+        .split('&')
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next()?.to_string();
+            let val = parts.next().unwrap_or("").to_string();
+            Some((key, val))
+        })
+        .collect();
+    let owner = params.get("u").cloned().unwrap_or_else(|| "admin".to_string());
+
     let playlists =
         sqlx::query_as::<_, Playlist>("SELECT * FROM playlists ORDER BY sort_order, name")
             .fetch_all(&data.db)
@@ -765,7 +778,7 @@ async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpRespo
                         "name": p.name,
                         "songCount": p.track_count,
                         "duration": p.total_duration_ms / 1000,
-                        "owner": "admin",
+                        "owner": owner,
                         "public": false,
                         "created": p.created_at,
                         "changed": p.updated_at,

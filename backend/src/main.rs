@@ -32,13 +32,15 @@ async fn spa_fallback(
     }
     let file_path = format!("{}{}", static_dir.get_ref(), path);
     if std::path::Path::new(&file_path).is_file() {
-        actix_files::NamedFile::open(&file_path)
-            .expect("File should exist")
-            .into_response(&req)
+        match actix_files::NamedFile::open(&file_path) {
+            Ok(f) => f.into_response(&req),
+            Err(_) => actix_web::HttpResponse::InternalServerError().finish(),
+        }
     } else {
-        actix_files::NamedFile::open(index_path.get_ref())
-            .expect("index.html not found")
-            .into_response(&req)
+        match actix_files::NamedFile::open(index_path.get_ref()) {
+            Ok(f) => f.into_response(&req),
+            Err(_) => actix_web::HttpResponse::NotFound().finish(),
+        }
     }
 }
 
@@ -85,6 +87,18 @@ async fn main() -> std::io::Result<()> {
 
     let scanner = Arc::new(Mutex::new(Scanner::new()));
     let ws_clients = Arc::new(ws::WsClients::new());
+
+    let db_for_watcher = database.pool.clone();
+    let scanner_for_watcher = scanner.clone();
+    let mut watcher_service = watcher::WatcherService::new(db_for_watcher, scanner_for_watcher);
+    match watcher_service.start_watching() {
+        Ok(()) => log::info!("Filesystem watcher started"),
+        Err(e) => log::warn!("Filesystem watcher failed to start: {}", e),
+    }
+    let watcher_service = Arc::new(Mutex::new(watcher_service));
+    tokio::spawn(async move {
+        watcher::start_watching_task(watcher_service).await;
+    });
 
     let state = web::Data::new(AppState {
         db: database.pool.clone(),
