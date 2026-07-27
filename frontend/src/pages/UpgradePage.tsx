@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
-import type { LicenseStatus, PricingPlan } from '../types';
+import { useLicenseStore } from '../stores';
+import type { PricingPlan } from '../types';
 
 const plans: PricingPlan[] = [
   {
@@ -57,14 +58,9 @@ const plans: PricingPlan[] = [
 ];
 
 export default function UpgradePage() {
-  const [license, setLicense] = useState<LicenseStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { status: license, fetchStatus } = useLicenseStore();
   const [activating, setActivating] = useState(false);
   const [licenseKey, setLicenseKey] = useState('');
-
-  useEffect(() => {
-    api.license.getStatus().then(setLicense).catch(() => {}).finally(() => setLoading(false));
-  }, []);
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) return;
@@ -73,8 +69,7 @@ export default function UpgradePage() {
       const result = await api.license.activate(licenseKey);
       if (result.success) {
         toast.success(`Upgraded to ${result.tier}!`);
-        const status = await api.license.getStatus();
-        setLicense(status);
+        await fetchStatus();
         setLicenseKey('');
       }
     } catch (e: any) {

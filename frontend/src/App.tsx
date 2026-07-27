@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useUIStore, useAuthStore } from './stores';
+import { useUIStore, useAuthStore, useLicenseStore } from './stores';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -91,6 +91,7 @@ function AnimatedRoutes() {
 export default function App() {
   const { theme } = useUIStore();
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { fetchStatus } = useLicenseStore();
 
   useEffect(() => {
     document.documentElement.className = theme;
@@ -99,6 +100,12 @@ export default function App() {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchStatus();
+    }
+  }, [isAuthenticated, fetchStatus]);
 
   useKeyboardShortcuts();
 

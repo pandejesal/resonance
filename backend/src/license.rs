@@ -75,59 +75,53 @@ impl License {
             return Err("License is already activated by another user".to_string());
         }
 
+        // If same user re-activating same key, just return current license
+        if license.user_id.as_deref() == Some(user_id) {
+            return Ok(license);
+        }
+
         let max_devices = match license.tier.as_str() {
             "pro" => 3,
             "enterprise" => 999,
             _ => 1,
         };
 
-        let expires_at = match license.tier.as_str() {
-            "pro" => {
+        let expires_at: Option<String> = match license.tier.as_str() {
+            "pro" | "enterprise" => {
                 let exp = chrono::Utc::now() + chrono::Duration::days(365);
-                exp.format("%Y-%m-%d %H:%M:%S").to_string()
+                Some(exp.format("%Y-%m-%d %H:%M:%S").to_string())
             }
-            "enterprise" => {
-                let exp = chrono::Utc::now() + chrono::Duration::days(365);
-                exp.format("%Y-%m-%d %H:%M:%S").to_string()
-            }
-            _ => "".to_string(),
+            _ => None, // Free tier never expires
         };
 
-        sqlx::query(
-            "UPDATE licenses SET user_id = ?, activated_at = datetime('now'), expires_at = ?, device_count = device_count + 1, max_devices = ? WHERE license_key = ?"
+        // Atomic: only increment if device_count < max_devices
+        let result = sqlx::query(
+            "UPDATE licenses SET user_id = ?, activated_at = datetime('now'), expires_at = ?, device_count = device_count + 1 WHERE license_key = ? AND device_count < ?"
         )
         .bind(user_id)
         .bind(&expires_at)
-        .bind(max_devices)
         .bind(license_key)
+        .bind(max_devices)
         .execute(db)
         .await
         .map_err(|e| e.to_string())?;
+
+        if result.rows_affected() == 0 {
+            return Err(format!("Device limit reached ({}/{}). Deactivate on another device first.", license.device_count, max_devices));
+        }
 
         Self::get_by_key(db, license_key).await.ok_or("Failed to fetch updated license".to_string())
     }
 
     pub async fn deactivate(db: &SqlitePool, license_key: &str) -> Result<(), String> {
         sqlx::query(
-            "UPDATE licenses SET user_id = NULL, activated_at = NULL, expires_at = NULL, device_count = 0 WHERE license_key = ?"
+            "UPDATE licenses SET device_count = MAX(0, device_count - 1), user_id = CASE WHEN device_count <= 1 THEN NULL ELSE user_id END, activated_at = CASE WHEN device_count <= 1 THEN NULL ELSE activated_at END, expires_at = CASE WHEN device_count <= 1 THEN NULL ELSE expires_at END WHERE license_key = ?"
         )
         .bind(license_key)
         .execute(db)
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
-    }
-
-    pub async fn check_feature(db: &SqlitePool, tier: &str, feature: &str) -> bool {
-        let result = sqlx::query_scalar::<_, i32>(
-            "SELECT enabled FROM tier_features WHERE tier = ? AND feature_key = ?"
-        )
-        .bind(tier)
-        .bind(feature)
-        .fetch_optional(db)
-        .await;
-
-        matches!(result, Ok(Some(1)))
     }
 
     pub async fn get_features(db: &SqlitePool, tier: &str) -> Vec<String> {
@@ -146,9 +140,12 @@ impl License {
         match license {
             Some(lic) => {
                 let features = Self::get_features(db, &lic.tier).await;
-                let active = lic.expires_at.as_ref().map_or(true, |exp| {
+                let active = lic.expires_at.as_ref().is_none_or(|exp| {
+                    if exp.is_empty() {
+                        return true; // Empty means no expiry (free tier)
+                    }
                     chrono::NaiveDateTime::parse_from_str(exp, "%Y-%m-%d %H:%M:%S")
-                        .map_or(false, |d| d > chrono::Utc::now().naive_utc())
+                        .is_ok_and(|d| d > chrono::Utc::now().naive_utc())
                 });
                 LicenseStatus {
                     tier: lic.tier,

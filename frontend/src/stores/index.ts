@@ -706,13 +706,25 @@ export const useLicenseStore = create<LicenseState>()(
         const status = await api.license.getStatus();
         set({ status, loading: false });
       } catch {
-        set({ loading: false });
+        // On error, default to free tier so features aren't blocked
+        set({
+          status: {
+            tier: 'free',
+            active: true,
+            features: [],
+            trial_remaining_days: null,
+            expires_at: null,
+            max_devices: 1,
+            device_count: 1,
+          },
+          loading: false,
+        });
       }
     },
 
     hasFeature: (feature: string) => {
-      const { status } = get();
-      if (!status) return false;
+      const { status, loading } = get();
+      if (loading || !status) return true; // Don't block during loading
       return status.features.includes(feature);
     },
 
