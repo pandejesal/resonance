@@ -3,6 +3,8 @@ pub mod db;
 pub mod ratelimit;
 pub mod handlers;
 pub mod importer;
+pub mod license;
+pub mod license_handlers;
 pub mod lyrics;
 pub mod models;
 pub mod scanner;
@@ -334,6 +336,11 @@ pub async fn start_server(
             )
             .route("/api/cast/play", web::post().to(handlers::cast_play))
             .route("/api/cast/control", web::post().to(handlers::cast_control))
+            .route("/api/license/status", web::get().to(license_handlers::get_license_status))
+            .route("/api/license/activate", web::post().to(license_handlers::activate_license))
+            .route("/api/license/deactivate", web::post().to(license_handlers::deactivate_license))
+            .route("/api/license/features/{tier}", web::get().to(license_handlers::get_tier_features))
+            .route("/api/license/generate/{tier}", web::post().to(license_handlers::generate_license_key))
             .route("/api/health", web::get().to(handlers::health_check))
             .route("/api/stats/database", web::get().to(handlers::get_database_stats))
             .route("/api/ws", web::get().to(ws::ws_handler))
@@ -642,6 +649,11 @@ pub mod android {
                         )
                         .route("/api/cast/play", web::post().to(handlers::cast_play))
                         .route("/api/cast/control", web::post().to(handlers::cast_control))
+                        .route("/api/license/status", web::get().to(license_handlers::get_license_status))
+                        .route("/api/license/activate", web::post().to(license_handlers::activate_license))
+                        .route("/api/license/deactivate", web::post().to(license_handlers::deactivate_license))
+                        .route("/api/license/features/{tier}", web::get().to(license_handlers::get_tier_features))
+                        .route("/api/license/generate/{tier}", web::post().to(license_handlers::generate_license_key))
                         .route("/api/health", web::get().to(handlers::health_check))
                         .route("/api/stats/database", web::get().to(handlers::get_database_stats))
                         .route("/api/ws", web::get().to(ws::ws_handler))

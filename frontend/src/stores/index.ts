@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Track, RepeatMode, QueueItem, Theme, ViewMode, UserInfo, CastTarget } from '../types';
+import type { Track, RepeatMode, QueueItem, Theme, ViewMode, UserInfo, CastTarget, LicenseStatus } from '../types';
 import { api } from '../lib/api';
 import { shuffleArray } from '../lib/utils';
 import { audioEngine, EQ_PRESETS } from '../lib/audio-engine';
@@ -684,6 +684,43 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+interface LicenseState {
+  status: LicenseStatus | null;
+  loading: boolean;
+  fetchStatus: () => Promise<void>;
+  hasFeature: (feature: string) => boolean;
+  isPro: () => boolean;
+  isEnterprise: () => boolean;
+  isTrialing: () => boolean;
+}
+
+export const useLicenseStore = create<LicenseState>()(
+  (set, get) => ({
+    status: null,
+    loading: false,
+
+    fetchStatus: async () => {
+      set({ loading: true });
+      try {
+        const status = await api.license.getStatus();
+        set({ status, loading: false });
+      } catch {
+        set({ loading: false });
+      }
+    },
+
+    hasFeature: (feature: string) => {
+      const { status } = get();
+      if (!status) return false;
+      return status.features.includes(feature);
+    },
+
+    isPro: () => get().status?.tier === 'pro',
+    isEnterprise: () => get().status?.tier === 'enterprise',
+    isTrialing: () => (get().status?.trial_remaining_days ?? 0) > 0,
+  })
+);
 
 interface CastState {
   targets: CastTarget[];

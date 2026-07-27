@@ -25,6 +25,7 @@ import type {
   SmartPlaylistRule,
   TranscodeConfig,
   ListeningHistoryEntry,
+  LicenseStatus,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -344,5 +345,25 @@ export const api = {
   history: {
     get: (limit?: number) =>
       fetchJson<ListeningHistoryEntry[]>(`/history?limit=${limit || 50}`),
+  },
+
+  license: {
+    getStatus: () => fetchJson<LicenseStatus>('/license/status'),
+    activate: (licenseKey: string) =>
+      fetchJson<{ success: boolean; tier: string }>('/license/activate', {
+        method: 'POST',
+        body: JSON.stringify({ license_key: licenseKey }),
+      }),
+    deactivate: (licenseKey: string) =>
+      fetchJson<{ success: boolean }>('/license/deactivate', {
+        method: 'POST',
+        body: JSON.stringify({ license_key: licenseKey }),
+      }),
+    getFeatures: (tier: string) =>
+      fetchJson<{ features: string[] }>(`/license/features/${tier}`),
+    generateKey: (tier: string) =>
+      fetchJson<{ license_key: string }>(`/license/generate/${tier}`, {
+        method: 'POST',
+      }),
   },
 };

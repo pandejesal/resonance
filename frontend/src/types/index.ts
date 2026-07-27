@@ -337,3 +337,22 @@ export interface ListeningHistoryEntry {
   artist: string;
   played_at: string;
 }
+
+export interface LicenseStatus {
+  tier: 'free' | 'pro' | 'enterprise';
+  active: boolean;
+  features: string[];
+  trial_remaining_days: number | null;
+  expires_at: string | null;
+  max_devices: number;
+  device_count: number;
+}
+
+export interface PricingPlan {
+  id: string;
+  name: string;
+  price: number;
+  period: string;
+  features: string[];
+  highlighted?: boolean;
+}

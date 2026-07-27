@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { audioEngine } from '../lib/audio-engine';
+import { useLicenseStore } from '../stores';
+import { useNavigate } from 'react-router-dom';
 
 interface EffectPreset {
   name: string;
@@ -26,6 +28,8 @@ export default function EffectsPanel() {
   const [reverb, setReverb] = useState(0);
   const [echo, setEcho] = useState(0);
   const [speed, setSpeed] = useState(1);
+  const { hasFeature } = useLicenseStore();
+  const navigate = useNavigate();
 
   const applyPreset = (preset: EffectPreset) => {
     setActivePreset(preset.name);
@@ -36,6 +40,20 @@ export default function EffectsPanel() {
     audioEngine.setEcho(preset.echo * 0.5, preset.echo);
     audioEngine.setSpeed(preset.speed);
   };
+
+  if (!hasFeature('audio_effects')) {
+    return (
+      <button
+        onClick={() => navigate('/upgrade')}
+        className="p-2 rounded-lg hover:bg-white/5 text-tertiary hover:text-primary transition-colors"
+        title="Audio Effects (Pro)"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+      </button>
+    );
+  }
 
   return (
     <div className="relative">
