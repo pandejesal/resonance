@@ -270,6 +270,11 @@ jobs:
         with:
           gradle-version: '8.5'
 
+      - name: Generate Gradle Wrapper
+        run: |
+          cd frontend/android
+          gradle wrapper --gradle-version 8.5
+
       - name: Build Android APK
         run: |
           cd frontend/android
