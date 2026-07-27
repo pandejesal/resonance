@@ -30,6 +30,16 @@ class AudioEngine {
   private _eqEnabled = false;
   private _eqBands: number[] = EQ_PRESETS.flat;
 
+  private reverbNode: ConvolverNode | null = null;
+  private echoNode: DelayNode | null = null;
+  private echoFeedback: GainNode | null = null;
+  private audio: HTMLAudioElement | null = null;
+
+  public reverbMix: number = 0;
+  public echoDelay: number = 0;
+  public echoMix: number = 0;
+  public speed: number = 1;
+
   get isReady(): boolean {
     return this.ctx !== null && this.connected;
   }
@@ -42,6 +52,7 @@ class AudioEngine {
 
     this.ctx = new AudioContext();
     this.source = this.ctx.createMediaElementSource(audio);
+    this.audio = audio;
 
     this.gainNode = this.ctx.createGain();
     this.analyser = this.ctx.createAnalyser();
@@ -56,8 +67,95 @@ class AudioEngine {
       return filter;
     });
 
+    this.echoNode = this.ctx.createDelay(2);
+    this.echoFeedback = this.ctx.createGain();
+    this.reverbNode = this.ctx.createConvolver();
+    this.generateImpulseResponse();
+
     this.reconnect();
     this.connected = true;
+  }
+
+  private generateImpulseResponse(): void {
+    if (!this.ctx || !this.reverbNode) return;
+    const sampleRate = this.ctx.sampleRate;
+    const length = sampleRate * 2;
+    const impulse = this.ctx.createBuffer(2, length, sampleRate);
+    for (let channel = 0; channel < 2; channel++) {
+      const data = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
+      }
+    }
+    this.reverbNode.buffer = impulse;
+  }
+
+  setReverb(mix: number): void {
+    this.reverbMix = Math.max(0, Math.min(1, mix));
+    this.reconnectEffects();
+  }
+
+  setEcho(delay: number, mix: number): void {
+    this.echoDelay = Math.max(0, Math.min(2, delay));
+    this.echoMix = Math.max(0, Math.min(1, mix));
+    if (this.echoNode) this.echoNode.delayTime.value = this.echoDelay;
+    if (this.echoFeedback) this.echoFeedback.gain.value = this.echoMix * 0.5;
+    this.reconnectEffects();
+  }
+
+  setSpeed(rate: number): void {
+    this.speed = Math.max(0.5, Math.min(2, rate));
+    if (this.audio) this.audio.playbackRate = this.speed;
+  }
+
+  private disconnectAll(): void {
+    this.source?.disconnect();
+    this.gainNode?.disconnect();
+    this.filters.forEach((f) => f.disconnect());
+    this.reverbNode?.disconnect();
+    this.echoNode?.disconnect();
+    this.echoFeedback?.disconnect();
+    this.analyser?.disconnect();
+  }
+
+  private reconnectEffects(): void {
+    this.disconnectAll();
+    if (!this.source || !this.ctx || !this.gainNode || !this.analyser) return;
+
+    let lastNode: AudioNode = this.source;
+
+    if (this._eqEnabled) {
+      for (const filter of this.filters) {
+        lastNode.connect(filter);
+        lastNode = filter;
+      }
+    }
+
+    if (this.reverbMix > 0 && this.reverbNode) {
+      const dryGain = this.ctx.createGain();
+      const wetGain = this.ctx.createGain();
+      dryGain.gain.value = 1 - this.reverbMix * 0.5;
+      wetGain.gain.value = this.reverbMix;
+
+      lastNode.connect(dryGain);
+      lastNode.connect(this.reverbNode);
+      this.reverbNode.connect(wetGain);
+      dryGain.connect(this.gainNode);
+      wetGain.connect(this.gainNode);
+    } else {
+      lastNode.connect(this.gainNode);
+    }
+
+    if (this.echoMix > 0 && this.echoNode && this.echoFeedback) {
+      this.gainNode.connect(this.echoNode);
+      this.echoNode.connect(this.echoFeedback);
+      this.echoFeedback.connect(this.echoNode);
+      this.echoNode.connect(this.analyser);
+    } else {
+      this.gainNode.connect(this.analyser);
+    }
+
+    this.analyser.connect(this.ctx.destination);
   }
 
   private reconnect(audio?: HTMLAudioElement): void {
@@ -67,26 +165,9 @@ class AudioEngine {
         this.source = null;
       }
       this.source = this.ctx.createMediaElementSource(audio);
+      this.audio = audio;
     }
-    if (!this.source || !this.gainNode || !this.analyser || !this.ctx) return;
-
-    this.source.disconnect();
-    this.gainNode.disconnect();
-    this.filters.forEach((f) => f.disconnect());
-
-    if (this._eqEnabled) {
-      let node: AudioNode = this.source;
-      for (const filter of this.filters) {
-        node.connect(filter);
-        node = filter;
-      }
-      node.connect(this.gainNode);
-    } else {
-      this.source.connect(this.gainNode);
-    }
-
-    this.gainNode.connect(this.analyser);
-    this.analyser.connect(this.ctx.destination);
+    this.reconnectEffects();
   }
 
   setVolume(volume: number): void {
@@ -157,14 +238,15 @@ class AudioEngine {
 
   destroy(): void {
     if (this.ctx) {
-      this.source?.disconnect();
-      this.filters.forEach((f) => f.disconnect());
-      this.gainNode?.disconnect();
-      this.analyser?.disconnect();
+      this.disconnectAll();
       this.source = null;
       this.filters = [];
       this.gainNode = null;
       this.analyser = null;
+      this.reverbNode = null;
+      this.echoNode = null;
+      this.echoFeedback = null;
+      this.audio = null;
       this.ctx.close();
       this.ctx = null;
       this.connected = false;

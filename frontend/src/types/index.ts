@@ -23,6 +23,8 @@ export interface Track {
   lyricist?: string;
   mood?: string;
   bpm?: number;
+  musical_key?: string;
+  loudness?: number;
   rating?: number;
   play_count: number;
   skip_count: number;

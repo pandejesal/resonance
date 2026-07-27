@@ -1,8 +1,9 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Track } from '../types';
 import { usePlayerStore } from '../stores';
 import { formatDuration, getArtworkUrl, cn } from '../lib/utils';
+import MetadataEditor from './MetadataEditor';
 
 interface TrackListProps {
   tracks: Track[];
@@ -11,12 +12,29 @@ interface TrackListProps {
   showRating?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  onMetadataSaved?: () => void;
   className?: string;
 }
 
-export default function TrackList({ tracks, showAlbum = true, showArtwork = true, showRating = true, selectedIds, onToggleSelect, className }: TrackListProps) {
+export default function TrackList({ tracks, showAlbum = true, showArtwork = true, showRating = true, selectedIds, onToggleSelect, onMetadataSaved, className }: TrackListProps) {
   const { playTrack, currentTrack, isPlaying } = usePlayerStore();
   const selectionMode = selectedIds !== undefined && onToggleSelect !== undefined;
+  const [contextMenuTrack, setContextMenuTrack] = useState<Track | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [editingTrack, setEditingTrack] = useState<Track | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contextMenuTrack) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenuTrack(null);
+        setContextMenuPos(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [contextMenuTrack]);
 
   return (
     <div className={cn('space-y-1', className)}>
@@ -170,6 +188,9 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
               className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 transition-all"
               onClick={(e) => {
                 e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenuTrack(track);
+                setContextMenuPos({ x: rect.right - 200, y: rect.bottom + 4 });
               }}
             >
               <svg className="w-4 h-4 text-secondary" fill="currentColor" viewBox="0 0 24 24">
@@ -181,6 +202,60 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
           </motion.div>
         );
       })}
+
+      {/* Context menu */}
+      <AnimatePresence>
+        {contextMenuTrack && contextMenuPos && (
+          <motion.div
+            ref={menuRef}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed z-[90] w-48 bg-surface-1 border border-white/10 rounded-xl shadow-xl overflow-hidden"
+            style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          >
+            <button
+              className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/5 transition-colors text-sm text-primary text-left"
+              onClick={() => {
+                setEditingTrack(contextMenuTrack);
+                setContextMenuTrack(null);
+                setContextMenuPos(null);
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit Metadata
+            </button>
+            <button
+              className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/5 transition-colors text-sm text-primary text-left"
+              onClick={() => {
+                if (onMetadataSaved) onMetadataSaved();
+                setContextMenuTrack(null);
+                setContextMenuPos(null);
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+              Add to Queue
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Metadata editor */}
+      {editingTrack && (
+        <MetadataEditor
+          track={editingTrack}
+          isOpen={true}
+          onClose={() => setEditingTrack(null)}
+          onSave={() => {
+            onMetadataSaved?.();
+            setEditingTrack(null);
+          }}
+        />
+      )}
     </div>
   );
 }

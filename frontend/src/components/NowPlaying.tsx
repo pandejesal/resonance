@@ -3,11 +3,13 @@ import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from '
 import { usePlayerStore, useUIStore, useCastStore } from '../stores';
 import { getArtworkUrl, formatDuration } from '../lib/utils';
 import SyncedLyrics from './SyncedLyrics';
-import WaveformSeekBar from './WaveformSeekBar';
+import WaveformDisplay from './WaveformDisplay';
+import AudioQualityBadge from './AudioQualityBadge';
 import StarRating from './StarRating';
 import { api } from '../lib/api';
 import type { LyricsData } from '../types';
 import AudioVisualizer from './AudioVisualizer';
+import EffectsPanel from './EffectsPanel';
 
 const LIKED_STORAGE_KEY = 'resonance-liked-tracks';
 
@@ -476,18 +478,26 @@ export default function NowPlaying() {
                   </div>
                 </div>
 
-                {/* Audio info */}
-                <div className={`flex items-center gap-3 text-xs text-tertiary mb-6 ${
+                {/* Audio quality & metadata info */}
+                <div className={`flex items-center gap-3 flex-wrap mb-6 ${
                   isFullScreen ? 'justify-start' : 'justify-center'
                 }`}>
-                  {currentTrack.codec && (
-                    <span className="px-2 py-1 rounded-lg bg-white/5">{currentTrack.codec}</span>
+                  {currentTrack.bpm && (
+                    <span className="text-xs text-tertiary px-2 py-0.5 bg-surface-2 rounded">
+                      {Math.round(currentTrack.bpm)} BPM
+                    </span>
                   )}
-                  {currentTrack.sample_rate && (
-                    <span>{(currentTrack.sample_rate / 1000).toFixed(1)}kHz</span>
+                  {currentTrack.musical_key && (
+                    <span className="text-xs text-tertiary px-2 py-0.5 bg-surface-2 rounded">
+                      {currentTrack.musical_key}
+                    </span>
                   )}
-                  {currentTrack.bit_depth && <span>{currentTrack.bit_depth}bit</span>}
-                  {currentTrack.bitrate && <span>{currentTrack.bitrate}kbps</span>}
+                  <AudioQualityBadge
+                    format={currentTrack.format}
+                    bitrate={currentTrack.bitrate}
+                    sampleRate={currentTrack.sample_rate}
+                    bitDepth={currentTrack.bit_depth}
+                  />
                 </div>
 
                 {/* Audio visualization or Lyrics */}
@@ -536,11 +546,12 @@ export default function NowPlaying() {
             {/* Progress bar */}
             <div className="w-full mb-4">
               {currentTrack.waveform_peaks ? (
-                <WaveformSeekBar
+                <WaveformDisplay
                   trackId={currentTrack.id}
                   duration={duration}
                   currentTime={progress}
                   onSeek={seek}
+                  height={64}
                 />
               ) : (
                 <div
@@ -691,6 +702,8 @@ export default function NowPlaying() {
                   <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
+
+              <EffectsPanel />
 
               {/* Volume control */}
               <div
