@@ -1,27 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { usePlayerStore } from '../stores';
-
-interface LyricLine {
-  time: number;
-  text: string;
-}
-
-function parseLrc(lrc: string): LyricLine[] {
-  if (!lrc) return [];
-  return lrc
-    .split('\n')
-    .map(line => {
-      const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/);
-      if (!match) return null;
-      const min = parseInt(match[1]);
-      const sec = parseInt(match[2]);
-      const ms = parseInt(match[3].padEnd(3, '0'));
-      return { time: min * 60 + sec + ms / 1000, text: match[4].trim() };
-    })
-    .filter((l): l is LyricLine => l !== null && l.text.length > 0)
-    .sort((a, b) => a.time - b.time);
-}
+import { parseLrc } from '../lib/utils';
 
 interface SyncedLyricsProps {
   lyrics: string;
@@ -36,7 +16,7 @@ export default function SyncedLyrics({ lyrics, className = '' }: SyncedLyricsPro
 
   const currentTime = progress / 1000;
 
-  const parsedLines = useMemo(() => parseLrc(lyrics), [lyrics]);
+  const parsedLines = useMemo(() => parseLrc(lyrics).map(l => ({ time: l.timeMs / 1000, text: l.text })), [lyrics]);
 
   useEffect(() => {
     if (parsedLines.length === 0) return;

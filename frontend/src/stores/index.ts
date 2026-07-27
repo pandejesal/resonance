@@ -405,10 +405,11 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       setVolume: (volume) => {
+        const clamped = Math.max(0, Math.min(1, volume));
         const { audio } = get();
-        if (audio) audio.volume = volume;
-        audioEngine.setVolume(volume);
-        set({ volume });
+        if (audio) audio.volume = clamped;
+        audioEngine.setVolume(clamped);
+        set({ volume: clamped });
       },
 
       toggleShuffle: () => {
@@ -496,6 +497,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
       moveInQueue: (from, to) => {
         const { queue, queueIndex } = get();
+        if (from < 0 || from >= queue.length || to < 0 || to >= queue.length) return;
         const newQueue = [...queue];
         const [item] = newQueue.splice(from, 1);
         newQueue.splice(to, 0, item);

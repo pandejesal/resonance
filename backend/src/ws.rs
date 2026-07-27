@@ -141,7 +141,6 @@ pub async fn broadcast_now_playing(clients: &WsClients, track: &Track) {
             "artist": track.artist,
             "album": track.album,
             "duration_ms": track.duration_ms,
-            "file_path": track.file_path,
             "format": track.format,
             "sample_rate": track.sample_rate,
             "bit_depth": track.bit_depth,

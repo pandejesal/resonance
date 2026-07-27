@@ -32,11 +32,19 @@ async fn spa_fallback(
     if path.starts_with("/api/") || path.starts_with("/rest/") {
         return actix_web::HttpResponse::NotFound().json(serde_json::json!({"error": "Not found"}));
     }
+    let static_canonical = std::fs::canonicalize(static_dir.get_ref()).unwrap_or_default();
     let file_path = format!("{}{}", static_dir.get_ref(), path);
-    if std::path::Path::new(&file_path).is_file() {
-        match actix_files::NamedFile::open(&file_path) {
-            Ok(f) => f.into_response(&req),
-            Err(_) => actix_web::HttpResponse::InternalServerError().finish(),
+    if let Ok(canonical) = std::fs::canonicalize(&file_path) {
+        if canonical.starts_with(&static_canonical) && canonical.is_file() {
+            match actix_files::NamedFile::open(&canonical) {
+                Ok(f) => f.into_response(&req),
+                Err(_) => actix_web::HttpResponse::InternalServerError().finish(),
+            }
+        } else {
+            match actix_files::NamedFile::open(index_path.get_ref()) {
+                Ok(f) => f.into_response(&req),
+                Err(_) => actix_web::HttpResponse::NotFound().finish(),
+            }
         }
     } else {
         match actix_files::NamedFile::open(index_path.get_ref()) {

@@ -80,6 +80,29 @@ export function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
+export function parseLrc(lrc: string): { timeMs: number; text: string }[] {
+  if (!lrc) return [];
+  const lines: { timeMs: number; text: string }[] = [];
+  for (const line of lrc.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('[')) continue;
+    const match = trimmed.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/);
+    if (match) {
+      const minutes = parseInt(match[1], 10);
+      const seconds = parseInt(match[2], 10);
+      const millis = match[3].length === 2
+        ? parseInt(match[3], 10) * 10
+        : parseInt(match[3], 10);
+      const timeMs = minutes * 60_000 + seconds * 1000 + millis;
+      const text = match[4].trim();
+      if (text) {
+        lines.push({ timeMs, text });
+      }
+    }
+  }
+  return lines.sort((a, b) => a.timeMs - b.timeMs);
+}
+
 export function generateGradient(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {

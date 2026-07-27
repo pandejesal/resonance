@@ -12,7 +12,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct AppState {
@@ -1808,8 +1808,7 @@ pub async fn browse_directory(
             .map(|p| canonical.starts_with(&p))
             .unwrap_or(false)
     });
-    if !allowed && canonical != Path::new("/") && canonical != Path::new("C:\\") {
-        // Allow root listing only as fallback, but block anything outside library paths
+    if !allowed {
         return HttpResponse::Forbidden()
             .json(serde_json::json!({"error": "Path is outside configured libraries"}));
     }
@@ -3443,9 +3442,13 @@ pub async fn delete_duplicates_batch(
 fn hash_password(password: &str) -> String {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    argon2.hash_password(password.as_bytes(), &salt)
-        .expect("Argon2 hashing should not fail")
-        .to_string()
+    match argon2.hash_password(password.as_bytes(), &salt) {
+        Ok(hash) => hash.to_string(),
+        Err(e) => {
+            log::error!("Password hashing failed: {}", e);
+            panic!("Password hashing failed: {}", e);
+        }
+    }
 }
 
 pub fn verify_password(password: &str, hash: &str) -> bool {
@@ -3519,7 +3522,7 @@ pub async fn login_handler(
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .max_age(actix_web::cookie::time::Duration::days(7))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3536,7 +3539,7 @@ pub async fn logout_handler() -> HttpResponse {
     let cookie = actix_web::cookie::Cookie::build("auth_token", "")
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .max_age(actix_web::cookie::time::Duration::seconds(-1))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3739,7 +3742,7 @@ pub async fn register_handler(
             let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
                 .path("/")
                 .http_only(true)
-                .secure(false)
+                .secure(true)
                 .max_age(actix_web::cookie::time::Duration::days(7))
                 .same_site(actix_web::cookie::SameSite::Lax)
                 .finish();
@@ -3792,7 +3795,7 @@ pub async fn guest_login_handler(
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .max_age(actix_web::cookie::time::Duration::hours(24))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();

@@ -518,6 +518,29 @@ async fn stream(
     };
 
     let file_path = std::path::Path::new(&track.file_path);
+
+    // Validate the file path is within a configured library directory
+    match file_path.canonicalize() {
+        Ok(canonical) => {
+            let libraries = sqlx::query_as::<_, crate::models::Library>("SELECT * FROM libraries")
+                .fetch_all(&data.db)
+                .await
+                .unwrap_or_default();
+            let allowed = libraries.iter().any(|lib| {
+                std::path::PathBuf::from(&lib.path)
+                    .canonicalize()
+                    .map(|p| canonical.starts_with(&p))
+                    .unwrap_or(false)
+            });
+            if !allowed {
+                return error_response(70, "File path is outside configured libraries");
+            }
+        }
+        Err(_) => {
+            return error_response(70, "File not found");
+        }
+    }
+
     if !file_path.exists() {
         return error_response(70, "File not found");
     }
@@ -1047,6 +1070,7 @@ async fn get_user(_data: web::Data<AppState>, req: HttpRequest) -> HttpResponse 
     }))
 }
 
-async fn login(_data: web::Data<AppState>) -> HttpResponse {
+async fn login(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
     ok_response(json!({}))
 }

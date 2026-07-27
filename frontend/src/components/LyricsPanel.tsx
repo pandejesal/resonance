@@ -2,30 +2,8 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../stores';
 import { api } from '../lib/api';
-import type { LyricsLine, LyricsData } from '../types';
-
-function parseLrc(lrc: string): LyricsLine[] {
-  const lines: LyricsLine[] = [];
-  for (const line of lrc.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || !trimmed.startsWith('[')) continue;
-
-    const match = trimmed.match(/^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/);
-    if (match) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      const millis = match[3].length === 2
-        ? parseInt(match[3], 10) * 10
-        : parseInt(match[3], 10);
-      const timeMs = minutes * 60_000 + seconds * 1000 + millis;
-      const text = match[4].trim();
-      if (text) {
-        lines.push({ timeMs, text });
-      }
-    }
-  }
-  return lines.sort((a, b) => a.timeMs - b.timeMs);
-}
+import { parseLrc } from '../lib/utils';
+import type { LyricsData } from '../types';
 
 export default function LyricsPanel() {
   const { currentTrack, progress } = usePlayerStore();
