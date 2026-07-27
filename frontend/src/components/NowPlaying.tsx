@@ -2,13 +2,12 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import { usePlayerStore, useUIStore, useCastStore } from '../stores';
 import { getArtworkUrl, formatDuration } from '../lib/utils';
-import { audioEngine } from '../lib/audio-engine';
-import LyricsPanel from './LyricsPanel';
+import SyncedLyrics from './SyncedLyrics';
 import WaveformSeekBar from './WaveformSeekBar';
 import StarRating from './StarRating';
 import { api } from '../lib/api';
-
-const BAR_COUNT = 40;
+import type { LyricsData } from '../types';
+import AudioVisualizer from './AudioVisualizer';
 
 export default function NowPlaying() {
   const {
@@ -21,52 +20,23 @@ export default function NowPlaying() {
     fetchTargets, castPlay, castControl, stopCasting, setCastMenuOpen,
   } = useCastStore();
   const [artworkError, setArtworkError] = useState(false);
-  const [bars, setBars] = useState<number[]>(new Array(BAR_COUNT).fill(10));
   const [trackRating, setTrackRating] = useState<number | null>(null);
-  const rafRef = useRef<number>(0);
+  const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [gradientAngle, setGradientAngle] = useState(0);
   const y = useMotionValue(0);
   const castMenuRef = useRef<HTMLDivElement>(null);
+  const fullscreenDragY = useMotionValue(0);
 
-  const animate = useCallback(() => {
-    if (!audioEngine.isReady) {
-      setBars((prev) => prev.map(() => 10 + Math.random() * 20));
-      rafRef.current = requestAnimationFrame(animate);
-      return;
-    }
-
-    const data = audioEngine.getFrequencyData();
-    if (data.length === 0) {
-      rafRef.current = requestAnimationFrame(animate);
-      return;
-    }
-
-    const binCount = data.length;
-    const barsPerBin = Math.max(1, Math.floor(binCount / BAR_COUNT));
-    const newBars: number[] = [];
-
-    for (let i = 0; i < BAR_COUNT; i++) {
-      let sum = 0;
-      const start = i * barsPerBin;
-      for (let j = start; j < start + barsPerBin && j < binCount; j++) {
-        sum += data[j];
-      }
-      const avg = sum / barsPerBin;
-      const height = Math.max(8, (avg / 255) * 100);
-      newBars.push(height);
-    }
-
-    setBars(newBars);
-    rafRef.current = requestAnimationFrame(animate);
-  }, []);
-
+  // Animate gradient angle for full-screen mode
   useEffect(() => {
-    if (isPlaying && nowPlayingOpen) {
-      rafRef.current = requestAnimationFrame(animate);
-    }
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [isPlaying, nowPlayingOpen, animate]);
+    if (!isFullScreen) return;
+    const interval = setInterval(() => {
+      setGradientAngle((prev) => (prev + 0.5) % 360);
+    }, 50);
+    return () => clearInterval(interval);
+  }, [isFullScreen]);
 
   // Sync playback state to Android native MediaSession
   useEffect(() => {
@@ -86,15 +56,28 @@ export default function NowPlaying() {
 
   const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
     if (info.offset.y > 100) {
-      toggleNowPlaying();
+      if (isFullScreen) {
+        setIsFullScreen(false);
+      } else {
+        toggleNowPlaying();
+      }
     }
-  }, [toggleNowPlaying]);
+  }, [toggleNowPlaying, isFullScreen]);
 
   useEffect(() => {
     if (currentTrack) {
       setTrackRating(currentTrack.rating ?? null);
     }
   }, [currentTrack]);
+
+  useEffect(() => {
+    if (!currentTrack) return;
+    setLyricsLoading(true);
+    api.tracks.getLyrics(currentTrack.id)
+      .then(setLyricsData)
+      .catch(() => setLyricsData(null))
+      .finally(() => setLyricsLoading(false));
+  }, [currentTrack?.id]);
 
   // Close cast menu on outside click
   useEffect(() => {
@@ -130,6 +113,7 @@ export default function NowPlaying() {
   if (!currentTrack) return null;
 
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
+  const artworkUrl = currentTrack.has_artwork ? getArtworkUrl(currentTrack.id) : null;
 
   return (
     <AnimatePresence>
@@ -141,11 +125,26 @@ export default function NowPlaying() {
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="fixed inset-0 z-50 bg-surface-0 overflow-hidden"
         >
-          {/* Dynamic gradient background */}
+          {/* Blurred background for full-screen mode */}
+          {isFullScreen && artworkUrl && (
+            <div className="absolute inset-0 z-0">
+              <img
+                src={artworkUrl}
+                alt=""
+                className="w-full h-full object-cover"
+                style={{ filter: 'blur(50px) brightness(0.4) saturate(1.5)' }}
+              />
+              <div className="absolute inset-0 bg-black/40" />
+            </div>
+          )}
+
+          {/* Animated gradient background */}
           <div
-            className="absolute inset-0 opacity-40"
+            className="absolute inset-0 opacity-40 transition-all duration-1000"
             style={{
-              background: `radial-gradient(ellipse at 50% 0%, rgba(29, 185, 84, 0.3) 0%, transparent 60%)`,
+              background: isFullScreen
+                ? `linear-gradient(${gradientAngle}deg, rgba(29, 185, 84, 0.4) 0%, rgba(139, 92, 246, 0.3) 33%, rgba(236, 72, 153, 0.3) 66%, rgba(29, 185, 84, 0.4) 100%)`
+                : `radial-gradient(ellipse at 50% 0%, rgba(29, 185, 84, 0.3) 0%, transparent 60%)`,
             }}
           />
 
@@ -155,7 +154,7 @@ export default function NowPlaying() {
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.5}
             onDragEnd={handleDragEnd}
-            style={{ y, touchAction: 'pan-y' }}
+            style={{ y: isFullScreen ? fullscreenDragY : y, touchAction: 'pan-y' }}
             className="absolute top-0 left-1/2 -translate-x-1/2 z-10 pt-4 pb-2 flex justify-center cursor-grab active:cursor-grabbing w-20"
           >
             <div className="w-10 h-1 rounded-full bg-white/30" />
@@ -173,6 +172,26 @@ export default function NowPlaying() {
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
+          </button>
+
+          {/* Fullscreen toggle button */}
+          <button
+            onPointerDown={(e) => { e.stopPropagation(); }}
+            onTouchStart={(e) => { e.stopPropagation(); }}
+            onClick={(e) => { e.stopPropagation(); setIsFullScreen(!isFullScreen); }}
+            style={{ touchAction: 'manipulation', pointerEvents: 'auto' }}
+            className="absolute top-4 left-16 z-20 p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all"
+            aria-label={isFullScreen ? 'Exit full screen' : 'Enter full screen'}
+          >
+            {isFullScreen ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+              </svg>
+            )}
           </button>
 
           {/* Cast button */}
@@ -258,7 +277,7 @@ export default function NowPlaying() {
             </AnimatePresence>
           </div>
 
-            {/* Lyrics button */}
+          {/* Lyrics button */}
           <button
             onClick={toggleLyrics}
             style={{ touchAction: 'manipulation' }}
@@ -270,77 +289,127 @@ export default function NowPlaying() {
             Lyrics
           </button>
 
-          <div className="relative z-20 h-full flex flex-col items-center justify-center px-6 pb-24 pt-16 max-w-lg mx-auto">
-            {/* Album artwork */}
-            <motion.div
-              className="relative w-full max-w-[320px] aspect-square rounded-3xl overflow-hidden album-shadow-lg mb-8"
-              animate={{ scale: isPlaying ? 1 : 0.95 }}
-              transition={{ duration: 0.3 }}
-            >
-              {!artworkError && currentTrack.has_artwork ? (
-                <img
-                  src={getArtworkUrl(currentTrack.id)}
-                  alt={currentTrack.album}
-                  className="w-full h-full object-cover"
-                  onError={() => setArtworkError(true)}
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-brand-600/30 to-surface-2 flex items-center justify-center">
-                  <svg className="w-20 h-20 text-white/30" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                  </svg>
-                </div>
-              )}
-            </motion.div>
-
-            {/* Track info */}
-            <div className="w-full text-center mb-6">
-              <motion.h2
-                className="text-xl font-semibold text-primary truncate mb-1"
-                key={currentTrack.title}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+          {/* Main content area */}
+          <div className={`relative z-20 h-full flex flex-col items-center justify-center px-6 pb-24 pt-16 mx-auto ${
+            isFullScreen ? 'max-w-4xl' : 'max-w-lg'
+          }`}>
+            <div className={`w-full flex ${isFullScreen ? 'flex-row items-center gap-12' : 'flex-col items-center'}`}>
+              {/* Album artwork */}
+              <motion.div
+                className={`relative overflow-hidden album-shadow-lg flex-shrink-0 ${
+                  isFullScreen
+                    ? 'w-[400px] h-[400px] rounded-3xl'
+                    : 'w-full max-w-[320px] aspect-square rounded-3xl mb-8'
+                }`}
+                animate={{ scale: isPlaying ? 1 : 0.95 }}
+                transition={{ duration: 0.3 }}
               >
-                {currentTrack.title}
-              </motion.h2>
-              <p className="text-secondary truncate">{currentTrack.artist}</p>
-              <p className="text-tertiary text-sm truncate mb-2">{currentTrack.album}</p>
-              <div className="flex justify-center">
-                <StarRating rating={trackRating} onChange={handleRatingChange} size="md" />
-              </div>
-            </div>
-
-            {/* Audio info */}
-            <div className="flex items-center gap-3 text-xs text-tertiary mb-6">
-              {currentTrack.codec && (
-                <span className="px-2 py-1 rounded-lg bg-white/5">{currentTrack.codec}</span>
-              )}
-              {currentTrack.sample_rate && (
-                <span>{(currentTrack.sample_rate / 1000).toFixed(1)}kHz</span>
-              )}
-              {currentTrack.bit_depth && <span>{currentTrack.bit_depth}bit</span>}
-              {currentTrack.bitrate && <span>{currentTrack.bitrate}kbps</span>}
-            </div>
-
-            {/* Audio visualization or Lyrics */}
-            {lyricsOpen ? (
-              <div className="w-full mb-4">
-                <LyricsPanel />
-              </div>
-            ) : (
-              <div className="w-full h-12 flex items-end justify-center gap-[2px] mb-4">
-                {bars.map((height, i) => (
-                  <motion.div
-                    key={i}
-                    className="w-[3px] rounded-full bg-brand-500/60"
-                    animate={{
-                      height: isPlaying ? `${height}%` : '8%',
-                    }}
-                    transition={{ duration: 0.05 }}
+                {!artworkError && currentTrack.has_artwork ? (
+                  <img
+                    src={getArtworkUrl(currentTrack.id)}
+                    alt={currentTrack.album}
+                    className="w-full h-full object-cover"
+                    onError={() => setArtworkError(true)}
                   />
-                ))}
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-brand-600/30 to-surface-2 flex items-center justify-center">
+                    <svg className="w-20 h-20 text-white/30" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                    </svg>
+                  </div>
+                )}
+
+                {/* Full-screen vinyl record animation */}
+                {isFullScreen && isPlaying && (
+                  <motion.div
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                  >
+                    <div className="w-16 h-16 rounded-full border-2 border-white/10" />
+                  </motion.div>
+                )}
+              </motion.div>
+
+              {/* Right side content for full-screen */}
+              <div className={`flex-1 ${isFullScreen ? 'flex flex-col justify-center' : 'w-full'}`}>
+                {/* Track info */}
+                <div className={`text-center mb-6 ${isFullScreen ? 'text-left' : ''}`}>
+                  <motion.h2
+                    className={`font-semibold text-primary truncate mb-1 ${
+                      isFullScreen ? 'text-3xl' : 'text-xl'
+                    }`}
+                    key={currentTrack.title}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    {currentTrack.title}
+                  </motion.h2>
+                  <p className={`text-secondary truncate ${isFullScreen ? 'text-lg' : ''}`}>
+                    {currentTrack.artist}
+                  </p>
+                  <p className="text-tertiary text-sm truncate mb-2">{currentTrack.album}</p>
+                  <div className={`flex ${isFullScreen ? 'justify-start' : 'justify-center'}`}>
+                    <StarRating rating={trackRating} onChange={handleRatingChange} size="md" />
+                  </div>
+                </div>
+
+                {/* Audio info */}
+                <div className={`flex items-center gap-3 text-xs text-tertiary mb-6 ${
+                  isFullScreen ? 'justify-start' : 'justify-center'
+                }`}>
+                  {currentTrack.codec && (
+                    <span className="px-2 py-1 rounded-lg bg-white/5">{currentTrack.codec}</span>
+                  )}
+                  {currentTrack.sample_rate && (
+                    <span>{(currentTrack.sample_rate / 1000).toFixed(1)}kHz</span>
+                  )}
+                  {currentTrack.bit_depth && <span>{currentTrack.bit_depth}bit</span>}
+                  {currentTrack.bitrate && <span>{currentTrack.bitrate}kbps</span>}
+                </div>
+
+                {/* Audio visualization or Lyrics */}
+                {lyricsOpen ? (
+                  <div className={`w-full mb-4 relative ${isFullScreen ? 'h-64' : ''}`}>
+                    <div
+                      className="absolute inset-0 rounded-2xl overflow-hidden"
+                      style={{
+                        background: 'linear-gradient(180deg, rgba(29,185,84,0.15) 0%, rgba(0,0,0,0.4) 100%)',
+                      }}
+                    />
+                    <div className="relative h-full">
+                      {lyricsLoading ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : lyricsData?.synced ? (
+                        <SyncedLyrics lyrics={lyricsData.synced} className="h-full" />
+                      ) : lyricsData?.plain ? (
+                        <div className="flex items-center justify-center h-full px-4">
+                          <p className="text-secondary text-sm text-center whitespace-pre-wrap leading-relaxed">
+                            {lyricsData.plain}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <p className="text-tertiary text-sm">No lyrics available</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full mb-4">
+                    <AudioVisualizer
+                      barCount={isFullScreen ? 60 : 40}
+                      barWidth={isFullScreen ? 2 : 3}
+                      gap={2}
+                      height={isFullScreen ? 64 : 48}
+                      color="#1DB954"
+                    />
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Progress bar */}
             <div className="w-full mb-4">
@@ -405,15 +474,17 @@ export default function NowPlaying() {
               <button
                 onClick={togglePlay}
                 style={{ touchAction: 'manipulation' }}
-                className="w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center active:scale-90 transition-transform"
+                className={`rounded-full bg-brand-500 flex items-center justify-center active:scale-90 transition-transform ${
+                  isFullScreen ? 'w-20 h-20' : 'w-16 h-16'
+                }`}
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
-                  <svg className="w-7 h-7 text-black" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className={`text-black ${isFullScreen ? 'w-9 h-9' : 'w-7 h-7'}`} fill="currentColor" viewBox="0 0 24 24">
                     <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                   </svg>
                 ) : (
-                  <svg className="w-7 h-7 text-black ml-1" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className={`text-black ml-1 ${isFullScreen ? 'w-9 h-9' : 'w-7 h-7'}`} fill="currentColor" viewBox="0 0 24 24">
                     <path d="M8 5v14l11-7z" />
                   </svg>
                 )}

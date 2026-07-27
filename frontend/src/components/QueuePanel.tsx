@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { usePlayerStore, useUIStore } from '../stores';
 import { formatDuration, getArtworkUrl, cn } from '../lib/utils';
+import SmartQueue from './SmartQueue';
 import type { QueueItem } from '../types';
 
 export default function QueuePanel() {
@@ -16,6 +17,7 @@ export default function QueuePanel() {
     playTrack,
   } = usePlayerStore();
   const { queueOpen, toggleQueue } = useUIStore();
+  const [smartQueueOpen, setSmartQueueOpen] = useState(false);
 
   const upcomingTracks = queue.slice(queueIndex + 1);
 
@@ -33,6 +35,24 @@ export default function QueuePanel() {
           <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
             <h2 className="text-lg font-semibold text-primary">Queue</h2>
             <div className="flex items-center gap-2">
+              {/* Smart Queue toggle */}
+              <button
+                onClick={() => setSmartQueueOpen(!smartQueueOpen)}
+                className={cn(
+                  'px-2 py-1 rounded-lg text-xs font-medium transition-all',
+                  smartQueueOpen
+                    ? 'bg-brand-500 text-white'
+                    : 'bg-white/10 text-white/60 hover:bg-white/20'
+                )}
+                aria-label={smartQueueOpen ? 'Disable smart queue' : 'Enable smart queue'}
+              >
+                <span className="flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Smart
+                </span>
+              </button>
               {queue.length > 0 && (
                 <button
                   onClick={clearQueue}
@@ -117,6 +137,9 @@ export default function QueuePanel() {
           </div>
         </motion.div>
       )}
+
+      {/* Smart Queue floating panel */}
+      <SmartQueue isOpen={smartQueueOpen} onClose={() => setSmartQueueOpen(false)} />
     </AnimatePresence>
   );
 }
