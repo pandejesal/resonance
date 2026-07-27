@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useUIStore, usePlayerStore, useAuthStore, useCastStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
+import { toast } from '../components/Toast';
 import type { Library, ScanProgress, ScrobblingConfig, UpdateStatus, UpdaterConfig, DeviceTrack, UserInfo, CastTarget } from '../types';
 
 const DEFAULT_SCROBBLE_CONFIG: ScrobblingConfig = {
@@ -63,28 +64,28 @@ export default function SettingsPage() {
   useEffect(() => {
     api.libraries.list()
       .then(setLibraries)
-      .catch(console.error)
+      .catch(() => toast.error('Failed to load libraries'))
       .finally(() => setLoading(false));
 
     api.settings.getScrobbling()
       .then(setScrobblingConfig)
-      .catch(console.error);
+      .catch(() => toast.error('Failed to load scrobbling config'));
 
     api.updater.getStatus()
       .then(setUpdaterStatus)
-      .catch(console.error);
+      .catch(() => toast.error('Failed to load updater status'));
 
     api.updater.getConfig()
       .then(setUpdaterConfig)
-      .catch(console.error);
+      .catch(() => toast.error('Failed to load updater config'));
 
-    fetchCastTargets().catch(console.error);
+    fetchCastTargets().catch(() => toast.error('Failed to load cast targets'));
 
     if (user?.role === 'admin') {
       setUsersLoading(true);
       api.auth.listUsers()
         .then(setUsers)
-        .catch(console.error)
+        .catch(() => toast.error('Failed to load users'))
         .finally(() => setUsersLoading(false));
     }
 
@@ -102,7 +103,7 @@ export default function SettingsPage() {
       setNewPath('');
       setShowAdd(false);
     } catch (e) {
-      console.error('Failed to add library:', e);
+      toast.error('Failed to add library');
     }
   };
 
@@ -133,7 +134,7 @@ export default function SettingsPage() {
 
       scanPollRefs.current[id] = poll;
     } catch (e) {
-      console.error('Failed to start scan:', e);
+      toast.error('Failed to start scan');
     }
   };
 
@@ -143,7 +144,7 @@ export default function SettingsPage() {
       await api.libraries.delete(id);
       setLibraries(libraries.filter((l) => l.id !== id));
     } catch (e) {
-      console.error('Failed to delete library:', e);
+      toast.error('Failed to delete library');
     }
   };
 
@@ -167,7 +168,7 @@ export default function SettingsPage() {
       const result = await api.settings.updateScrobbling(scrobblingConfig);
       setScrobblingConfig(result.config);
     } catch (e) {
-      console.error('Failed to save scrobbling settings:', e);
+      toast.error('Failed to save scrobbling settings');
     } finally {
       setScrobblingSaving(false);
     }
@@ -215,7 +216,7 @@ export default function SettingsPage() {
       const result = await api.updater.updateConfig(newConfig);
       setUpdaterConfig(result.config);
     } catch (e) {
-      console.error('Failed to update updater config:', e);
+      toast.error('Failed to update updater config');
     }
   };
 
@@ -226,7 +227,7 @@ export default function SettingsPage() {
       const result = await api.updater.updateConfig(newConfig);
       setUpdaterConfig(result.config);
     } catch (e) {
-      console.error('Failed to update updater config:', e);
+      toast.error('Failed to update updater config');
     }
   };
 
@@ -288,7 +289,7 @@ export default function SettingsPage() {
       await api.auth.deleteUser(userId);
       setUsers(users.filter((u) => u.id !== userId));
     } catch (e: any) {
-      console.error('Failed to delete user:', e);
+      toast.error('Failed to delete user');
     }
   };
 
@@ -308,7 +309,7 @@ export default function SettingsPage() {
       setNewCastProtocol('chromecast');
       setShowAddCastTarget(false);
     } catch (e) {
-      console.error('Failed to add cast target:', e);
+      toast.error('Failed to add cast target');
     }
   };
 
@@ -317,7 +318,7 @@ export default function SettingsPage() {
     try {
       await unregisterCastTarget(id);
     } catch (e) {
-      console.error('Failed to delete cast target:', e);
+      toast.error('Failed to delete cast target');
     }
   };
 
@@ -339,7 +340,7 @@ export default function SettingsPage() {
           console.log('Filters loaded:', profile.filters.length);
         }
       } catch (err) {
-        console.error('Failed to parse AutoEQ profile:', err);
+        toast.error('Failed to parse AutoEQ profile');
       }
     };
     input.click();

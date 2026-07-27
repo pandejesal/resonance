@@ -4,6 +4,7 @@ import type { Track, RepeatMode, QueueItem, Theme, ViewMode, UserInfo, CastTarge
 import { api } from '../lib/api';
 import { shuffleArray } from '../lib/utils';
 import { audioEngine, EQ_PRESETS } from '../lib/audio-engine';
+import { toast } from '../components/Toast';
 
 interface PlayerStore {
   currentTrack: Track | null;
@@ -541,9 +542,11 @@ export const usePlayerStore = create<PlayerStore>()(
     {
       name: 'resonance-player',
       partialize: (state) => ({
-        volume: state.volume,
-        shuffle: state.shuffle,
+        queue: state.queue,
+        queueIndex: state.queueIndex,
         repeat: state.repeat,
+        shuffle: state.shuffle,
+        volume: state.volume,
         crossfade: state.crossfade,
         crossfadeDuration: state.crossfadeDuration,
         gapless: state.gapless,
@@ -708,7 +711,7 @@ export const useCastStore = create<CastState>()(
         const targets = await api.cast.listTargets();
         set({ targets });
       } catch (e) {
-        console.error('Failed to fetch cast targets:', e);
+        toast.error('Failed to fetch cast targets');
       }
     },
 
@@ -719,7 +722,7 @@ export const useCastStore = create<CastState>()(
           targets: [...state.targets, target],
         }));
       } catch (e) {
-        console.error('Failed to register cast target:', e);
+        toast.error('Failed to register cast target');
         throw e;
       }
     },
@@ -733,7 +736,7 @@ export const useCastStore = create<CastState>()(
           isCasting: state.activeTarget?.id === id ? false : state.isCasting,
         }));
       } catch (e) {
-        console.error('Failed to unregister cast target:', e);
+        toast.error('Failed to unregister cast target');
       }
     },
 
@@ -753,7 +756,7 @@ export const useCastStore = create<CastState>()(
           ),
         }));
       } catch (e) {
-        console.error('Failed to cast play:', e);
+        toast.error('Failed to cast play');
       }
     },
 
@@ -774,7 +777,7 @@ export const useCastStore = create<CastState>()(
           }));
         }
       } catch (e) {
-        console.error('Failed to cast control:', e);
+        toast.error('Failed to cast control');
       }
     },
 

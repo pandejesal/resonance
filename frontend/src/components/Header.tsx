@@ -7,12 +7,12 @@ export default function Header() {
   const { toggleSidebar, toggleSearch, sidebarOpen } = useUIStore();
 
   return (
-    <header className="sticky top-0 z-20 glass border-b border-white/5">
-      <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3">
+    <header className="sticky top-0 z-20 bg-surface-0/80 backdrop-blur-xl border-b border-white/[0.06]">
+      <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-5 py-3">
         {/* Mobile menu button */}
         <button
           onClick={toggleSidebar}
-          className="lg:hidden p-2 rounded-xl hover:bg-white/5 transition-colors"
+          className="lg:hidden p-2 rounded-xl hover:bg-white/[0.06] transition-all duration-200 active:scale-95"
           aria-label="Open navigation menu"
         >
           <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -23,24 +23,24 @@ export default function Header() {
         {/* Search */}
         <button
           onClick={toggleSearch}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-1 border border-white/5 text-secondary hover:text-primary hover:border-white/10 transition-all flex-1 max-w-md"
+          className="search-bar-premium flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/[0.06] text-secondary hover:text-primary transition-all duration-300 flex-1 max-w-md group"
           aria-label="Open search"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 text-tertiary group-hover:text-brand-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <span className="text-sm">Search your library...</span>
-          <kbd className="hidden sm:block ml-auto text-xs text-tertiary px-1.5 py-0.5 rounded bg-white/5">
-            ⌘K
+          <span className="text-sm text-tertiary group-hover:text-secondary transition-colors">Search your library...</span>
+          <kbd className="hidden sm:flex ml-auto items-center gap-0.5 text-[10px] text-tertiary/70 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06] font-mono">
+            <span className="text-[11px]">⌘</span>K
           </kbd>
         </button>
 
         {/* Right side actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {/* Settings */}
           <Link
             to="/settings"
-            className="p-2 rounded-xl hover:bg-white/5 transition-colors text-secondary hover:text-primary"
+            className="p-2.5 rounded-xl hover:bg-white/[0.06] transition-all duration-200 text-secondary hover:text-primary active:scale-95"
             aria-label="Settings"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

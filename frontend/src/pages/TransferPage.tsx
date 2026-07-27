@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
+import { toast } from '../components/Toast';
 import type { Playlist, TransferPlatform } from '../types';
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -46,7 +47,7 @@ export default function TransferPage() {
   useEffect(() => {
     api.playlists.list()
       .then(setPlaylists)
-      .catch(console.error)
+      .catch(() => toast.error('Failed to load playlists'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -57,7 +58,7 @@ export default function TransferPage() {
       const response = await api.transfer.export(selectedPlaylist, targetPlatform);
       if (!response.ok) {
         const err = await response.json();
-        alert(err.error || 'Export failed');
+        toast.error(err.error || 'Export failed');
         return;
       }
       const blob = await response.blob();
@@ -76,8 +77,7 @@ export default function TransferPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error('Export failed:', e);
-      alert('Export failed');
+      toast.error('Export failed');
     } finally {
       setExporting(false);
     }

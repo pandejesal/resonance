@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../stores';
+import { toast } from '../components/Toast';
 
 export default function LoginPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -32,7 +33,9 @@ export default function LoginPage() {
         await login(username, password);
       }
     } catch (err: any) {
-      setError(err.message || (mode === 'signup' ? 'Registration failed' : 'Login failed'));
+      const msg = err.message || (mode === 'signup' ? 'Registration failed' : 'Login failed');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -44,7 +47,9 @@ export default function LoginPage() {
     try {
       await loginAsGuest();
     } catch (err: any) {
-      setError(err.message || 'Guest login failed');
+      const msg = err.message || 'Guest login failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

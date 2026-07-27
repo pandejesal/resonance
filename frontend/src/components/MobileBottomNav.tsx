@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useUIStore } from '../stores';
+import { useUIStore, usePlayerStore } from '../stores';
 import { cn } from '../lib/utils';
 
 const tabs = [
@@ -64,14 +64,41 @@ export default function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toggleSearch } = useUIStore();
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
   };
 
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    const deltaX = touchEndX - touchStartX.current;
+    const deltaY = touchEndY - touchStartY.current;
+
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+      const store = usePlayerStore.getState();
+      if (deltaX > 0) {
+        store.previous();
+      } else {
+        store.next();
+      }
+    }
+  }, []);
+
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 safe-bottom">
+    <nav
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-30 safe-bottom"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <div className="glass-strong border-t border-white/10">
         <div className="flex items-center justify-around h-14">
           {tabs.map((tab) => {

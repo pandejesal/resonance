@@ -44,63 +44,76 @@ export default function Sidebar() {
       {/* Sidebar */}
       <motion.aside
         className={cn(
-          'fixed top-0 left-0 h-full z-30 w-64 glass-strong border-r border-white/10 flex flex-col',
-          'lg:translate-x-0 transition-transform duration-300',
+          'fixed top-0 left-0 h-full z-30 w-64 flex flex-col',
+          'bg-surface-1/80 backdrop-blur-2xl border-r border-white/[0.08]',
+          'lg:translate-x-0 transition-transform duration-300 ease-out',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Logo */}
-        <div className="p-6 pb-4">
-          <h1 className="text-xl font-bold gradient-text">Resonance</h1>
-          <p className="text-xs text-tertiary mt-1">Music Library</p>
+        <div className="p-5 pb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
+              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-primary tracking-tight">Resonance</h1>
+              <p className="text-[10px] text-tertiary uppercase tracking-widest">Music Library</p>
+            </div>
+          </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto no-scrollbar">
+        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto no-scrollbar py-2">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                  'sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-brand-600/20 text-brand-400'
-                    : 'text-secondary hover:text-primary hover:bg-white/5'
+                    ? 'bg-brand-500/10 text-brand-400 shadow-sm'
+                    : 'text-secondary hover:text-primary hover:bg-white/[0.04]'
                 )
               }
               onClick={() => {
                 if (window.innerWidth < 1024) toggleSidebar();
               }}
             >
-              <item.icon className="w-5 h-5" />
-              {item.label}
+              <item.icon className="w-5 h-5 flex-shrink-0" />
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-white/5">
+        <div className="p-4 border-t border-white/[0.06]">
           {user && (
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center">
-                  <span className="text-brand-500 text-sm font-medium">
-                    {user.username.charAt(0).toUpperCase()}
-                  </span>
+            <div className="flex items-center justify-between mb-3 p-2 rounded-xl hover:bg-white/[0.03] transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-md">
+                    <span className="text-white text-sm font-semibold">
+                      {user.username.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-surface-1" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-primary">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-primary truncate">
                     {isGuest ? 'Guest' : user.username}
                   </p>
-                  <p className="text-xs text-tertiary">
+                  <p className="text-xs text-tertiary truncate">
                     {isGuest ? 'Limited access' : user.role}
                   </p>
                 </div>
               </div>
               <button
                 onClick={logout}
-                className="p-2 rounded-lg hover:bg-white/5 text-secondary hover:text-primary transition-colors"
+                className="p-2 rounded-lg hover:bg-white/10 text-secondary hover:text-primary transition-all duration-200 hover:scale-105 active:scale-95"
                 title={isGuest ? 'Exit guest mode' : 'Logout'}
                 aria-label={isGuest ? 'Exit guest mode' : 'Logout'}
               >
@@ -115,7 +128,7 @@ export default function Sidebar() {
               Sign in for full access
             </p>
           )}
-          <div className="text-xs text-tertiary text-center">
+          <div className="text-[10px] text-tertiary/60 text-center uppercase tracking-wider">
             Resonance v0.6.0
           </div>
         </div>

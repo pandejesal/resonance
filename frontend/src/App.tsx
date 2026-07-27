@@ -9,6 +9,8 @@ import MiniPlayer from './components/MiniPlayer';
 import NowPlaying from './components/NowPlaying';
 import QueuePanel from './components/QueuePanel';
 import SearchModal from './components/SearchModal';
+import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
+import ToastContainer from './components/Toast';
 import UpdateBanner from './components/UpdateBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import MobileBottomNav from './components/MobileBottomNav';
@@ -118,7 +120,7 @@ export default function App() {
     <BrowserRouter>
       <BackButtonHandler />
       <ErrorBoundary>
-        <div className="h-screen flex flex-col bg-surface-0 overflow-hidden">
+        <div className="flex h-screen bg-surface-0 overflow-hidden">
           <UpdateBanner />
 
           <div className="flex flex-1 min-h-0">
@@ -135,6 +137,8 @@ export default function App() {
         <NowPlaying />
         <QueuePanel />
         <SearchModal />
+        <KeyboardShortcutsOverlay />
+        <ToastContainer />
       </div>
       </ErrorBoundary>
     </BrowserRouter>

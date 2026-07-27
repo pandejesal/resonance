@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { usePlayerStore, useUIStore } from '../stores';
 import { formatDuration, getArtworkUrl, cn } from '../lib/utils';
+import { api } from '../lib/api';
+import { toast } from './Toast';
 import SmartQueue from './SmartQueue';
 import type { QueueItem } from '../types';
 
@@ -21,6 +23,24 @@ export default function QueuePanel() {
 
   const upcomingTracks = queue.slice(queueIndex + 1);
 
+  const totalDurationMs = queue.reduce((acc, item) => acc + item.track.duration_ms, 0);
+  const trackCount = queue.length;
+
+  const saveAsPlaylist = useCallback(async () => {
+    if (queue.length === 0) return;
+    const name = window.prompt('Enter playlist name:');
+    if (!name) return;
+    try {
+      const playlist = await api.playlists.create({ name });
+      for (const item of queue) {
+        await api.playlists.addTrack(playlist.id, item.track.id);
+      }
+      toast.success(`Playlist "${name}" created with ${queue.length} tracks`);
+    } catch (e) {
+      toast.error('Failed to create playlist');
+    }
+  }, [queue]);
+
   return (
     <AnimatePresence>
       {queueOpen && (
@@ -32,46 +52,62 @@ export default function QueuePanel() {
           className="fixed top-0 right-0 h-full w-80 glass-strong border-l border-white/10 z-40 flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/5">
-            <h2 className="text-lg font-semibold text-primary">Queue</h2>
-            <div className="flex items-center gap-2">
-              {/* Smart Queue toggle */}
-              <button
-                onClick={() => setSmartQueueOpen(!smartQueueOpen)}
-                className={cn(
-                  'px-2 py-1 rounded-lg text-xs font-medium transition-all',
-                  smartQueueOpen
-                    ? 'bg-brand-500 text-white'
-                    : 'bg-white/10 text-white/60 hover:bg-white/20'
-                )}
-                aria-label={smartQueueOpen ? 'Disable smart queue' : 'Enable smart queue'}
-              >
-                <span className="flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  Smart
-                </span>
-              </button>
-              {queue.length > 0 && (
+          <div className="px-4 py-4 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-primary">Queue</h2>
+              <div className="flex items-center gap-2">
+                {/* Smart Queue toggle */}
                 <button
-                  onClick={clearQueue}
-                  className="text-xs text-secondary hover:text-primary transition-colors"
-                  aria-label="Clear queue"
+                  onClick={() => setSmartQueueOpen(!smartQueueOpen)}
+                  className={cn(
+                    'px-2 py-1 rounded-lg text-xs font-medium transition-all',
+                    smartQueueOpen
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  )}
+                  aria-label={smartQueueOpen ? 'Disable smart queue' : 'Enable smart queue'}
                 >
-                  Clear
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    Smart
+                  </span>
                 </button>
-              )}
-              <button
-                onClick={toggleQueue}
-                className="p-1 rounded-lg hover:bg-white/10 transition-colors"
-                aria-label="Close queue"
-              >
-                <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+                {queue.length > 0 && (
+                  <>
+                    <button
+                      onClick={saveAsPlaylist}
+                      className="text-xs text-secondary hover:text-primary transition-colors"
+                      aria-label="Save queue as playlist"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={clearQueue}
+                      className="text-xs text-secondary hover:text-primary transition-colors"
+                      aria-label="Clear queue"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={toggleQueue}
+                  className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+                  aria-label="Close queue"
+                >
+                  <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
+            {trackCount > 0 && (
+              <div className="mt-2 text-xs text-tertiary">
+                {trackCount} {trackCount === 1 ? 'track' : 'tracks'} &middot; {formatDuration(totalDurationMs)}
+              </div>
+            )}
           </div>
 
           {/* Queue items */}

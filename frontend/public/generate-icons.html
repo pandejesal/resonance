@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Resonance PWA Icons</title>
+  <style>
+    body { font-family: system-ui; max-width: 600px; margin: 40px auto; padding: 0 20px; background: #0a0a0a; color: #fff; }
+    h1 { color: #1DB954; }
+    code { background: #1a1a2e; padding: 2px 6px; border-radius: 4px; }
+    .icon-preview { display: inline-block; border: 1px solid #333; margin: 10px; text-align: center; }
+    .icon-preview canvas { display: block; }
+  </style>
+</head>
+<body>
+  <h1>PWA Icons for Resonance</h1>
+  <p>This app requires the following icon files in <code>/public</code>:</p>
+  <ul>
+    <li><code>icon-192.png</code> — 192x192 pixels</li>
+    <li><code>icon-512.png</code> — 512x512 pixels</li>
+  </ul>
+  <p>Icons should be square PNG images with a transparent or solid background. The <code>maskable</code> purpose means icons should include padding (~10%) for safe zone masking on Android.</p>
+  <p>Replace this file with the actual icon PNGs once designed.</p>
+  <div>
+    <div class="icon-preview">
+      <canvas id="c192" width="192" height="192"></canvas>
+      <div>192x192</div>
+    </div>
+    <div class="icon-preview">
+      <canvas id="c512" width="512" height="512"></canvas>
+      <div>512x512</div>
+    </div>
+  </div>
+  <script>
+    function drawIcon(canvasId, size) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      const r = size / 2;
+      // Background
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, size, size);
+      // Circle
+      ctx.beginPath();
+      ctx.arc(r, r, r * 0.7, 0, Math.PI * 2);
+      ctx.fillStyle = '#1DB954';
+      ctx.fill();
+      // R letter
+      ctx.fillStyle = '#0a0a0a';
+      ctx.font = `bold ${size * 0.5}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('R', r, r);
+    }
+    drawIcon('c192', 192);
+    drawIcon('c512', 512);
+  </script>
+</body>
+</html>

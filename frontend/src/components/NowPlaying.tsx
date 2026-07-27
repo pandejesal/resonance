@@ -9,6 +9,21 @@ import { api } from '../lib/api';
 import type { LyricsData } from '../types';
 import AudioVisualizer from './AudioVisualizer';
 
+const LIKED_STORAGE_KEY = 'resonance-liked-tracks';
+
+function getLikedTracks(): Set<string> {
+  try {
+    const stored = localStorage.getItem(LIKED_STORAGE_KEY);
+    return stored ? new Set(JSON.parse(stored)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveLikedTracks(liked: Set<string>) {
+  localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify([...liked]));
+}
+
 export default function NowPlaying() {
   const {
     currentTrack, isPlaying, progress, duration, next, previous,
@@ -25,9 +40,21 @@ export default function NowPlaying() {
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [gradientAngle, setGradientAngle] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [prevVolume, setPrevVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [volumeHover, setVolumeHover] = useState(false);
+  const [likedTracks, setLikedTracks] = useState<Set<string>>(getLikedTracks);
+  const [isLiked, setIsLiked] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [buffered, setBuffered] = useState(0);
+  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
   const y = useMotionValue(0);
   const castMenuRef = useRef<HTMLDivElement>(null);
   const fullscreenDragY = useMotionValue(0);
+  const volumeSliderRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   // Animate gradient angle for full-screen mode
   useEffect(() => {
@@ -71,6 +98,27 @@ export default function NowPlaying() {
   }, [currentTrack]);
 
   useEffect(() => {
+    if (currentTrack) {
+      setIsLiked(likedTracks.has(String(currentTrack.id)));
+    }
+  }, [currentTrack, likedTracks]);
+
+  useEffect(() => {
+    const handleBufferProgress = () => {
+      const audio = document.querySelector('audio');
+      if (audio && audio.buffered.length > 0) {
+        const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
+        setBuffered(bufferedEnd);
+      }
+    };
+    const audio = document.querySelector('audio');
+    if (audio) {
+      audio.addEventListener('progress', handleBufferProgress);
+      return () => audio.removeEventListener('progress', handleBufferProgress);
+    }
+  }, [currentTrack]);
+
+  useEffect(() => {
     if (!currentTrack) return;
     setLyricsLoading(true);
     api.tracks.getLyrics(currentTrack.id)
@@ -109,6 +157,80 @@ export default function NowPlaying() {
       setTrackRating(currentTrack.rating ?? null);
     }
   }, [currentTrack]);
+
+  const handleVolumeChange = useCallback((newVolume: number) => {
+    const clamped = Math.max(0, Math.min(1, newVolume));
+    setVolume(clamped);
+    setIsMuted(clamped === 0);
+    if (clamped > 0) setPrevVolume(clamped);
+    const audio = document.querySelector('audio');
+    if (audio) audio.volume = clamped;
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (isMuted) {
+      handleVolumeChange(prevVolume || 0.5);
+    } else {
+      setPrevVolume(volume);
+      handleVolumeChange(0);
+    }
+  }, [isMuted, volume, prevVolume, handleVolumeChange]);
+
+  const handleToggleLike = useCallback(() => {
+    if (!currentTrack) return;
+    const id = String(currentTrack.id);
+    setLikedTracks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      saveLikedTracks(next);
+      return next;
+    });
+  }, [currentTrack]);
+
+  const handleShare = useCallback(async () => {
+    if (!currentTrack) return;
+    const text = `♪ ${currentTrack.title} - ${currentTrack.artist} | Resonance`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setToastMessage('Copied to clipboard!');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2000);
+    } catch {
+      setToastMessage('Failed to copy');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2000);
+    }
+  }, [currentTrack]);
+
+  const handleProgressInteraction = useCallback((clientX: number) => {
+    const el = progressRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    seek(percent * duration);
+  }, [duration, seek]);
+
+  const handleProgressMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingProgress(true);
+    handleProgressInteraction(e.clientX);
+  }, [handleProgressInteraction]);
+
+  useEffect(() => {
+    if (!isDraggingProgress) return;
+    const handleMouseMove = (e: MouseEvent) => handleProgressInteraction(e.clientX);
+    const handleMouseUp = () => setIsDraggingProgress(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingProgress, handleProgressInteraction]);
 
   if (!currentTrack) return null;
 
@@ -422,33 +544,34 @@ export default function NowPlaying() {
                 />
               ) : (
                 <div
-                  className="relative w-full h-1 bg-white/10 rounded-full cursor-pointer group"
+                  ref={progressRef}
+                  className="relative w-full h-1.5 bg-white/10 rounded-full cursor-pointer group hover:h-2 transition-all"
                   style={{ touchAction: 'none' }}
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const percent = (e.clientX - rect.left) / rect.width;
-                    seek(percent * duration);
-                  }}
+                  onMouseDown={handleProgressMouseDown}
                   onTouchStart={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
                     const touch = e.touches[0];
-                    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                    seek(percent * duration);
+                    handleProgressInteraction(touch.clientX);
                   }}
                   onTouchMove={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
+                    e.preventDefault();
                     const touch = e.touches[0];
-                    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                    seek(percent * duration);
+                    handleProgressInteraction(touch.clientX);
                   }}
                 >
+                  {/* Buffered */}
+                  <div
+                    className="absolute h-full bg-white/15 rounded-full"
+                    style={{ width: `${duration > 0 ? (buffered / duration) * 100 : 0}%` }}
+                  />
+                  {/* Progress */}
                   <motion.div
                     className="absolute h-full bg-brand-500 rounded-full"
                     style={{ width: `${progressPercent}%` }}
                   />
+                  {/* Draggable thumb */}
                   <div
-                    className="absolute w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -translate-y-1/2 top-1/2"
-                    style={{ left: `calc(${progressPercent}% - 6px)` }}
+                    className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -translate-y-1/2 top-1/2 pointer-events-none"
+                    style={{ left: `calc(${progressPercent}% - 7px)` }}
                   />
                 </div>
               )}
@@ -503,7 +626,7 @@ export default function NowPlaying() {
             </div>
 
             {/* Secondary controls */}
-            <div className="flex items-center justify-center gap-10 mt-6">
+            <div className="flex items-center justify-center gap-6 mt-6">
               <button
                 onClick={toggleShuffle}
                 style={{ touchAction: 'manipulation' }}
@@ -520,24 +643,125 @@ export default function NowPlaying() {
               <button
                 onClick={cycleRepeat}
                 style={{ touchAction: 'manipulation' }}
-                className={`p-2 transition-colors active:scale-90 ${
+                className={`relative p-2 transition-colors active:scale-90 ${
                   repeat !== 'off' ? 'text-brand-500' : 'text-white/50 hover:text-white'
                 }`}
                 aria-label={`Repeat: ${repeat}`}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   {repeat === 'one' ? (
-                    <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+                    <>
+                      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+                      <text x="12" y="15.5" textAnchor="middle" fontSize="7" fontWeight="bold" fill="currentColor">1</text>
+                    </>
                   ) : (
                     <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
                   )}
                 </svg>
-                {repeat === 'one' && (
-                  <span className="absolute -top-1 -right-1 text-[9px] font-bold text-brand-500">1</span>
-                )}
               </button>
+
+              <button
+                onClick={handleToggleLike}
+                style={{ touchAction: 'manipulation' }}
+                className={`p-2 transition-colors active:scale-90 ${
+                  isLiked ? 'text-pink-500' : 'text-white/50 hover:text-white'
+                }`}
+                aria-label={isLiked ? 'Unlike track' : 'Like track'}
+              >
+                <motion.svg
+                  className="w-5 h-5"
+                  viewBox="0 0 24 24"
+                  animate={isLiked ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.3 }}
+                  fill={isLiked ? 'currentColor' : 'none'}
+                  stroke="currentColor"
+                  strokeWidth={isLiked ? 0 : 2}
+                >
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                </motion.svg>
+              </button>
+
+              <button
+                onClick={handleShare}
+                style={{ touchAction: 'manipulation' }}
+                className="p-2 text-white/50 hover:text-white transition-colors active:scale-90"
+                aria-label="Share track"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              {/* Volume control */}
+              <div
+                className="relative flex items-center"
+                onMouseEnter={() => setVolumeHover(true)}
+                onMouseLeave={() => setVolumeHover(false)}
+              >
+                <button
+                  onClick={toggleMute}
+                  style={{ touchAction: 'manipulation' }}
+                  className="p-2 text-white/50 hover:text-white transition-colors active:scale-90"
+                  aria-label={isMuted ? 'Unmute' : 'Mute'}
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    {isMuted || volume === 0 ? (
+                      <>
+                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+                      </>
+                    ) : volume < 0.5 ? (
+                      <>
+                        <path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z" />
+                      </>
+                    ) : (
+                      <>
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                      </>
+                    )}
+                  </svg>
+                </button>
+                <AnimatePresence>
+                  {volumeHover && (
+                    <motion.div
+                      ref={volumeSliderRef}
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: 100 }}
+                      exit={{ opacity: 0, width: 0 }}
+                      className="relative h-1 bg-white/10 rounded-full cursor-pointer overflow-hidden"
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                        handleVolumeChange(percent);
+                      }}
+                    >
+                      <div
+                        className="absolute h-full bg-brand-500 rounded-full"
+                        style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
+                      />
+                      <div
+                        className="absolute w-3 h-3 bg-white rounded-full shadow-lg -translate-y-1/2 top-1/2 pointer-events-none"
+                        style={{ left: `calc(${(isMuted ? 0 : volume) * 100}% - 6px)` }}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
+
+          {/* Toast notification */}
+          <AnimatePresence>
+            {showToast && (
+              <motion.div
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 50 }}
+                className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-surface-1 border border-white/10 rounded-full shadow-xl text-sm text-primary"
+              >
+                {toastMessage}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

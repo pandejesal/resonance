@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
+import { toast } from '../components/Toast';
 import type { Track } from '../types';
 
 interface DuplicateTrack extends Track {}
@@ -24,7 +25,7 @@ export default function MusicToolsPage() {
       }
       setResults(tracks);
     } catch (e) {
-      console.error('Search failed:', e);
+      toast.error('Search failed');
     } finally {
       setLoading(false);
     }
@@ -228,7 +229,7 @@ function TransferTab() {
         message: 'Cross-platform playlist transfer requires server-side OAuth integration. Use the Import page to import playlists from files.',
       });
     } catch (e) {
-      console.error('Transfer failed:', e);
+      toast.error('Transfer failed');
     } finally {
       setTransferring(false);
     }
@@ -316,7 +317,7 @@ function PlaylistUtilsTab() {
       setTracks(data);
       setResult(data);
     } catch {
-      alert('Invalid JSON. Paste an array of track objects.');
+      toast.error('Invalid JSON. Paste an array of track objects.');
     }
     setLoading(false);
   };
@@ -398,7 +399,7 @@ function PlaylistUtilsTab() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error(e);
+      toast.error('Export failed');
     }
   };
 
@@ -495,13 +496,13 @@ function SpotifyToolsTab() {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!resp.ok) {
-        console.error('Spotify API error:', resp.status);
+        toast.error('Spotify API error');
         return;
       }
       const data = await resp.json();
       setPlaylists(data.items || []);
     } catch (e) {
-      console.error(e);
+      toast.error('Failed to load playlists');
     }
     setLoading(false);
   };
@@ -610,7 +611,7 @@ function DuplicateDetectionTab() {
       setFingerprintDuplicates(result.duplicates);
       setMessage(`Found ${result.groups} groups with ${result.total_duplicates} total duplicates`);
     } catch (e) {
-      console.error('Scan failed:', e);
+      toast.error('Scan failed');
       setMessage('Failed to scan for duplicates');
     } finally {
       setLoading(false);
@@ -625,7 +626,7 @@ function DuplicateDetectionTab() {
       setSimilarTracks(result.duplicates);
       setMessage(`Found ${result.groups} groups of similar tracks`);
     } catch (e) {
-      console.error('Scan failed:', e);
+      toast.error('Scan failed');
       setMessage('Failed to scan for similar tracks');
     } finally {
       setLoading(false);
@@ -669,7 +670,7 @@ function DuplicateDetectionTab() {
         await scanSimilar();
       }
     } catch (e) {
-      console.error('Delete failed:', e);
+      toast.error('Delete failed');
       setMessage('Failed to delete tracks');
     } finally {
       setLoading(false);
