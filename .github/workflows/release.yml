@@ -203,21 +203,24 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust Android Target
+      - name: Install Rust Android Targets
         run: |
-          rustup target add aarch64-linux-android
+          rustup target add aarch64-linux-android armv7-linux-androideabi
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
         run: |
-          sdkmanager "ndk;26.1.10909125"
+          sdkmanager "ndk;27.0.12077973"
 
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -237,22 +240,16 @@ jobs:
 
       - name: Build Backend for Android
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.1.10909125
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
         run: |
-          NDK_BIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
-          export CC_aarch64_linux_android=$NDK_BIN/aarch64-linux-android34-clang
-          export AR_aarch64_linux_android=$NDK_BIN/llvm-ar
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_BIN/aarch64-linux-android34-clang
-          export PKG_CONFIG_PATH=""
-          export OPENSSL_DIR=""
-          cargo build --release --target aarch64-linux-android -p resonance-backend --lib
+          cargo ndk --target aarch64-linux-android --platform 29 build --release -p backend
 
       - name: Prepare Android Assets
         run: |
-          mkdir -p frontend/android/app/src/main/jniLibs/arm64-v8a
-          cp target/aarch64-linux-android/release/libresonance_backend.so frontend/android/app/src/main/jniLibs/arm64-v8a/
-          mkdir -p frontend/android/app/src/main/assets/static
-          cp -r frontend/dist/* frontend/android/app/src/main/assets/static/
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp target/aarch64-linux-android/release/libresonance_backend.so android/app/src/main/jniLibs/arm64-v8a/
+          mkdir -p android/app/src/main/assets/static
+          cp -r frontend/dist/* android/app/src/main/assets/static/
 
       - name: Setup Android Debug Keystore
         run: |
@@ -266,41 +263,32 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Generate Gradle Wrapper
-        run: |
-          cd frontend/android
-          gradle wrapper --gradle-version 8.5
-
       - name: Build Android APK
         run: |
-          cd frontend/android
+          cd android
           chmod +x gradlew
           ./gradlew clean assembleDebug
 
-      - name: Verify APK Signature
+      - name: Verify APK Exists
         run: |
-          APK=frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK not found at $APK"
             exit 1
           fi
+          echo "APK size: $(du -h "$APK" | cut -f1)"
+
+      - name: Verify APK Signature
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK"
           echo "APK signature verified successfully"
-
-      - name: Verify APK
-        run: |
-          APK_PATH=frontend/android/app/build/outputs/apk/debug/app-debug.apk
-          if [ ! -f "$APK_PATH" ]; then
-            echo "ERROR: APK not found at $APK_PATH"
-            exit 1
-          fi
-          echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
   build-ios-ipa:
     runs-on: macos-latest
