@@ -71,18 +71,18 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
-        // Light status bar icons for dark theme
+        webView = WebView(this).apply {
+            // WebView must be added programmatically (no XML layout needed)
+        }
+        setContentView(webView)
+
+        // Light status bar icons for dark theme (must be after setContentView)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.setSystemBarsAppearance(
                 0,
                 WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
             )
         }
-
-        webView = WebView(this).apply {
-            // WebView must be added programmatically (no XML layout needed)
-        }
-        setContentView(webView)
 
         setupWebView()
         requestPermissionsIfNeeded()

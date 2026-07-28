@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
 import { usePlayerStore, useUIStore } from '../stores';
@@ -43,6 +43,20 @@ export default function LibraryPage() {
   const filterTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const sortDropdownRef = useRef<HTMLDivElement>(null);
   const { playTrack, addToQueue } = usePlayerStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Initialize from URL params
+  useEffect(() => {
+    const urlGenre = searchParams.get('genre');
+    const urlSearch = searchParams.get('search');
+    if (urlGenre) {
+      setGenreFilter(urlGenre);
+      setActiveChip(`genre-${urlGenre}`);
+    }
+    if (urlSearch) {
+      setFilter(urlSearch);
+    }
+  }, []);
 
   const loadTracks = useCallback(async (pageNum: number, reset: boolean) => {
     if (pageNum === 1) setLoading(true);

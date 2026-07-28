@@ -70,6 +70,7 @@ export default function LoginPage() {
           <div className="flex gap-1 mb-6 p-1 bg-surface-1 rounded-xl">
             <button
               onClick={() => { setMode('signin'); setError(''); }}
+              style={{ touchAction: 'manipulation' }}
               className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
                 mode === 'signin'
                   ? 'bg-brand-600 text-white'
@@ -80,6 +81,7 @@ export default function LoginPage() {
             </button>
             <button
               onClick={() => { setMode('signup'); setError(''); }}
+              style={{ touchAction: 'manipulation' }}
               className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
                 mode === 'signup'
                   ? 'bg-brand-600 text-white'
@@ -148,6 +150,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || !username.trim() || !password.trim()}
+              style={{ touchAction: 'manipulation' }}
               className="w-full btn-primary py-2.5 disabled:opacity-50"
             >
               {loading ? (
@@ -175,6 +178,7 @@ export default function LoginPage() {
           <button
             onClick={handleGuest}
             disabled={loading}
+            style={{ touchAction: 'manipulation' }}
             className="w-full btn-secondary py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

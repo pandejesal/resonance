@@ -17,23 +17,25 @@ interface TrackListProps {
 }
 
 export default function TrackList({ tracks, showAlbum = true, showArtwork = true, showRating = true, selectedIds, onToggleSelect, onMetadataSaved, className }: TrackListProps) {
-  const { playTrack, currentTrack, isPlaying } = usePlayerStore();
+  const { playTrack, addToQueue, currentTrack, isPlaying } = usePlayerStore();
   const selectionMode = selectedIds !== undefined && onToggleSelect !== undefined;
   const [contextMenuTrack, setContextMenuTrack] = useState<Track | null>(null);
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [editingTrack, setEditingTrack] = useState<Track | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!contextMenuTrack) return;
-    const handleClick = (e: MouseEvent) => {
+    const handle = (e: Event) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setContextMenuTrack(null);
-        setContextMenuPos(null);
       }
     };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('mousedown', handle);
+    document.addEventListener('touchstart', handle);
+    return () => {
+      document.removeEventListener('mousedown', handle);
+      document.removeEventListener('touchstart', handle);
+    };
   }, [contextMenuTrack]);
 
   return (
@@ -53,7 +55,7 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
                 ? 'bg-brand-600/20 ring-1 ring-brand-500/40'
                 : isActive
                   ? 'bg-brand-600/20 text-brand-400'
-                  : 'hover:bg-white/5 text-primary'
+                  : 'active:bg-white/10 text-primary'
             )}
             onClick={() => {
               if (selectionMode) {
@@ -71,7 +73,7 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
                     'w-4 h-4 rounded border-2 flex items-center justify-center transition-all',
                     selectedIds?.has(track.id)
                       ? 'bg-brand-500 border-brand-500'
-                      : 'border-white/30 group-hover:border-white/50'
+                      : 'border-white/30'
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -90,7 +92,7 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
             {/* Track number / Play indicator */}
             {!selectionMode && (
               <>
-            <div className="w-8 text-center text-sm text-tertiary group-hover:hidden">
+            <div className="w-8 text-center text-sm text-tertiary group-hover:hidden max-md:hidden">
               {isActive && isPlaying ? (
                 <div className="flex items-center justify-center gap-[2px]">
                   {[0, 1, 2].map((i) => (
@@ -110,10 +112,31 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
                 <span>{index + 1}</span>
               )}
             </div>
-            <div className="w-8 text-center hidden group-hover:block">
+            <div className="w-8 text-center hidden group-hover:block max-md:hidden">
               <svg className="w-4 h-4 mx-auto text-brand-500" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
+            </div>
+            {/* Mobile: always show play icon or track number */}
+            <div className="w-8 text-center md:hidden">
+              {isActive && isPlaying ? (
+                <div className="flex items-center justify-center gap-[2px]">
+                  {[0, 1, 2].map((i) => (
+                    <motion.div
+                      key={i}
+                      className="w-[2px] bg-brand-500 rounded-full"
+                      animate={{ height: [4, 12, 4] }}
+                      transition={{
+                        duration: 0.6,
+                        repeat: Infinity,
+                        delay: i * 0.15,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <span className="text-sm text-tertiary">{index + 1}</span>
+              )}
             </div>
               </>
             )}
@@ -183,14 +206,12 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
               {formatDuration(track.duration_ms)}
             </div>
 
-            {/* More button */}
+            {/* More button - always visible on mobile */}
             <button
-              className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 transition-all"
+              className="p-1.5 rounded-lg active:bg-white/10 transition-all md:opacity-0 md:group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
                 setContextMenuTrack(track);
-                setContextMenuPos({ x: rect.right - 200, y: rect.bottom + 4 });
               }}
             >
               <svg className="w-4 h-4 text-secondary" fill="currentColor" viewBox="0 0 24 24">
@@ -203,44 +224,60 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
         );
       })}
 
-      {/* Context menu */}
+      {/* Context menu - bottom sheet on mobile, positioned menu on desktop */}
       <AnimatePresence>
-        {contextMenuTrack && contextMenuPos && (
-          <motion.div
-            ref={menuRef}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed z-[90] w-48 bg-surface-1 border border-white/10 rounded-xl shadow-xl overflow-hidden"
-            style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
-          >
-            <button
-              className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/5 transition-colors text-sm text-primary text-left"
-              onClick={() => {
-                setEditingTrack(contextMenuTrack);
-                setContextMenuTrack(null);
-                setContextMenuPos(null);
-              }}
+        {contextMenuTrack && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-[89]"
+              onClick={() => setContextMenuTrack(null)}
+            />
+            {/* Menu */}
+            <motion.div
+              ref={menuRef}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed z-[90] bg-surface-1 border border-white/10 shadow-xl overflow-hidden
+                bottom-0 left-0 right-0 rounded-t-2xl
+                md:bottom-auto md:left-auto md:right-auto md:top-1/2 md:-translate-y-1/2 md:w-48 md:rounded-xl md:rounded-t-xl"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Edit Metadata
-            </button>
-            <button
-              className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/5 transition-colors text-sm text-primary text-left"
-              onClick={() => {
-                if (onMetadataSaved) onMetadataSaved();
-                setContextMenuTrack(null);
-                setContextMenuPos(null);
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-              Add to Queue
-            </button>
-          </motion.div>
+              <div className="md:hidden flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 rounded-full bg-white/20" />
+              </div>
+              <div className="px-2 py-1 md:p-0">
+                <p className="px-3 py-2 text-xs text-tertiary truncate md:hidden">{contextMenuTrack.title}</p>
+                <button
+                  className="w-full px-3 py-3 flex items-center gap-3 active:bg-white/5 transition-colors text-sm text-primary text-left rounded-xl"
+                  onClick={() => {
+                    setEditingTrack(contextMenuTrack);
+                    setContextMenuTrack(null);
+                  }}
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit Metadata
+                </button>
+                <button
+                  className="w-full px-3 py-3 flex items-center gap-3 active:bg-white/5 transition-colors text-sm text-primary text-left rounded-xl"
+                  onClick={() => {
+                    addToQueue(contextMenuTrack);
+                    setContextMenuTrack(null);
+                  }}
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add to Queue
+                </button>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

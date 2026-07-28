@@ -36,7 +36,10 @@ function BackButtonHandler() {
   const { nowPlayingOpen, toggleNowPlaying } = useUIStore();
 
   useEffect(() => {
-    window.history.pushState({ page: 'resonance' }, '', window.location.href);
+    // Push multiple entries to prevent first back from exiting
+    for (let i = 0; i < 3; i++) {
+      window.history.pushState({ page: 'resonance' }, '', window.location.href);
+    }
 
     const handlePopState = () => {
       if (nowPlayingOpen) {

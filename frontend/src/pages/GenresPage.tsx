@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -6,6 +7,7 @@ import { cn } from '../lib/utils';
 export default function GenresPage() {
   const [genres, setGenres] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.genres()
@@ -37,7 +39,8 @@ export default function GenresPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: Math.min(i * 0.05, 0.5) }}
-              className="surface-card p-6 text-center cursor-pointer hover:scale-[1.02] transition-transform"
+              className="surface-card p-6 text-center cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform"
+              onClick={() => navigate(`/library?genre=${encodeURIComponent(genre)}`)}
             >
               <div
                 className="w-16 h-16 mx-auto rounded-2xl mb-3 flex items-center justify-center"

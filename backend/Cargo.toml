@@ -43,6 +43,7 @@ md5.workspace = true
 argon2.workspace = true
 hmac.workspace = true
 sha2.workspace = true
+include_dir = "0.7"
 
 [profile.release]
 opt-level = 3

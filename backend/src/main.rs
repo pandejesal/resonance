@@ -17,11 +17,14 @@ mod ws;
 use actix_cors::Cors;
 use actix_web::{middleware, web, App, HttpServer};
 use handlers::AppState;
+use include_dir::{include_dir, Dir};
 use log::info;
 use parking_lot::Mutex;
 use scanner::Scanner;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+static FRONTEND_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
 
 async fn spa_fallback(
     req: actix_web::HttpRequest,
@@ -32,26 +35,79 @@ async fn spa_fallback(
     if path.starts_with("/api/") || path.starts_with("/rest/") {
         return actix_web::HttpResponse::NotFound().json(serde_json::json!({"error": "Not found"}));
     }
-    let static_canonical = std::fs::canonicalize(static_dir.get_ref()).unwrap_or_default();
-    let file_path = format!("{}{}", static_dir.get_ref(), path);
-    if let Ok(canonical) = std::fs::canonicalize(&file_path) {
-        if canonical.starts_with(&static_canonical) && canonical.is_file() {
-            match actix_files::NamedFile::open(&canonical) {
-                Ok(f) => f.into_response(&req),
-                Err(_) => actix_web::HttpResponse::InternalServerError().finish(),
-            }
-        } else {
-            match actix_files::NamedFile::open(index_path.get_ref()) {
-                Ok(f) => f.into_response(&req),
-                Err(_) => actix_web::HttpResponse::NotFound().finish(),
-            }
-        }
-    } else {
-        match actix_files::NamedFile::open(index_path.get_ref()) {
-            Ok(f) => f.into_response(&req),
-            Err(_) => actix_web::HttpResponse::NotFound().finish(),
-        }
+
+    let sanitized = path.trim_start_matches('/').replace('\\', "");
+    if sanitized.is_empty() || sanitized.contains("..") {
+        return serve_index_from_embedded()
+            .or_else(|| serve_index_from_fs(index_path.get_ref()))
+            .unwrap_or_else(|| actix_web::HttpResponse::NotFound().finish());
     }
+
+    if let Some(file) = FRONTEND_DIR.get_file(&sanitized) {
+        let ct = mime_from_path(&sanitized);
+        return actix_web::HttpResponse::Ok()
+            .content_type(ct)
+            .body(file.contents().to_vec());
+    }
+
+    serve_index_from_embedded()
+        .or_else(|| serve_index_from_fs(index_path.get_ref()))
+        .unwrap_or_else(|| actix_web::HttpResponse::NotFound().finish())
+}
+
+fn mime_from_path(path: &str) -> &'static str {
+    if path.ends_with(".js") || path.ends_with(".mjs") {
+        "application/javascript; charset=utf-8"
+    } else if path.ends_with(".css") {
+        "text/css; charset=utf-8"
+    } else if path.ends_with(".html") || path.ends_with(".htm") {
+        "text/html; charset=utf-8"
+    } else if path.ends_with(".json") {
+        "application/json; charset=utf-8"
+    } else if path.ends_with(".svg") {
+        "image/svg+xml"
+    } else if path.ends_with(".png") {
+        "image/png"
+    } else if path.ends_with(".jpg") || path.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if path.ends_with(".woff2") {
+        "font/woff2"
+    } else if path.ends_with(".woff") {
+        "font/woff"
+    } else if path.ends_with(".ttf") {
+        "font/ttf"
+    } else if path.ends_with(".ico") {
+        "image/x-icon"
+    } else if path.ends_with(".webp") {
+        "image/webp"
+    } else if path.ends_with(".wasm") {
+        "application/wasm"
+    } else if path.ends_with(".map") {
+        "application/json"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn serve_index_from_embedded() -> Option<actix_web::HttpResponse> {
+    let file = FRONTEND_DIR.get_file("index.html")?;
+    Some(
+        actix_web::HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(file.contents().to_vec()),
+    )
+}
+
+fn serve_index_from_fs(index_path: &str) -> Option<actix_web::HttpResponse> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(index_path).ok()?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).ok()?;
+    Some(
+        actix_web::HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(buf),
+    )
 }
 
 #[actix_web::main]

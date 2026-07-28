@@ -117,13 +117,14 @@ class BackendPlugin(context: Context) {
 
     /**
      * Copies frontend static files from APK assets to internal storage.
-     * Only copies if the directory is empty (first launch).
+     * Always refreshes to ensure latest assets are served.
      */
     private fun copyAssetsIfNeeded(staticDir: String) {
         val dir = File(staticDir)
-        if (dir.exists() && dir.listFiles()?.isNotEmpty() == true) {
-            Log.i(TAG, "Static dir already populated, skipping copy")
-            return
+
+        // Always delete and recopy to ensure fresh assets
+        if (dir.exists()) {
+            dir.deleteRecursively()
         }
 
         dir.mkdirs()

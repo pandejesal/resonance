@@ -14,7 +14,7 @@ const navItems = [
   { path: '/playlists', label: 'Playlists', icon: PlaylistsIcon },
   { path: '/history', label: 'History', icon: HistoryIcon },
   { path: '/stats', label: 'Statistics', icon: StatsIcon },
-  { path: '/tools', label: 'Music Tools', icon: ToolsIcon },
+  { path: '/tools', label: 'Playlist Tools', icon: ToolsIcon },
   { path: '/import', label: 'Import', icon: ImportIcon },
   { path: '/transfer', label: 'Transfer', icon: TransferIcon },
   { path: '/equalizer', label: 'Equalizer', icon: EqualizerIcon },
