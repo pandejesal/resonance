@@ -239,8 +239,8 @@ class AudioEngine {
   }
 
   resume(): Promise<void> {
-    if (this.ctx && this.ctx.state === 'suspended') {
-      return this.ctx.resume();
+    if (this.ctx?.state === 'suspended') {
+      return this.ctx.resume().then(() => {});
     }
     return Promise.resolve();
   }

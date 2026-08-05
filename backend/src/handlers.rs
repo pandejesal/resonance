@@ -1788,7 +1788,21 @@ pub async fn browse_directory(
             .json(serde_json::json!({"error": "Path is not a directory"}));
     }
 
-
+    // Restrict browsing to configured library paths
+    let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+        .fetch_all(&data.db)
+        .await
+        .unwrap_or_default();
+    let allowed = libraries.iter().any(|lib| {
+        PathBuf::from(&lib.path)
+            .canonicalize()
+            .map(|p| canonical.starts_with(&p))
+            .unwrap_or(false)
+    });
+    if !allowed {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Path is outside configured libraries"}));
+    }
 
     let mut entries: Vec<BrowseEntry> = Vec::new();
 
@@ -2900,7 +2914,7 @@ pub async fn stream_track_transcoded(
                     let allowed = libraries.iter().any(|lib| {
                         PathBuf::from(&lib.path)
                             .canonicalize()
-                            .map(|p| canonical.starts_with(&p) && canonical != p)
+                            .map(|p| canonical.starts_with(&p))
                             .unwrap_or(false)
                     });
                     if !allowed {
@@ -2949,7 +2963,7 @@ pub async fn stream_track_transcoded(
                         _ => "audio/aac",
                     };
 
-                    let (tx, rx) = tokio::sync::mpsc::channel::<Result<actix_web::web::Bytes, std::io::Error>>(16);
+                    let (tx, rx) = tokio::sync::mpsc::channel(16);
 
                     tokio::spawn(async move {
                         let mut buf = vec![0u8; 64 * 1024]; // 64KB chunks
