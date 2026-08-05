@@ -121,7 +121,7 @@ export default function FileBrowser({ isOpen, onClose, onSelect }: FileBrowserPr
             ref={fileInputRef}
             type="file"
             className="hidden"
-            // @ts-ignore
+            // @ts-expect-error fix
             webkitdirectory=""
             directory=""
             multiple

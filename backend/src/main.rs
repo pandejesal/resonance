@@ -21,15 +21,14 @@ async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let database_url =
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            let home = std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .unwrap_or_else(|_| ".".to_string());
-            let data_dir = std::path::PathBuf::from(&home).join(".resonance");
-            std::fs::create_dir_all(&data_dir).ok();
-            data_dir.join("resonance.db").to_string_lossy().to_string()
-        });
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_else(|_| ".".to_string());
+        let data_dir = std::path::PathBuf::from(&home).join(".resonance");
+        std::fs::create_dir_all(&data_dir).ok();
+        data_dir.join("resonance.db").to_string_lossy().to_string()
+    });
 
     let file_path = database_url
         .strip_prefix("sqlite:")

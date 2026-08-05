@@ -10,11 +10,9 @@ const SUBSONIC_VERSION: &str = "1.16.1";
 
 // ── Auth helper ───────────────────────────────────────────────────
 
-async fn require_subsonic_auth(
-    req: &HttpRequest,
-    db: &sqlx::SqlitePool,
-) -> Option<HttpResponse> {
-    let params: BTreeMap<String, String> = req.query_string()
+async fn require_subsonic_auth(req: &HttpRequest, db: &sqlx::SqlitePool) -> Option<HttpResponse> {
+    let params: BTreeMap<String, String> = req
+        .query_string()
         .split('&')
         .filter_map(|pair| {
             let mut parts = pair.splitn(2, '=');
@@ -27,17 +25,19 @@ async fn require_subsonic_auth(
     // Check for token auth (t + s parameters)
     if let (Some(token), Some(salt)) = (params.get("t"), params.get("s")) {
         if let Some(username) = params.get("u") {
-            let user = sqlx::query_as::<_, crate::models::User>(
-                "SELECT * FROM users WHERE username = ?"
-            )
-            .bind(username)
-            .fetch_optional(db)
-            .await
-            .ok()
-            .flatten();
+            let user =
+                sqlx::query_as::<_, crate::models::User>("SELECT * FROM users WHERE username = ?")
+                    .bind(username)
+                    .fetch_optional(db)
+                    .await
+                    .ok()
+                    .flatten();
 
             if let Some(user) = user {
-                let expected = format!("{:x}", md5::compute(format!("{}{}", user.password_hash, salt)));
+                let expected = format!(
+                    "{:x}",
+                    md5::compute(format!("{}{}", user.password_hash, salt))
+                );
                 // Constant-time comparison to prevent timing attacks
                 if expected.len() == token.len() {
                     let a = expected.as_bytes();
@@ -58,22 +58,19 @@ async fn require_subsonic_auth(
     // Check for plaintext password auth (p parameter)
     if let Some(password) = params.get("p") {
         if let Some(username) = params.get("u") {
-            let user = sqlx::query_as::<_, crate::models::User>(
-                "SELECT * FROM users WHERE username = ?"
-            )
-            .bind(username)
-            .fetch_optional(db)
-            .await
-            .ok()
-            .flatten();
+            let user =
+                sqlx::query_as::<_, crate::models::User>("SELECT * FROM users WHERE username = ?")
+                    .bind(username)
+                    .fetch_optional(db)
+                    .await
+                    .ok()
+                    .flatten();
 
             if let Some(user) = user {
-                let decoded = base64::Engine::decode(
-                    &base64::engine::general_purpose::STANDARD,
-                    password,
-                )
-                .ok()
-                .and_then(|bytes| String::from_utf8(bytes).ok());
+                let decoded =
+                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, password)
+                        .ok()
+                        .and_then(|bytes| String::from_utf8(bytes).ok());
 
                 if let Some(decoded_pw) = decoded {
                     if crate::handlers::verify_password(&decoded_pw, &user.password_hash) {
@@ -289,7 +286,9 @@ async fn ping(_data: web::Data<AppState>) -> HttpResponse {
 }
 
 async fn get_music_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries ORDER BY name")
         .fetch_all(&data.db)
@@ -313,7 +312,9 @@ async fn get_music_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpR
 }
 
 async fn get_artists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let artists = sqlx::query_as::<_, Artist>("SELECT * FROM artists ORDER BY name ASC")
         .fetch_all(&data.db)
@@ -365,8 +366,14 @@ async fn get_artists(data: web::Data<AppState>, req: HttpRequest) -> HttpRespons
     }
 }
 
-async fn get_album_list(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn get_album_list(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let album_type = get_param(&query, "type").unwrap_or_else(|| "newest".to_string());
     let size = get_param_i32(&query, "size", 50);
@@ -423,8 +430,14 @@ async fn get_album_list(data: web::Data<AppState>, query: web::Query<Value>, req
     }))
 }
 
-async fn get_album(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn get_album(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let id = match get_param(&query, "id") {
         Some(id) => id,
@@ -476,7 +489,9 @@ async fn get_songs_by_album_id(
     query: web::Query<Value>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let id = match get_param(&query, "id") {
         Some(id) => id,
@@ -507,7 +522,9 @@ async fn stream(
     query: web::Query<Value>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let id = match get_param(&query, "id") {
         Some(id) => id,
@@ -574,8 +591,14 @@ async fn stream(
     }
 }
 
-async fn get_cover_art(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn get_cover_art(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let id = match get_param(&query, "id") {
         Some(id) => id,
@@ -663,8 +686,14 @@ async fn get_cover_art(data: web::Data<AppState>, query: web::Query<Value>, req:
     error_response(70, "Cover art not found")
 }
 
-async fn search2(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn search2(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let search_query = match get_param(&query, "query") {
         Some(q) => q,
@@ -782,9 +811,12 @@ async fn search2(data: web::Data<AppState>, query: web::Query<Value>, req: HttpR
 }
 
 async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
-    let params: BTreeMap<String, String> = req.query_string()
+    let params: BTreeMap<String, String> = req
+        .query_string()
         .split('&')
         .filter_map(|pair| {
             let mut parts = pair.splitn(2, '=');
@@ -793,7 +825,10 @@ async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpRespo
             Some((key, val))
         })
         .collect();
-    let owner = params.get("u").cloned().unwrap_or_else(|| "admin".to_string());
+    let owner = params
+        .get("u")
+        .cloned()
+        .unwrap_or_else(|| "admin".to_string());
 
     let playlists =
         sqlx::query_as::<_, Playlist>("SELECT * FROM playlists ORDER BY sort_order, name")
@@ -828,8 +863,14 @@ async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     }
 }
 
-async fn create_playlist(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn create_playlist(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let name = match get_param(&query, "name") {
         Some(n) => n,
@@ -896,8 +937,14 @@ async fn create_playlist(data: web::Data<AppState>, query: web::Query<Value>, re
     }))
 }
 
-async fn update_playlist(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn update_playlist(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let playlist_id_str = match get_param(&query, "playlistId") {
         Some(id) => id,
@@ -987,8 +1034,14 @@ async fn update_playlist(data: web::Data<AppState>, query: web::Query<Value>, re
     ok_response(json!({}))
 }
 
-async fn delete_playlist(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn delete_playlist(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let id = match get_param(&query, "id") {
         Some(id) => id,
@@ -1013,8 +1066,14 @@ async fn delete_playlist(data: web::Data<AppState>, query: web::Query<Value>, re
     }
 }
 
-async fn scrobble(data: web::Data<AppState>, query: web::Query<Value>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+async fn scrobble(
+    data: web::Data<AppState>,
+    query: web::Query<Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
 
     let id = match get_param(&query, "id") {
         Some(id) => id,
@@ -1054,7 +1113,9 @@ async fn scrobble(data: web::Data<AppState>, query: web::Query<Value>, req: Http
 }
 
 async fn get_user(_data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &_data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &_data.db).await {
+        return err;
+    }
 
     ok_response(json!({
         "user": {
@@ -1080,6 +1141,8 @@ async fn get_user(_data: web::Data<AppState>, req: HttpRequest) -> HttpResponse 
 }
 
 async fn login(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Some(err) = require_subsonic_auth(&req, &data.db).await { return err; }
+    if let Some(err) = require_subsonic_auth(&req, &data.db).await {
+        return err;
+    }
     ok_response(json!({}))
 }

@@ -23,11 +23,7 @@ pub fn check_rate_limit(ip: &str, max_requests: u32, window_secs: u64) -> bool {
         if let Some(entry) = map.get(ip) {
             if now.duration_since(entry.window_start) >= window {
                 // Window expired, need write lock to reset
-            } else if entry.count >= max_requests {
-                return false;
-            } else {
-                return true;
-            }
+            } else { return entry.count < max_requests }
         }
     }
 

@@ -62,14 +62,14 @@ pub mod db {
                 .await?;
 
             if user_count.0 == 0 {
-                use argon2::{Argon2, password_hash::{PasswordHasher, SaltString, rand_core::OsRng}};
+                use argon2::{
+                    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+                    Argon2,
+                };
 
                 let salt = SaltString::generate(&mut OsRng);
                 let argon2 = Argon2::default();
-                let password_hash = argon2
-                    .hash_password(b"admin", &salt)
-                    .unwrap()
-                    .to_string();
+                let password_hash = argon2.hash_password(b"admin", &salt).unwrap().to_string();
 
                 let id = uuid::Uuid::new_v4().to_string();
                 sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, 'admin', ?, 'admin')")

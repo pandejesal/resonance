@@ -626,7 +626,7 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
                 continue;
             }
 
-        if norm_title == norm_db_title && norm_artist == norm_db_artist {
+            if norm_title == norm_db_title && norm_artist == norm_db_artist {
                 best_match = Some((id.clone(), "exact".to_string(), 1.0));
                 break;
             }

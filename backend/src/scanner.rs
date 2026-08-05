@@ -99,7 +99,8 @@ impl Scanner {
             })
             .filter(|e| {
                 // Ensure resolved path stays under library root
-                e.path().canonicalize()
+                e.path()
+                    .canonicalize()
                     .map(|p| p.starts_with(&root))
                     .unwrap_or(false)
             })
@@ -238,12 +239,12 @@ pub fn extract_artwork(path: &Path) -> Result<Option<Vec<u8>>, Box<dyn std::erro
 }
 
 pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
+    use symphonia::core::audio::SampleBuffer;
     use symphonia::core::codecs::DecoderOptions;
     use symphonia::core::formats::FormatOptions;
     use symphonia::core::io::MediaSourceStream;
     use symphonia::core::meta::MetadataOptions;
     use symphonia::core::probe::Hint;
-    use symphonia::core::audio::SampleBuffer;
 
     let file = std::fs::File::open(file_path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -264,11 +265,7 @@ pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
         .ok()?;
 
     let sample_rate = track.codec_params.sample_rate? as f64;
-    let channels = track
-        .codec_params
-        .channels
-        .map(|c| c.count())
-        .unwrap_or(2);
+    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
     let chunk_duration_secs = 0.05; // 50ms chunks
     let samples_per_chunk = (sample_rate * chunk_duration_secs) as usize;
 
@@ -289,7 +286,8 @@ pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
 
             let samples = sample_buf.samples();
             let mono: Vec<f32> = if channels > 1 {
-                samples.chunks(channels)
+                samples
+                    .chunks(channels)
                     .map(|frame| frame.iter().sum::<f32>() / channels as f32)
                     .collect()
             } else {
