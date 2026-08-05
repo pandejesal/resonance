@@ -325,10 +325,12 @@ export const usePlayerStore = create<PlayerStore>()(
             if (cleaned) return;
             cleaned = true;
             crossfadeAudio.pause();
+            crossfadeAudio.src = '';
+            crossfadeAudio.load();
             if (crossfadeSource) {
               try { crossfadeSource.disconnect(); } catch {}
             }
-            crossfadeGain.disconnect();
+            try { crossfadeGain.disconnect(); } catch {}
             audio.removeEventListener('ended', cleanup);
             crossfadeAudio.removeEventListener('ended', cleanup);
             set({ crossfadeAudio: null, isCrossfading: false });
