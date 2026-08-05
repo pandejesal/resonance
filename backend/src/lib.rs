@@ -24,7 +24,7 @@ use scanner::Scanner;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-static FRONTEND_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend");
+static FRONTEND_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
 
 async fn spa_fallback(
     req: actix_web::HttpRequest,

@@ -1,4 +1,3 @@
-use tokio_stream::StreamExt;
 use crate::lyrics;
 use crate::models::*;
 use crate::scanner::Scanner;
@@ -2982,8 +2981,7 @@ pub async fn stream_track_transcoded(
                         let _ = proc.kill().await;
                     });
 
-                    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
-                        .map(|res| res.map_err(|e| actix_web::error::ErrorInternalServerError(e)));
+                    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
                     HttpResponse::Ok()
                         .content_type(content_type)
                         .append_header(("Accept-Ranges", "none"))
