@@ -4427,6 +4427,7 @@ dependencies = [
  "sqlx",
  "symphonia",
  "tokio",
+ "tokio-stream",
  "urlencoding",
  "uuid",
  "walkdir",

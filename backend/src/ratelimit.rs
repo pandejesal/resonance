@@ -57,7 +57,8 @@ pub fn check_rate_limit(ip: &str, max_requests: u32, window_secs: u64) -> bool {
         );
         true
     } else {
-        // If the lock is poisoned, allow the request
-        true
+        // If the lock is poisoned, recreate it or deny to fail closed.
+        // Failing open on poison could lead to bypass. Let's deny for security.
+        false
     }
 }
