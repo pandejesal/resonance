@@ -43,9 +43,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
       const { useAuthStore } = await import('../stores');
-      useAuthStore.getState().logout();
-      window.location.href = '/';
-      throw new Error('Session expired. Please log in again.');
+      const { isAuthenticated } = useAuthStore.getState();
+      if (isAuthenticated) {
+        useAuthStore.setState({ user: null, isAuthenticated: false, isGuest: false });
+        localStorage.removeItem('resonance-auth');
+      }
+      throw new Error('Unauthorized');
     }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || `HTTP ${response.status}`);

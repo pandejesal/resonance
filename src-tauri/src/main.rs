@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::info;
+use std::sync::mpsc;
 use tauri::Manager;
 
 fn main() {
@@ -11,6 +12,9 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Signal when backend is ready
+            let (tx, rx) = mpsc::channel();
 
             // Start the backend server in a background thread
             std::thread::spawn(move || {
@@ -35,16 +39,21 @@ fn main() {
                     // Copy bundled frontend to app data if not present
                     let app_static = app_data.join("static");
                     if !app_static.exists() {
-                        // In dev mode, frontendDist is used; in production, assets are bundled
                         let _ = std::fs::create_dir_all(&app_static);
                     }
 
                     let host = "127.0.0.1";
-                    let port: u16 = 8080;
+                    let port: u16 = std::env::var("RESONANCE_PORT")
+                        .ok()
+                        .and_then(|p| p.parse().ok())
+                        .unwrap_or(8080);
 
                     info!("Starting Resonance backend for Tauri...");
                     info!("Database: {}", db_url);
                     info!("Static dir: {}", static_dir.display());
+
+                    // Signal that backend is starting
+                    let _ = tx.send(());
 
                     if let Err(e) = resonance_backend::start_server(
                         &db_url,
@@ -58,6 +67,9 @@ fn main() {
                     }
                 });
             });
+
+            // Wait briefly for backend to start, then proceed
+            let _ = rx.recv_timeout(std::time::Duration::from_secs(3));
 
             Ok(())
         })

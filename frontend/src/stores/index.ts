@@ -6,6 +6,12 @@ import { shuffleArray } from '../lib/utils';
 import { audioEngine, EQ_PRESETS } from '../lib/audio-engine';
 import { toast } from '../components/Toast';
 
+function getStreamUrl(trackId: string): string {
+  const { authToken } = useAuthStore.getState();
+  const base = `/api/tracks/${trackId}/stream`;
+  return authToken ? `${base}?token=${encodeURIComponent(authToken)}` : base;
+}
+
 interface PlayerStore {
   currentTrack: Track | null;
   queue: QueueItem[];
@@ -76,14 +82,20 @@ export const usePlayerStore = create<PlayerStore>()(
       eqPreset: 'flat',
 
       setAudio: (audio) => {
-        audioEngine.init(audio);
         audioEngine.setVolume(get().volume);
         set({ audio });
       },
 
       playTrack: (track, queue) => {
-        const { audio, shuffle } = get();
-        if (!audio) return;
+        const state = get();
+        let audio = state.audio;
+        const shuffle = state.shuffle;
+
+        if (!audio) {
+          audio = new Audio();
+          audio.preload = 'auto';
+          state.setAudio(audio);
+        }
 
         let newQueue = queue
           ? queue.map((t) => ({ track: t, addedAt: Date.now() }))
@@ -94,7 +106,6 @@ export const usePlayerStore = create<PlayerStore>()(
           startIndex = queue.findIndex((t) => t.id === track.id);
           if (startIndex === -1) startIndex = 0;
 
-          // Apply shuffle if enabled, same logic as playQueue
           if (shuffle && newQueue.length > 1) {
             const current = newQueue[startIndex];
             const rest = newQueue.filter((_, i) => i !== startIndex);
@@ -104,13 +115,24 @@ export const usePlayerStore = create<PlayerStore>()(
           }
         }
 
-        audio.src = `/api/tracks/${track.id}/stream`;
-        audioEngine.resume().then(() => {
-          audio.play().catch((e) => console.warn('Play failed:', e));
+        set({
+          currentTrack: track,
+          queue: newQueue,
+          queueIndex: startIndex,
+          progress: 0,
         });
+
+        audio.src = getStreamUrl(track.id);
+        if (!audioEngine.isReady) {
+          audioEngine.init(audio);
+        }
+        audioEngine.resume();
+        audio.play().then(() => {
+          set({ isPlaying: true });
+        }).catch((e) => console.warn('Play failed:', e));
+
         api.tracks.play(track.id).catch(() => {});
 
-        // Update MediaSession metadata
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: track.title,
@@ -121,19 +143,22 @@ export const usePlayerStore = create<PlayerStore>()(
             ],
           });
         }
-
-        set({
-          currentTrack: track,
-          queue: newQueue,
-          queueIndex: startIndex,
-          isPlaying: true,
-          progress: 0,
-        });
       },
 
       playQueue: (tracks, startIndex = 0) => {
-        const { audio, shuffle } = get();
-        if (!audio || tracks.length === 0) return;
+        const state = get();
+        let audio = state.audio;
+        const shuffle = state.shuffle;
+
+        if (!audio || tracks.length === 0) {
+          if (!audio && tracks.length > 0) {
+            audio = new Audio();
+            audio.preload = 'auto';
+            state.setAudio(audio);
+          } else {
+            return;
+          }
+        }
 
         let queue = tracks.map((t) => ({ track: t, addedAt: Date.now() }));
         let index = startIndex;
@@ -147,10 +172,23 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         const track = queue[index].track;
-        audio.src = `/api/tracks/${track.id}/stream`;
-        audioEngine.resume().then(() => {
-          audio.play().catch((e) => console.warn('Play failed:', e));
+
+        set({
+          currentTrack: track,
+          queue,
+          queueIndex: index,
+          progress: 0,
         });
+
+        audio.src = getStreamUrl(track.id);
+        if (!audioEngine.isReady) {
+          audioEngine.init(audio);
+        }
+        audioEngine.resume();
+        audio.play().then(() => {
+          set({ isPlaying: true });
+        }).catch((e) => console.warn('Play failed:', e));
+
         api.tracks.play(track.id).catch(() => {});
 
         // Update MediaSession metadata
@@ -164,14 +202,6 @@ export const usePlayerStore = create<PlayerStore>()(
             ],
           });
         }
-
-        set({
-          currentTrack: track,
-          queue,
-          queueIndex: index,
-          isPlaying: true,
-          progress: 0,
-        });
       },
 
       togglePlay: () => {
@@ -185,16 +215,15 @@ export const usePlayerStore = create<PlayerStore>()(
             navigator.mediaSession.playbackState = 'paused';
           }
         } else {
-          audioEngine.resume().then(() => {
-            audio.play().then(() => {
-              set({ isPlaying: true });
-              if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'playing';
-              }
-            }).catch((e) => {
-              console.warn('Play failed:', e);
-              set({ isPlaying: false });
-            });
+          audioEngine.resume();
+          audio.play().then(() => {
+            set({ isPlaying: true });
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.playbackState = 'playing';
+            }
+          }).catch((e) => {
+            console.warn('Play failed:', e);
+            set({ isPlaying: false });
           });
         }
       },
@@ -207,12 +236,10 @@ export const usePlayerStore = create<PlayerStore>()(
         const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless, isCrossfading } = state;
         if (!audio || queue.length === 0 || isCrossfading) return;
 
-        // Handle repeat one - replay current track
         if (repeat === 'one' && queueIndex >= 0 && queueIndex < queue.length) {
           audio.currentTime = 0;
-          audioEngine.resume().then(() => {
-            audio.play().catch((e) => console.warn('Play failed:', e));
-          });
+          audioEngine.resume();
+          audio.play().catch((e) => console.warn('Play failed:', e));
           api.tracks.play(queue[queueIndex].track.id).catch(() => {});
           set({ isPlaying: true, progress: 0 });
           return;
@@ -244,21 +271,41 @@ export const usePlayerStore = create<PlayerStore>()(
 
         const nextTrack = queue[nextIndex].track;
 
+        set({
+          currentTrack: nextTrack,
+          queueIndex: nextIndex,
+          isPlaying: true,
+          progress: 0,
+        });
+
         if (crossfade && audioEngine.isReady && audio.duration > 0) {
-          const ctx = (audioEngine as any).ctx as AudioContext;
-          const gainNode = (audioEngine as any).gainNode as GainNode;
-          if (!ctx || !gainNode) return;
+          const ctx = audioEngine.context;
+          const gainNode = audioEngine.masterGain;
+          if (!ctx || !gainNode) {
+            audio.src = getStreamUrl(nextTrack.id);
+            audioEngine.resume();
+            audio.play().catch((e) => console.warn('Play failed:', e));
+            return;
+          }
 
           set({ isCrossfading: true });
 
           const crossfadeAudio = new Audio();
-          crossfadeAudio.crossOrigin = 'anonymous';
-          crossfadeAudio.src = `/api/tracks/${nextTrack.id}/stream`;
+          crossfadeAudio.preload = 'metadata';
+          crossfadeAudio.src = getStreamUrl(nextTrack.id);
           crossfadeAudio.volume = 1;
 
-          // Don't create a separate MediaElementSource - route through existing engine
           const crossfadeGain = ctx.createGain();
           crossfadeGain.gain.value = 0;
+
+          // Route crossfade audio through Web Audio API
+          let crossfadeSource: MediaElementAudioSourceNode | null = null;
+          try {
+            crossfadeSource = ctx.createMediaElementSource(crossfadeAudio);
+            crossfadeSource.connect(crossfadeGain);
+          } catch {
+            // If source creation fails, fall back to direct connection
+          }
           crossfadeGain.connect(ctx.destination);
 
           crossfadeAudio.addEventListener('canplaythrough', () => {
@@ -278,6 +325,9 @@ export const usePlayerStore = create<PlayerStore>()(
             if (cleaned) return;
             cleaned = true;
             crossfadeAudio.pause();
+            if (crossfadeSource) {
+              try { crossfadeSource.disconnect(); } catch {}
+            }
             crossfadeGain.disconnect();
             audio.removeEventListener('ended', cleanup);
             crossfadeAudio.removeEventListener('ended', cleanup);
@@ -307,7 +357,6 @@ export const usePlayerStore = create<PlayerStore>()(
               crossfadeTimeoutId: null,
             });
 
-            // Update MediaSession metadata for next track
             if ('mediaSession' in navigator) {
               navigator.mediaSession.metadata = new MediaMetadata({
                 title: nextTrack.title,
@@ -321,13 +370,13 @@ export const usePlayerStore = create<PlayerStore>()(
           }, crossfadeDuration * 1000);
           set({ crossfadeTimeoutId: timeoutId });
         } else {
-          audio.src = `/api/tracks/${nextTrack.id}/stream`;
-          audioEngine.resume().then(() => {
-            audio.play().catch((e) => console.warn('Play failed:', e));
-          });
+          audio.src = getStreamUrl(nextTrack.id);
+          audioEngine.resume();
+          audio.play().then(() => {
+            set({ isPlaying: true });
+          }).catch((e) => console.warn('Play failed:', e));
           api.tracks.play(nextTrack.id).catch(() => {});
 
-          // Update MediaSession metadata for next track
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: nextTrack.title,
@@ -338,18 +387,12 @@ export const usePlayerStore = create<PlayerStore>()(
               ],
             });
           }
-
-          set({
-            currentTrack: nextTrack,
-            queueIndex: nextIndex,
-            isPlaying: true,
-            progress: 0,
-          });
         }
       },
 
       previous: () => {
-        const { queue, queueIndex, audio, progress } = get();
+        const state = get();
+        const { queue, queueIndex, audio, progress } = state;
         if (!audio || queue.length === 0) return;
 
         if (progress > 3000) {
@@ -362,13 +405,21 @@ export const usePlayerStore = create<PlayerStore>()(
         if (prevIndex < 0) prevIndex = queue.length - 1;
 
         const prevTrack = queue[prevIndex].track;
-        audio.src = `/api/tracks/${prevTrack.id}/stream`;
-        audioEngine.resume().then(() => {
-          audio.play().catch((e) => console.warn('Play failed:', e));
+
+        set({
+          currentTrack: prevTrack,
+          queueIndex: prevIndex,
+          progress: 0,
         });
+
+        audio.src = getStreamUrl(prevTrack.id);
+        audioEngine.resume();
+        audio.play().then(() => {
+          set({ isPlaying: true });
+        }).catch((e) => console.warn('Play failed:', e));
+
         api.tracks.play(prevTrack.id).catch(() => {});
 
-        // Update MediaSession metadata for previous track
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: prevTrack.title,
@@ -379,13 +430,6 @@ export const usePlayerStore = create<PlayerStore>()(
             ],
           });
         }
-
-        set({
-          currentTrack: prevTrack,
-          queueIndex: prevIndex,
-          isPlaying: true,
-          progress: 0,
-        });
       },
 
       seek: (time) => {
@@ -469,7 +513,7 @@ export const usePlayerStore = create<PlayerStore>()(
           // Update current track to the new track at newIndex
           const newTrack = newQueue[newIndex].track;
           if (audio) {
-            audio.src = `/api/tracks/${newTrack.id}/stream`;
+             audio.src = getStreamUrl(newTrack.id);
           }
           set({ queue: newQueue, queueIndex: newIndex, currentTrack: newTrack });
           return;
@@ -619,6 +663,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   isGuest: boolean;
+  authToken: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   loginAsGuest: () => Promise<void>;
@@ -633,20 +678,21 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
       isGuest: false,
+      authToken: null,
 
       login: async (username: string, password: string) => {
         const response = await api.auth.login(username, password);
-        set({ user: response.user, isAuthenticated: true, isGuest: false });
+        set({ user: response.user, isAuthenticated: true, isGuest: false, authToken: response.token });
       },
 
       register: async (username: string, password: string) => {
         const response = await api.auth.register(username, password);
-        set({ user: response.user, isAuthenticated: true, isGuest: false });
+        set({ user: response.user, isAuthenticated: true, isGuest: false, authToken: response.token });
       },
 
       loginAsGuest: async () => {
         const response = await api.auth.guest();
-        set({ user: response.user, isAuthenticated: true, isGuest: true });
+        set({ user: response.user, isAuthenticated: true, isGuest: true, authToken: response.token });
       },
 
       logout: async () => {
@@ -656,15 +702,30 @@ export const useAuthStore = create<AuthState>()(
           // Ignore logout errors
         }
         localStorage.removeItem('resonance-auth');
-        set({ user: null, isAuthenticated: false, isGuest: false });
+        set({ user: null, isAuthenticated: false, isGuest: false, authToken: null });
       },
 
       checkAuth: async () => {
         try {
           const user = await api.auth.me();
-          set({ user, isAuthenticated: true, isLoading: false });
+          const existingToken = useAuthStore.getState().authToken;
+          if (existingToken) {
+            set({ user, isAuthenticated: true, isLoading: false, authToken: existingToken });
+          } else {
+            try {
+              const guestResponse = await api.auth.guest();
+              set({ user: guestResponse.user, isAuthenticated: true, isLoading: false, isGuest: true, authToken: guestResponse.token });
+            } catch {
+              set({ user, isAuthenticated: true, isLoading: false });
+            }
+          }
         } catch {
-          set({ user: null, isAuthenticated: false, isLoading: false, isGuest: false });
+          try {
+            const guestResponse = await api.auth.guest();
+            set({ user: guestResponse.user, isAuthenticated: true, isLoading: false, isGuest: true, authToken: guestResponse.token });
+          } catch {
+            set({ user: null, isAuthenticated: false, isLoading: false, isGuest: false, authToken: null });
+          }
         }
       },
     }),
@@ -674,6 +735,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         isGuest: state.isGuest,
+        authToken: state.authToken,
       }),
     }
   )

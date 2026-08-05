@@ -13,6 +13,7 @@ use rand::Rng;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tokio::io::AsyncReadExt;
 use std::sync::Arc;
 
 pub struct AppState {
@@ -72,17 +73,7 @@ pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>, 
     if let Err(e) = require_auth(&req) { return e; }
     let id = path.into_inner();
 
-    let lib = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
-        .bind(&id)
-        .fetch_one(&data.db)
-        .await;
-
-    if let Ok(lib) = lib {
-        if std::fs::remove_dir_all(&lib.path).is_err() {
-            // Directory may not exist or may be in use; continue with DB cleanup
-        }
-    }
-
+    // Only remove from database — do NOT delete user files from disk
     let result = sqlx::query("DELETE FROM libraries WHERE id = ?")
         .bind(&id)
         .execute(&data.db)
@@ -2945,7 +2936,7 @@ pub async fn stream_track_transcoded(
                 _ => "aac",
             };
 
-            let child = std::process::Command::new("ffmpeg")
+            let child = tokio::process::Command::new("ffmpeg")
                 .args([
                     "-hide_banner", "-loglevel", "error",
                     "--",
@@ -2961,17 +2952,9 @@ pub async fn stream_track_transcoded(
 
             match child {
                 Ok(mut proc) => {
-                    let stdout = proc.stdout.take().unwrap_or_else(|| {
+                    let mut stdout = proc.stdout.take().unwrap_or_else(|| {
                         panic!("stdout should be piped")
                     });
-                    let stream = actix_web::web::block(move || {
-                        let mut data = Vec::new();
-                        use std::io::Read;
-                        let mut reader = std::io::BufReader::new(stdout);
-                        let _ = reader.read_to_end(&mut data);
-                        data
-                    }).await.unwrap_or_default();
-                    let _ = proc.wait();
 
                     let content_type = match format.as_str() {
                         "aac" => "audio/aac",
@@ -2980,10 +2963,29 @@ pub async fn stream_track_transcoded(
                         _ => "audio/aac",
                     };
 
+                    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+                    tokio::spawn(async move {
+                        let mut buf = vec![0u8; 64 * 1024]; // 64KB chunks
+                        loop {
+                            match stdout.read(&mut buf).await {
+                                Ok(0) => break, // EOF
+                                Ok(n) => {
+                                    if tx.send(Ok(actix_web::web::Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        let _ = proc.kill().await;
+                    });
+
+                    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
                     HttpResponse::Ok()
                         .content_type(content_type)
-                        .append_header(("Accept-Ranges", "bytes"))
-                        .body(stream)
+                        .append_header(("Accept-Ranges", "none"))
+                        .streaming(stream)
                 }
                 Err(_) => {
                     stream_track_raw(&data.db, &id, &req).await
@@ -3439,14 +3441,15 @@ pub async fn delete_duplicates_batch(
 
 // ── Auth ──────────────────────────────────────────────────────────
 
-fn hash_password(password: &str) -> String {
+fn hash_password(password: &str) -> Result<String, HttpResponse> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     match argon2.hash_password(password.as_bytes(), &salt) {
-        Ok(hash) => hash.to_string(),
+        Ok(hash) => Ok(hash.to_string()),
         Err(e) => {
             log::error!("Password hashing failed: {}", e);
-            panic!("Password hashing failed: {}", e);
+            Err(HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Failed to hash password"})))
         }
     }
 }
@@ -3467,6 +3470,20 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.strip_prefix("Bearer "))
                 .map(|v| v.to_string())
+        })
+        .or_else(|| {
+            req.uri().query().and_then(|q| {
+                q.split('&').find_map(|part| {
+                    let mut kv = part.splitn(2, '=');
+                    let key = kv.next()?;
+                    let val = kv.next()?;
+                    if key == "token" {
+                        Some(val.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
         });
 
     match token.and_then(|t| crate::auth::validate_token(&t)) {
@@ -3522,7 +3539,7 @@ pub async fn login_handler(
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
-        .secure(true)
+        .secure(false)
         .max_age(actix_web::cookie::time::Duration::days(7))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3539,7 +3556,7 @@ pub async fn logout_handler() -> HttpResponse {
     let cookie = actix_web::cookie::Cookie::build("auth_token", "")
         .path("/")
         .http_only(true)
-        .secure(true)
+        .secure(false)
         .max_age(actix_web::cookie::time::Duration::seconds(-1))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3582,7 +3599,10 @@ pub async fn create_user(
     }
 
     let id = uuid::Uuid::new_v4().to_string();
-    let password_hash = hash_password(&body.password);
+    let password_hash = match hash_password(&body.password) {
+        Ok(h) => h,
+        Err(e) => return e,
+    };
     let role = body.role.as_deref().unwrap_or("user");
 
     if !["user", "admin", "guest"].contains(&role) {
@@ -3721,7 +3741,10 @@ pub async fn register_handler(
     }
 
     let id = uuid::Uuid::new_v4().to_string();
-    let password_hash = hash_password(&body.password);
+    let password_hash = match hash_password(&body.password) {
+        Ok(h) => h,
+        Err(e) => return e,
+    };
 
     let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'user')")
         .bind(&id)
@@ -3742,7 +3765,7 @@ pub async fn register_handler(
             let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
                 .path("/")
                 .http_only(true)
-                .secure(true)
+                .secure(false)
                 .max_age(actix_web::cookie::time::Duration::days(7))
                 .same_site(actix_web::cookie::SameSite::Lax)
                 .finish();
@@ -3795,7 +3818,7 @@ pub async fn guest_login_handler(
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
-        .secure(true)
+        .secure(false)
         .max_age(actix_web::cookie::time::Duration::hours(24))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();

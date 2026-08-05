@@ -18,7 +18,20 @@ pub fn check_rate_limit(ip: &str, max_requests: u32, window_secs: u64) -> bool {
     let now = Instant::now();
     let window = std::time::Duration::from_secs(window_secs);
 
-    // Clean up expired entries and check this IP
+    // Fast path: read-only check
+    if let Ok(map) = get_map().read() {
+        if let Some(entry) = map.get(ip) {
+            if now.duration_since(entry.window_start) >= window {
+                // Window expired, need write lock to reset
+            } else if entry.count >= max_requests {
+                return false;
+            } else {
+                return true;
+            }
+        }
+    }
+
+    // Slow path: write lock to insert/update
     if let Ok(mut map) = get_map().write() {
         map.retain(|_, entry| now.duration_since(entry.window_start) < window);
 

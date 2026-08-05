@@ -19,6 +19,7 @@ serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
+tokio-stream = "0.1"
 lofty.workspace = true
 symphonia.workspace = true
 notify.workspace = true

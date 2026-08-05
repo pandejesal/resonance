@@ -224,7 +224,7 @@ export default function LibraryPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -521,7 +521,7 @@ export default function LibraryPage() {
 
       {/* Floating Batch Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-900 border border-white/10 rounded-xl px-6 py-3 shadow-2xl flex items-center gap-4 z-50">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 bg-gray-900 border border-white/10 rounded-xl px-6 py-3 shadow-2xl flex items-center gap-4 z-50">
           <span className="text-sm text-secondary whitespace-nowrap">
             {selectedIds.size} track{selectedIds.size !== 1 ? 's' : ''} selected
           </span>

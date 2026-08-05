@@ -38,8 +38,17 @@ async fn require_subsonic_auth(
 
             if let Some(user) = user {
                 let expected = format!("{:x}", md5::compute(format!("{}{}", user.password_hash, salt)));
-                if expected == *token {
-                    return None; // auth OK
+                // Constant-time comparison to prevent timing attacks
+                if expected.len() == token.len() {
+                    let a = expected.as_bytes();
+                    let b = token.as_bytes();
+                    let mut diff = 0u8;
+                    for i in 0..a.len() {
+                        diff |= a[i] ^ b[i];
+                    }
+                    if diff == 0 {
+                        return None; // auth OK
+                    }
                 }
             }
         }

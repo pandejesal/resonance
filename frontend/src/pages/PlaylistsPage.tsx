@@ -62,7 +62,7 @@ export default function PlaylistsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary">Playlists</h1>
@@ -173,7 +173,7 @@ export default function PlaylistsPage() {
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-brand-500 text-white rounded-full shadow-lg z-50 flex items-center gap-2"
+            className="fixed bottom-32 left-1/2 -translate-x-1/2 px-4 py-2 bg-brand-500 text-white rounded-full shadow-lg z-50 flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

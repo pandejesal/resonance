@@ -44,6 +44,14 @@ class AudioEngine {
     return this.ctx !== null && this.connected;
   }
 
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
+  get masterGain(): GainNode | null {
+    return this.gainNode;
+  }
+
   init(audio: HTMLAudioElement): void {
     if (this.ctx) {
       this.reconnect(audio);
@@ -147,6 +155,7 @@ class AudioEngine {
     }
 
     if (this.echoMix > 0 && this.echoNode && this.echoFeedback) {
+      this.gainNode.connect(this.analyser);
       this.gainNode.connect(this.echoNode);
       this.echoNode.connect(this.echoFeedback);
       this.echoFeedback.connect(this.echoNode);
@@ -181,7 +190,7 @@ class AudioEngine {
     this.reconnect();
   }
 
-  getEQEnabled(): boolean {
+  get eqEnabled(): boolean {
     return this._eqEnabled;
   }
 

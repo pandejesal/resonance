@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useUIStore, useAuthStore, useLicenseStore } from './stores';
@@ -33,16 +33,18 @@ import UpgradePage from './pages/UpgradePage';
 
 function BackButtonHandler() {
   const navigate = useNavigate();
+  const nowPlayingOpenRef = useRef(false);
   const { nowPlayingOpen, toggleNowPlaying } = useUIStore();
 
   useEffect(() => {
-    // Push multiple entries to prevent first back from exiting
-    for (let i = 0; i < 3; i++) {
-      window.history.pushState({ page: 'resonance' }, '', window.location.href);
-    }
+    nowPlayingOpenRef.current = nowPlayingOpen;
+  }, [nowPlayingOpen]);
+
+  useEffect(() => {
+    window.history.pushState({ page: 'resonance' }, '', window.location.href);
 
     const handlePopState = () => {
-      if (nowPlayingOpen) {
+      if (nowPlayingOpenRef.current) {
         toggleNowPlaying();
       } else {
         window.history.pushState({ page: 'resonance' }, '', window.location.href);
@@ -51,7 +53,7 @@ function BackButtonHandler() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [nowPlayingOpen, toggleNowPlaying]);
+  }, [toggleNowPlaying]);
 
   return null;
 }
@@ -132,20 +134,20 @@ export default function App() {
     <BrowserRouter>
       <BackButtonHandler />
       <ErrorBoundary>
-        <div className="flex h-screen bg-surface-0 overflow-hidden">
+        <div className="h-screen bg-surface-0 overflow-hidden relative">
           <UpdateBanner />
 
-          <div className="flex flex-1 min-h-0">
+          <div className="flex h-full">
             <Sidebar />
 
-            <div className="flex-1 flex flex-col min-h-0 lg:ml-64">
+            <div className="flex-1 flex flex-col min-h-0 min-w-0 lg:ml-64">
               <Header />
               <AnimatedRoutes />
             </div>
           </div>
 
-        <MiniPlayer />
         <MobileBottomNav />
+        <MiniPlayer />
         <NowPlaying />
         <QueuePanel />
         <SearchModal />

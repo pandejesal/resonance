@@ -58,7 +58,7 @@ export default function ToastContainer() {
   };
 
   return (
-    <div className="fixed bottom-24 right-4 z-[100] space-y-2 pointer-events-none">
+    <div className="fixed bottom-32 right-4 z-[100] space-y-2 pointer-events-none">
       <AnimatePresence>
         {items.map((t) => (
           <motion.div

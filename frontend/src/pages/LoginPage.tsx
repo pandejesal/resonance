@@ -110,7 +110,8 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 className="input-field"
                 placeholder="Enter your username"
-                autoFocus
+                autoComplete="username"
+                style={{ touchAction: 'manipulation' }}
                 required
               />
             </div>
@@ -126,6 +127,8 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="input-field"
                 placeholder="Enter your password"
+                autoComplete="current-password"
+                style={{ touchAction: 'manipulation' }}
                 required
               />
             </div>
@@ -142,6 +145,8 @@ export default function LoginPage() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="input-field"
                   placeholder="Confirm your password"
+                  autoComplete="new-password"
+                  style={{ touchAction: 'manipulation' }}
                   required
                 />
               </div>

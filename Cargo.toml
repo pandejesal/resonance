@@ -36,3 +36,15 @@ md5 = "0.7"
 argon2 = "0.5"
 hmac = "0.12"
 sha2 = "0.10"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.android]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 32

@@ -142,7 +142,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        webView.webChromeClient = WebChromeClient()
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                consoleMessage?.let {
+                    Log.d("ResonanceJS", "${it.messageLevel()}: ${it.message()} [${it.sourceId()}:${it.lineNumber()}]")
+                }
+                return true
+            }
+        }
 
         // Enable hardware acceleration for smooth scrolling
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)

@@ -39,7 +39,7 @@ export default function GenresPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: Math.min(i * 0.05, 0.5) }}
-              className="surface-card p-6 text-center cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform"
+              className="surface-card p-6 text-center cursor-pointer hover:bg-surface-2 active:bg-surface-3 transition-colors"
               onClick={() => navigate(`/library?genre=${encodeURIComponent(genre)}`)}
             >
               <div

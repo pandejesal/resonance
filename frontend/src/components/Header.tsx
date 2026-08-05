@@ -9,10 +9,10 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-20 bg-surface-0/80 backdrop-blur-xl border-b border-white/[0.06]">
       <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-5 py-3">
-        {/* Mobile menu button */}
+        {/* Mobile menu button - hidden on mobile since bottom nav is primary */}
         <button
           onClick={toggleSidebar}
-          className="lg:hidden p-2 rounded-xl hover:bg-white/[0.06] transition-all duration-200 active:scale-95"
+          className="hidden lg:block p-2 rounded-xl hover:bg-white/[0.06] transition-all duration-200 active:scale-95"
           aria-label="Open navigation menu"
         >
           <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">

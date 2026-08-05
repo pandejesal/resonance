@@ -40,7 +40,6 @@ export default function MiniPlayer() {
     if (!audioRef.current) {
       const audio = new Audio();
       audio.preload = 'auto';
-      audio.crossOrigin = 'anonymous';
       audioRef.current = audio;
       setAudio(audio);
 
@@ -164,13 +163,6 @@ export default function MiniPlayer() {
         }
       };
     }
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
   }, []);
 
   useEffect(() => {
@@ -201,7 +193,7 @@ export default function MiniPlayer() {
       dragConstraints={{ top: -120, bottom: 0 }}
       dragElastic={0.3}
       onDragEnd={handleDragEnd}
-      className="flex-shrink-0 glass-strong border-t border-white/10 safe-bottom touch-pan-y z-40"
+      className="fixed bottom-14 left-0 right-0 w-full max-w-full overflow-hidden glass-strong border-t border-white/10 touch-pan-y z-40 safe-bottom"
     >
       {/* Progress bar at top */}
       <div

@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use futures::StreamExt;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::models::{Track, WSMessage};
@@ -60,40 +61,68 @@ pub async fn ws_handler(
     };
 
     actix_web::rt::spawn(async move {
-        while let Some(msg_result) = msg_stream.next().await {
-            match msg_result {
-                Ok(actix_ws::Message::Text(text)) => {
-                    let text_str = text.to_string();
-                    if text_str.starts_with("subscribe:") {
-                        let topic = text_str.trim_start_matches("subscribe:");
-                        ws_session.subscriptions.insert(topic.to_string());
-                        let ack = WSMessage {
-                            msg_type: "welcome".to_string(),
-                            data: serde_json::json!({
-                                "subscribed": topic,
-                            }),
-                        };
-                        if let Ok(ack_text) = serde_json::to_string(&ack) {
-                            let _ = session.text(ack_text).await;
+        let mut last_pong = std::time::Instant::now();
+        let heartbeat_timeout = Duration::from_secs(60);
+
+        loop {
+            tokio::select! {
+                msg_result = msg_stream.next() => {
+                    match msg_result {
+                        Some(Ok(actix_ws::Message::Text(text))) => {
+                            let text_str = text.to_string();
+                            if text_str.starts_with("subscribe:") {
+                                let topic = text_str.trim_start_matches("subscribe:");
+                                ws_session.subscriptions.insert(topic.to_string());
+                                let ack = WSMessage {
+                                    msg_type: "welcome".to_string(),
+                                    data: serde_json::json!({
+                                        "subscribed": topic,
+                                    }),
+                                };
+                                if let Ok(ack_text) = serde_json::to_string(&ack) {
+                                    let _ = session.text(ack_text).await;
+                                }
+                            } else if text_str == "ping" {
+                                last_pong = std::time::Instant::now();
+                                let pong = WSMessage {
+                                    msg_type: "welcome".to_string(),
+                                    data: serde_json::json!({"pong": true}),
+                                };
+                                if let Ok(pong_text) = serde_json::to_string(&pong) {
+                                    let _ = session.text(pong_text).await;
+                                }
+                            }
                         }
-                    } else if text_str == "ping" {
-                        let pong = WSMessage {
-                            msg_type: "welcome".to_string(),
-                            data: serde_json::json!({"pong": true}),
-                        };
-                        if let Ok(pong_text) = serde_json::to_string(&pong) {
-                            let _ = session.text(pong_text).await;
+                        Some(Ok(actix_ws::Message::Ping(bytes))) => {
+                            last_pong = std::time::Instant::now();
+                            let _ = session.pong(&bytes).await;
                         }
+                        Some(Ok(actix_ws::Message::Pong(_))) => {
+                            last_pong = std::time::Instant::now();
+                        }
+                        Some(Ok(actix_ws::Message::Close(_))) => {
+                            log::info!("WebSocket closed: {}", ws_session.client_id);
+                            break;
+                        }
+                        None => {
+                            log::info!("WebSocket stream ended: {}", ws_session.client_id);
+                            break;
+                        }
+                        _ => {}
                     }
                 }
-                Ok(actix_ws::Message::Ping(bytes)) => {
-                    let _ = session.pong(&bytes).await;
+                _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                    // Check for stale sessions
+                    if last_pong.elapsed() > heartbeat_timeout {
+                        log::info!("WebSocket stale session removed: {}", ws_session.client_id);
+                        break;
+                    }
+                    // Send ping to check if client is still alive
+                    if session.ping(b"keepalive").await.is_err() {
+                        log::info!("WebSocket ping failed: {}", ws_session.client_id);
+                        break;
+                    }
                 }
-                Ok(actix_ws::Message::Close(_)) => {
-                    log::info!("WebSocket closed: {}", ws_session.client_id);
-                    break;
-                }
-                _ => {}
             }
         }
 

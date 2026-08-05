@@ -16,12 +16,18 @@ pub async fn get_license_status(
 }
 
 fn get_client_ip(req: &HttpRequest) -> String {
+    // Prefer direct connection peer address over proxy headers
+    if let Some(peer) = req.peer_addr() {
+        return peer.to_string();
+    }
+    // Fallback to X-Forwarded-For only if behind a known reverse proxy
     req.headers()
         .get("X-Forwarded-For")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(',').next())
-        .unwrap_or("unknown")
-        .to_string()
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| v.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub async fn activate_license(

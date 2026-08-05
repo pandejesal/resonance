@@ -94,7 +94,7 @@ export default function SmartQueue({ isOpen, onClose }: SmartQueueProps) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-24 right-4 w-80 max-h-96 bg-surface-1 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-40 flex flex-col"
+          className="fixed bottom-32 right-4 w-80 max-h-96 bg-surface-1 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-40 flex flex-col"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
