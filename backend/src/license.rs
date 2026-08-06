@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct License {
     pub id: String,
     pub license_key: String,
@@ -18,6 +19,7 @@ pub struct License {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct LicenseStatus {
     pub tier: String,
     pub active: bool,
@@ -29,11 +31,13 @@ pub struct LicenseStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ActivateRequest {
     pub license_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct DeactivateRequest {
     pub license_key: String,
 }

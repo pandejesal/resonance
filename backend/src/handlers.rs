@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 
+#[allow(dead_code, unused_variables)]
 pub struct AppState {
     pub db: SqlitePool,
     pub scanner: Arc<Mutex<Scanner>>,
@@ -26,6 +27,7 @@ pub struct AppState {
     pub cast_targets: Arc<Mutex<HashMap<String, CastTarget>>>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -42,6 +44,7 @@ pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpR
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn create_library(
     data: web::Data<AppState>,
     body: web::Json<CreateLibraryRequest>,
@@ -76,6 +79,7 @@ pub async fn create_library(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn delete_library(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -100,6 +104,7 @@ pub async fn delete_library(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn scan_library(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -298,6 +303,7 @@ pub async fn scan_library(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_scan_progress(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -329,6 +335,7 @@ pub async fn get_scan_progress(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_tracks(
     data: web::Data<AppState>,
     query: web::Query<QueryParams>,
@@ -446,6 +453,7 @@ pub async fn get_tracks(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -466,6 +474,7 @@ pub async fn get_track(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -561,6 +570,7 @@ pub async fn update_track(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn play_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -622,6 +632,7 @@ pub async fn play_track(
     HttpResponse::Ok().json(serde_json::json!({"success": true}))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn stream_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -701,6 +712,7 @@ pub async fn stream_track(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_waveform(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -725,6 +737,7 @@ pub async fn get_waveform(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_artwork(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -779,6 +792,7 @@ pub async fn get_artwork(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_albums(
     data: web::Data<AppState>,
     query: web::Query<QueryParams>,
@@ -832,6 +846,7 @@ pub async fn get_albums(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_artists(
     data: web::Data<AppState>,
     query: web::Query<QueryParams>,
@@ -870,6 +885,7 @@ pub async fn get_artists(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn search(
     data: web::Data<AppState>,
     query: web::Query<SearchQuery>,
@@ -931,6 +947,7 @@ pub async fn search(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_recently_played(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -954,6 +971,7 @@ pub async fn get_recently_played(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_most_played(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -977,6 +995,7 @@ pub async fn get_most_played(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -991,6 +1010,7 @@ pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResp
     HttpResponse::Ok().json(genres)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -1004,6 +1024,7 @@ pub async fn get_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpRes
     HttpResponse::Ok().json(folders)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -1066,6 +1087,7 @@ pub async fn get_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn create_playlist(
     data: web::Data<AppState>,
     body: web::Json<CreatePlaylistRequest>,
@@ -1106,6 +1128,7 @@ pub async fn create_playlist(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -1123,6 +1146,7 @@ pub async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpR
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn add_track_to_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1160,6 +1184,7 @@ pub async fn add_track_to_playlist(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_playlist_tracks(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1181,6 +1206,7 @@ pub async fn get_playlist_tracks(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn delete_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1207,6 +1233,7 @@ pub async fn delete_playlist(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 fn get_mime_type(format: &str) -> &str {
     match format.to_lowercase().as_str() {
         "mp3" => "audio/mpeg",
@@ -1224,6 +1251,7 @@ fn get_mime_type(format: &str) -> &str {
 
 // ── Listening History ──────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_listening_history(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -1250,6 +1278,7 @@ pub async fn get_listening_history(
     HttpResponse::Ok().json(history)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn record_play(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1274,6 +1303,7 @@ pub async fn record_play(
 
 // ── Playlist Tools ────────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn shuffle_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1370,6 +1400,7 @@ pub async fn shuffle_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn sort_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1433,6 +1464,7 @@ pub async fn sort_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn dedupe_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1499,6 +1531,7 @@ pub async fn dedupe_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn generate_playlist(
     data: web::Data<AppState>,
     body: web::Json<GeneratePlaylistRequest>,
@@ -1610,6 +1643,7 @@ pub async fn generate_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn share_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1674,6 +1708,7 @@ pub async fn share_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn playlist_stats(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1737,6 +1772,7 @@ pub async fn playlist_stats(
 
 // ── Batch Operations ─────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn batch_delete_tracks(
     data: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
@@ -1775,6 +1811,7 @@ pub async fn batch_delete_tracks(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn batch_update_rating(
     data: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
@@ -1823,6 +1860,7 @@ pub async fn batch_update_rating(
 
 // ── Helper functions ──────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 async fn get_playlist_track_ids(db: &SqlitePool, playlist_id: &str) -> Vec<(String, i32)> {
     sqlx::query_as::<_, (String, i32)>(
         "SELECT pt.track_id, t.play_count FROM playlist_tracks pt JOIN tracks t ON pt.track_id = t.id WHERE pt.playlist_id = ? ORDER BY pt.position",
@@ -1833,6 +1871,7 @@ async fn get_playlist_track_ids(db: &SqlitePool, playlist_id: &str) -> Vec<(Stri
     .unwrap_or_default()
 }
 
+#[allow(dead_code, unused_variables)]
 async fn get_playlist_tracks_full(db: &SqlitePool, playlist_id: &str) -> Vec<Track> {
     sqlx::query_as::<_, Track>(
         "SELECT t.* FROM tracks t JOIN playlist_tracks pt ON t.id = pt.track_id WHERE pt.playlist_id = ? ORDER BY pt.position"
@@ -1843,6 +1882,7 @@ async fn get_playlist_tracks_full(db: &SqlitePool, playlist_id: &str) -> Vec<Tra
     .unwrap_or_default()
 }
 
+#[allow(dead_code, unused_variables)]
 async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> String {
     sqlx::query_scalar::<_, String>("SELECT artist FROM tracks WHERE id = ?")
         .bind(track_id)
@@ -1851,6 +1891,7 @@ async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> String {
         .unwrap_or_default()
 }
 
+#[allow(dead_code, unused_variables)]
 async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[String]) {
     let mut tx = match db.begin().await {
         Ok(tx) => tx,
@@ -1887,6 +1928,7 @@ async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[St
     let _ = tx.commit().await;
 }
 
+#[allow(dead_code, unused_variables)]
 fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {
     if order == "desc" {
         b.to_lowercase().cmp(&a.to_lowercase())
@@ -1895,6 +1937,7 @@ fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 fn cmp_with_order_num(a: i64, b: i64, order: &str) -> std::cmp::Ordering {
     if order == "desc" {
         b.cmp(&a)
@@ -1903,6 +1946,7 @@ fn cmp_with_order_num(a: i64, b: i64, order: &str) -> std::cmp::Ordering {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 fn cmp_with_order_opt(a: Option<i32>, b: Option<i32>, order: &str) -> std::cmp::Ordering {
     match (a, b) {
         (Some(x), Some(y)) => {
@@ -1919,17 +1963,20 @@ fn cmp_with_order_opt(a: Option<i32>, b: Option<i32>, order: &str) -> std::cmp::
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct BrowseQuery {
     pub path: Option<String>,
 }
 
 #[derive(serde::Serialize)]
+#[allow(dead_code, unused_variables)]
 pub struct BrowseEntry {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn browse_directory(
     data: web::Data<AppState>,
     query: web::Query<BrowseQuery>,
@@ -2012,6 +2059,7 @@ pub async fn browse_directory(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_scrobbling_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2020,6 +2068,7 @@ pub async fn get_scrobbling_settings(data: web::Data<AppState>, req: HttpRequest
     HttpResponse::Ok().json(config)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_scrobbling_settings(
     data: web::Data<AppState>,
     body: web::Json<UpdateScrobblingRequest>,
@@ -2045,6 +2094,7 @@ pub async fn update_scrobbling_settings(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn test_scrobbling(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -2086,6 +2136,7 @@ pub async fn test_scrobbling(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_lyrics(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2127,10 +2178,12 @@ pub async fn get_lyrics(
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct UpdateLyricsRequest {
     pub lyrics: String,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_lyrics(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2155,6 +2208,7 @@ pub async fn update_lyrics(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn fetch_lyrics(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2220,6 +2274,7 @@ pub async fn fetch_lyrics(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_updater_status(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2228,6 +2283,7 @@ pub async fn get_updater_status(data: web::Data<AppState>, req: HttpRequest) -> 
     HttpResponse::Ok().json(status)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn check_for_updates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2240,6 +2296,7 @@ pub async fn check_for_updates(data: web::Data<AppState>, req: HttpRequest) -> H
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn apply_update(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2255,6 +2312,7 @@ pub async fn apply_update(data: web::Data<AppState>, req: HttpRequest) -> HttpRe
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_updater_config(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2263,6 +2321,7 @@ pub async fn get_updater_config(data: web::Data<AppState>, req: HttpRequest) -> 
     HttpResponse::Ok().json(config)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_updater_config(
     data: web::Data<AppState>,
     body: web::Json<updater::UpdaterConfig>,
@@ -2279,6 +2338,7 @@ pub async fn update_updater_config(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn preview_import(
     data: web::Data<AppState>,
     body: web::Json<ImportPreviewRequest>,
@@ -2322,6 +2382,7 @@ pub async fn preview_import(
     HttpResponse::Ok().json(preview)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn confirm_import(
     data: web::Data<AppState>,
     body: web::Json<ImportConfirmRequest>,
@@ -2396,11 +2457,13 @@ pub struct DeviceTrack {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct DeviceScanRequest {
     pub library_id: Option<String>,
     pub tracks: Vec<DeviceTrack>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn import_device_music(
     data: web::Data<AppState>,
     body: web::Json<DeviceScanRequest>,
@@ -2511,6 +2574,7 @@ pub async fn import_device_music(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_import_formats(req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2564,11 +2628,13 @@ pub async fn get_import_formats(req: HttpRequest) -> HttpResponse {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ExportRequest {
     pub playlist_id: String,
     pub target_platform: String,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn export_playlist(
     data: web::Data<AppState>,
     body: web::Json<ExportRequest>,
@@ -2653,6 +2719,7 @@ pub async fn export_playlist(
         .body(content)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_transfer_platforms(req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2695,6 +2762,7 @@ pub async fn get_transfer_platforms(req: HttpRequest) -> HttpResponse {
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_track_rating(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2740,6 +2808,7 @@ pub async fn update_track_rating(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn evaluate_smart_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2941,6 +3010,7 @@ pub async fn evaluate_smart_playlist(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_smart_playlist_rules(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2995,6 +3065,7 @@ pub async fn update_smart_playlist_rules(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_transcode_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3029,6 +3100,7 @@ pub async fn get_transcode_settings(data: web::Data<AppState>, req: HttpRequest)
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_transcode_settings(
     data: web::Data<AppState>,
     body: web::Json<TranscodeConfig>,
@@ -3055,6 +3127,7 @@ pub async fn update_transcode_settings(
     HttpResponse::Ok().json(body.into_inner())
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn stream_track_transcoded(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -3204,6 +3277,7 @@ pub async fn stream_track_transcoded(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpResponse {
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(id)
@@ -3268,6 +3342,7 @@ async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpR
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
     let db_ok = sqlx::query_scalar::<_, i64>("SELECT 1")
         .fetch_one(&data.db)
@@ -3309,6 +3384,7 @@ pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_database_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3348,6 +3424,7 @@ pub async fn get_database_stats(data: web::Data<AppState>, req: HttpRequest) -> 
 
 // ── Cast Target Handlers ──────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn list_cast_targets(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3357,6 +3434,7 @@ pub async fn list_cast_targets(data: web::Data<AppState>, req: HttpRequest) -> H
     HttpResponse::Ok().json(list)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn register_cast_target(
     data: web::Data<AppState>,
     body: web::Json<CastTarget>,
@@ -3384,6 +3462,7 @@ pub async fn register_cast_target(
     HttpResponse::Created().json(entry)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn unregister_cast_target(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -3402,6 +3481,7 @@ pub async fn unregister_cast_target(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 #[allow(clippy::await_holding_lock)]
 pub async fn cast_play(
     data: web::Data<AppState>,
@@ -3486,6 +3566,7 @@ pub async fn cast_play(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 #[allow(clippy::await_holding_lock)]
 pub async fn cast_control(
     data: web::Data<AppState>,
@@ -3556,6 +3637,7 @@ pub async fn cast_control(
 
 // ── Duplicate Detection ───────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3584,6 +3666,7 @@ pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> Htt
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3624,10 +3707,12 @@ pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) ->
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct DeleteDuplicatesRequest {
     pub track_ids: Vec<String>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn delete_duplicates_batch(
     data: web::Data<AppState>,
     body: web::Json<DeleteDuplicatesRequest>,
@@ -3660,6 +3745,7 @@ pub async fn delete_duplicates_batch(
 
 // ── Auth ──────────────────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 fn hash_password(password: &str) -> Result<String, HttpResponse> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -3673,6 +3759,7 @@ fn hash_password(password: &str) -> Result<String, HttpResponse> {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn verify_password(password: &str, hash: &str) -> bool {
     let parsed_hash = match PasswordHash::new(hash) {
         Ok(h) => h,
@@ -3683,6 +3770,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
     let token = req
         .cookie("auth_token")
@@ -3698,7 +3786,6 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
             req.uri().query().and_then(|q| {
                 q.split('&').find_map(|part| {
                     let (key, val) = part.split_once('=')?;
-
 
                     if key == "token" {
                         Some(val.to_string())
@@ -3716,6 +3803,7 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn login_handler(
     data: web::Data<AppState>,
     body: web::Json<LoginRequest>,
@@ -3777,6 +3865,7 @@ pub async fn login_handler(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn logout_handler() -> HttpResponse {
     let cookie = actix_web::cookie::Cookie::build("auth_token", "")
         .path("/")
@@ -3791,6 +3880,7 @@ pub async fn logout_handler() -> HttpResponse {
         .json(serde_json::json!({"success": true}))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_current_user(req: HttpRequest) -> HttpResponse {
     match require_auth(&req) {
         Ok(user) => HttpResponse::Ok().json(user),
@@ -3798,6 +3888,7 @@ pub async fn get_current_user(req: HttpRequest) -> HttpResponse {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn create_user(
     data: web::Data<AppState>,
     body: web::Json<CreateUserRequest>,
@@ -3867,6 +3958,7 @@ pub async fn create_user(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn list_users(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let admin = match require_auth(&req) {
         Ok(u) => u,
@@ -3900,6 +3992,7 @@ pub async fn list_users(data: web::Data<AppState>, req: HttpRequest) -> HttpResp
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn delete_user(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -3941,6 +4034,7 @@ pub async fn delete_user(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn register_handler(
     data: web::Data<AppState>,
     body: web::Json<CreateUserRequest>,
@@ -4023,6 +4117,7 @@ pub async fn register_handler(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn guest_login_handler(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let ip = req
         .peer_addr()

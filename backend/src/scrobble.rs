@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 use crate::models::{LastfmConfig, ListenbrainzConfig, ScrobblingConfig};
 use log::{info, warn};
 use reqwest::Client;

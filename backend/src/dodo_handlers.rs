@@ -1,6 +1,6 @@
+use crate::handlers::{require_auth, AppState};
 use actix_web::{web, HttpRequest, HttpResponse};
 use std::env;
-use crate::handlers::{AppState, require_auth};
 
 pub async fn create_checkout_session(
     _data: web::Data<AppState>,
@@ -70,11 +70,11 @@ pub async fn create_checkout_session(
                 }))
             } else {
                 let err = r.text().await.unwrap_or_default();
-                HttpResponse::InternalServerError().json(serde_json::json!({"error": format!("Dodo Payments error: {}", err)}))
+                HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": format!("Dodo Payments error: {}", err)}))
             }
-        },
-        Err(e) => {
-            HttpResponse::InternalServerError().json(serde_json::json!({"error": format!("Failed to create Dodo session: {}", e)}))
         }
+        Err(e) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": format!("Failed to create Dodo session: {}", e)})),
     }
 }
