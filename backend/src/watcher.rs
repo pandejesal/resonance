@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 use dashmap::DashMap;
 use log::{error, info, warn};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};

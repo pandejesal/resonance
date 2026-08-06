@@ -3,6 +3,7 @@ use crate::license::{ActivateRequest, DeactivateRequest, License};
 use crate::ratelimit::check_rate_limit;
 use actix_web::{web, HttpRequest, HttpResponse};
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_license_status(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let user = match require_auth(&req) {
         Ok(u) => u,
@@ -12,6 +13,7 @@ pub async fn get_license_status(data: web::Data<AppState>, req: HttpRequest) -> 
     HttpResponse::Ok().json(status)
 }
 
+#[allow(dead_code, unused_variables)]
 fn get_client_ip(req: &HttpRequest) -> String {
     // Prefer direct connection peer address over proxy headers
     if let Some(peer) = req.peer_addr() {
@@ -27,6 +29,7 @@ fn get_client_ip(req: &HttpRequest) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn activate_license(
     data: web::Data<AppState>,
     body: web::Json<ActivateRequest>,
@@ -57,6 +60,7 @@ pub async fn activate_license(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn deactivate_license(
     data: web::Data<AppState>,
     body: web::Json<DeactivateRequest>,
@@ -92,6 +96,7 @@ pub async fn deactivate_license(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_tier_features(data: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let tier = path.into_inner();
     if !matches!(tier.as_str(), "free" | "pro" | "enterprise") {
@@ -104,6 +109,7 @@ pub async fn get_tier_features(data: web::Data<AppState>, path: web::Path<String
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn generate_license_key(
     data: web::Data<AppState>,
     path: web::Path<String>,

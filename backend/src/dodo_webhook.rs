@@ -1,8 +1,8 @@
-use actix_web::{web, HttpRequest, HttpResponse};
 use crate::handlers::AppState;
+use actix_web::{web, HttpRequest, HttpResponse};
+use hex;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use hex;
 
 pub async fn handle_webhook(
     req: HttpRequest,
@@ -14,7 +14,8 @@ pub async fn handle_webhook(
         None => return HttpResponse::BadRequest().finish(),
     };
 
-    let secret = std::env::var("DODO_WEBHOOK_SECRET").unwrap_or_else(|_| "whsec_test_dummy".to_string());
+    let secret =
+        std::env::var("DODO_WEBHOOK_SECRET").unwrap_or_else(|_| "whsec_test_dummy".to_string());
 
     if secret != "whsec_test_dummy" {
         type HmacSha256 = Hmac<Sha256>;
@@ -26,7 +27,8 @@ pub async fn handle_webhook(
         let expected_signature = hex::encode(mac.finalize().into_bytes());
 
         if expected_signature != signature_header {
-            return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid signature"}));
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid signature"}));
         }
     }
 
@@ -38,10 +40,16 @@ pub async fn handle_webhook(
     if event["type"] == "payment.succeeded" {
         let payment = &event["data"];
         if let Some(metadata) = payment.get("metadata") {
-            if let (Some(user_id), Some(tier)) = (metadata["user_id"].as_str(), metadata["tier"].as_str()) {
+            if let (Some(user_id), Some(tier)) =
+                (metadata["user_id"].as_str(), metadata["tier"].as_str())
+            {
                 let key = crate::license::License::generate_key(tier).await;
                 let id = uuid::Uuid::new_v4().to_string();
-                let max_devices = match tier { "pro" => 3, "enterprise" => 999, _ => 1 };
+                let max_devices = match tier {
+                    "pro" => 3,
+                    "enterprise" => 999,
+                    _ => 1,
+                };
 
                 let _ = sqlx::query(
                     "INSERT INTO licenses (id, license_key, tier, max_devices, user_id, activated_at, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', '+1 year'))"

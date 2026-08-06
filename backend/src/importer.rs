@@ -2,6 +2,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ExportTrack {
     pub title: String,
     pub artist: String,
@@ -10,6 +11,7 @@ pub struct ExportTrack {
     pub file_path: Option<String>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn export_to_spotify_csv(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut csv = String::from("Track Name,Artist,Album\n");
     for t in tracks {
@@ -21,6 +23,7 @@ pub fn export_to_spotify_csv(tracks: &[ExportTrack], _playlist_name: &str) -> St
     csv
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn export_to_youtube_music_text(tracks: &[ExportTrack]) -> String {
     tracks
         .iter()
@@ -29,6 +32,7 @@ pub fn export_to_youtube_music_text(tracks: &[ExportTrack]) -> String {
         .join("\n")
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut m3u = String::from("#EXTM3U\n");
     for t in tracks {
@@ -43,6 +47,7 @@ pub fn export_to_apple_music_m3u(tracks: &[ExportTrack], _playlist_name: &str) -
     m3u
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn export_to_soundcloud_text(tracks: &[ExportTrack]) -> String {
     tracks
         .iter()
@@ -57,6 +62,7 @@ pub fn export_to_soundcloud_text(tracks: &[ExportTrack]) -> String {
         .join("\n")
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn export_to_m3u(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     let mut m3u = String::from("#EXTM3U\n");
     for t in tracks {
@@ -71,6 +77,7 @@ pub fn export_to_m3u(tracks: &[ExportTrack], _playlist_name: &str) -> String {
     m3u
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn export_to_xspf(tracks: &[ExportTrack], playlist_name: &str) -> String {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
@@ -96,6 +103,7 @@ pub fn export_to_xspf(tracks: &[ExportTrack], playlist_name: &str) -> String {
     xml
 }
 
+#[allow(dead_code, unused_variables)]
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -104,6 +112,7 @@ fn escape_xml(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_playlist_export_tracks(
     pool: &SqlitePool,
     playlist_id: &str,
@@ -135,6 +144,7 @@ pub async fn get_playlist_export_tracks(
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ImportTrack {
     pub title: String,
     pub artist: String,
@@ -144,6 +154,7 @@ pub struct ImportTrack {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ImportPreview {
     pub platform: String,
     pub playlist_name: String,
@@ -153,6 +164,7 @@ pub struct ImportPreview {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct MatchedTrack {
     pub import_track: ImportTrack,
     pub track_id: String,
@@ -251,6 +263,7 @@ pub struct SoundCloudUser {
     pub username: Option<String>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn normalize(s: &str) -> String {
     s.to_lowercase()
         .chars()
@@ -261,6 +274,7 @@ pub fn normalize(s: &str) -> String {
         .join(" ")
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn parse_spotify(content: &str) -> Result<ImportPreview, String> {
     let data: serde_json::Value =
         serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
@@ -323,6 +337,7 @@ pub fn parse_spotify(content: &str) -> Result<ImportPreview, String> {
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn parse_youtube_music(content: &str) -> Result<ImportPreview, String> {
     let data: serde_json::Value =
         serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
@@ -375,6 +390,7 @@ pub fn parse_youtube_music(content: &str) -> Result<ImportPreview, String> {
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn parse_apple_music(content: &str) -> Result<ImportPreview, String> {
     let data: serde_json::Value =
         serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
@@ -430,6 +446,7 @@ pub fn parse_apple_music(content: &str) -> Result<ImportPreview, String> {
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn parse_soundcloud(content: &str) -> Result<ImportPreview, String> {
     let data: serde_json::Value =
         serde_json::from_str(content).map_err(|e| format!("Invalid JSON: {}", e))?;
@@ -485,6 +502,7 @@ pub fn parse_soundcloud(content: &str) -> Result<ImportPreview, String> {
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
     let mut tracks = Vec::new();
     let mut pending_extinf: Option<(String, String, Option<i64>)> = None;
@@ -540,6 +558,7 @@ pub fn parse_m3u(content: &str) -> Result<ImportPreview, String> {
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn parse_xspf(content: &str) -> Result<ImportPreview, String> {
     let mut tracks = Vec::new();
     let mut playlist_name = "XSPF Playlist".to_string();
@@ -597,6 +616,7 @@ pub fn parse_xspf(content: &str) -> Result<ImportPreview, String> {
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
     let db_tracks = sqlx::query_as::<_, (String, String, String, String)>(
         "SELECT id, title, artist, album FROM tracks",

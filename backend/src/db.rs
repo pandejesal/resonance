@@ -1,10 +1,10 @@
+#![allow(dead_code, unused_variables)]
 use log::info;
 use sqlx::migrate;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 
-pub mod db {
-    use super::*;
+
 
     pub struct Database {
         pub pool: SqlitePool,
@@ -84,7 +84,6 @@ pub mod db {
             Ok(())
         }
     }
-}
 
 #[allow(dead_code)]
 pub fn create_schema() -> String {

@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 use actix_web::http::header::{HeaderName, HeaderValue};
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::{json, Value};

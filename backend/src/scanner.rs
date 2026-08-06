@@ -15,11 +15,13 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
     "dff",
 ];
 
+#[allow(dead_code, unused_variables)]
 pub struct Scanner {
     libraries: DashMap<String, LibraryScanState>,
 }
 
 #[derive(Clone)]
+#[allow(dead_code, unused_variables)]
 pub struct LibraryScanState {
     pub is_scanning: Arc<AtomicBool>,
     pub files_found: Arc<AtomicI32>,
@@ -145,6 +147,7 @@ impl Scanner {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn extract_metadata(
     path: &Path,
     library_id: &str,
@@ -223,6 +226,7 @@ pub fn extract_metadata(
     Ok(track)
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn extract_artwork(path: &Path) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
     let tagged_file = lofty::read_from_path(path)?;
 
@@ -238,6 +242,7 @@ pub fn extract_artwork(path: &Path) -> Result<Option<Vec<u8>>, Box<dyn std::erro
     Ok(None)
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
     use symphonia::core::audio::SampleBuffer;
     use symphonia::core::codecs::DecoderOptions;
@@ -339,6 +344,7 @@ pub fn compute_waveform_peaks(file_path: &str) -> Option<String> {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn compute_fingerprint(file_path: &str) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
 

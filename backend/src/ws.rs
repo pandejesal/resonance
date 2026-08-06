@@ -135,6 +135,7 @@ pub async fn ws_handler(
     Ok(response)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn broadcast_scan_progress(
     clients: &WsClients,
     library_id: &str,
@@ -163,6 +164,7 @@ pub async fn broadcast_scan_progress(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn broadcast_now_playing(clients: &WsClients, track: &Track) {
     let msg = WSMessage {
         msg_type: "now_playing".to_string(),
