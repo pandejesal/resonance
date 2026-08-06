@@ -1,6 +1,6 @@
-use sqlx::SqlitePool;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
@@ -67,8 +67,13 @@ impl License {
             .flatten()
     }
 
-    pub async fn activate(db: &SqlitePool, license_key: &str, user_id: &str) -> Result<Self, String> {
-        let license = Self::get_by_key(db, license_key).await
+    pub async fn activate(
+        db: &SqlitePool,
+        license_key: &str,
+        user_id: &str,
+    ) -> Result<Self, String> {
+        let license = Self::get_by_key(db, license_key)
+            .await
             .ok_or("Invalid license key")?;
 
         if license.user_id.is_some() && license.user_id.as_deref() != Some(user_id) {
@@ -107,10 +112,15 @@ impl License {
         .map_err(|e| e.to_string())?;
 
         if result.rows_affected() == 0 {
-            return Err(format!("Device limit reached ({}/{}). Deactivate on another device first.", license.device_count, max_devices));
+            return Err(format!(
+                "Device limit reached ({}/{}). Deactivate on another device first.",
+                license.device_count, max_devices
+            ));
         }
 
-        Self::get_by_key(db, license_key).await.ok_or("Failed to fetch updated license".to_string())
+        Self::get_by_key(db, license_key)
+            .await
+            .ok_or("Failed to fetch updated license".to_string())
     }
 
     pub async fn deactivate(db: &SqlitePool, license_key: &str) -> Result<(), String> {
@@ -126,7 +136,7 @@ impl License {
 
     pub async fn get_features(db: &SqlitePool, tier: &str) -> Vec<String> {
         sqlx::query_scalar::<_, String>(
-            "SELECT feature_key FROM tier_features WHERE tier = ? AND enabled = 1"
+            "SELECT feature_key FROM tier_features WHERE tier = ? AND enabled = 1",
         )
         .bind(tier)
         .fetch_all(db)
@@ -178,17 +188,15 @@ impl License {
     }
 
     pub async fn get_trial_end(db: &SqlitePool, user_id: &str) -> Option<chrono::NaiveDateTime> {
-        sqlx::query_scalar::<_, String>(
-            "SELECT created_at FROM users WHERE id = ?"
-        )
-        .bind(user_id)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|created| {
-            chrono::NaiveDateTime::parse_from_str(&created, "%Y-%m-%d %H:%M:%S").ok()
-        })
-        .map(|created| created + chrono::Duration::days(14))
+        sqlx::query_scalar::<_, String>("SELECT created_at FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|created| {
+                chrono::NaiveDateTime::parse_from_str(&created, "%Y-%m-%d %H:%M:%S").ok()
+            })
+            .map(|created| created + chrono::Duration::days(14))
     }
 }

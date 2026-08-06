@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+pub mod dodo_handlers;
+pub mod dodo_webhook;
 pub mod auth;
 pub mod db;
 pub mod ratelimit;
@@ -28,7 +31,7 @@ static FRONTEND_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
 
 async fn spa_fallback(
     req: actix_web::HttpRequest,
-    static_dir: actix_web::web::Data<String>,
+    _static_dir: actix_web::web::Data<String>,
     index_path: actix_web::web::Data<String>,
 ) -> actix_web::HttpResponse {
     let path = req.path();
@@ -405,6 +408,8 @@ pub async fn start_server(
             .route("/api/license/deactivate", web::post().to(license_handlers::deactivate_license))
             .route("/api/license/features/{tier}", web::get().to(license_handlers::get_tier_features))
             .route("/api/license/generate/{tier}", web::post().to(license_handlers::generate_license_key))
+            .route("/api/dodo/checkout/{tier}", web::post().to(dodo_handlers::create_checkout_session))
+            .route("/api/dodo/webhook", web::post().to(dodo_webhook::handle_webhook))
             .route("/api/health", web::get().to(handlers::health_check))
             .route("/api/stats/database", web::get().to(handlers::get_database_stats))
             .route("/api/ws", web::get().to(ws::ws_handler))

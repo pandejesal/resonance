@@ -33,11 +33,11 @@ jobs:
           key: check-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: check-cargo-
 
-      - name: Check Backend
-        run: cargo check -p resonance-backend
-
       - name: Build Frontend
         run: |
           cd frontend
           npm install
           npm run build
+
+      - name: Check Backend
+        run: cargo check -p resonance-backend

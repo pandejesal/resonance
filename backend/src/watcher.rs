@@ -88,7 +88,9 @@ impl WatcherService {
     }
 
     pub fn start_watching(&mut self) -> Result<(), String> {
-        let paths: Vec<(String, String)> = self.library_paths.iter()
+        let paths: Vec<(String, String)> = self
+            .library_paths
+            .iter()
             .map(|r| (r.key().clone(), r.value().clone()))
             .collect();
         let mut errors = Vec::new();
