@@ -23,10 +23,12 @@ pub async fn ws_handler(
     clients: web::Data<Arc<WsClients>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     // Authenticate WebSocket connection
-    let token = req.cookie("auth_token")
+    let token = req
+        .cookie("auth_token")
         .map(|c| c.value().to_string())
         .or_else(|| {
-            req.headers().get("Authorization")
+            req.headers()
+                .get("Authorization")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.strip_prefix("Bearer "))
                 .map(|v| v.to_string())
@@ -133,6 +135,7 @@ pub async fn ws_handler(
     Ok(response)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn broadcast_scan_progress(
     clients: &WsClients,
     library_id: &str,
@@ -161,6 +164,7 @@ pub async fn broadcast_scan_progress(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn broadcast_now_playing(clients: &WsClients, track: &Track) {
     let msg = WSMessage {
         msg_type: "now_playing".to_string(),

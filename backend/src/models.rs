@@ -4,6 +4,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -14,18 +15,21 @@ pub struct User {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code, unused_variables)]
 pub struct LoginResponse {
     pub token: String,
     pub user: UserInfo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct UserInfo {
     pub id: String,
     pub username: String,
@@ -33,6 +37,7 @@ pub struct UserInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct CreateUserRequest {
     pub username: String,
     pub password: String,
@@ -40,6 +45,7 @@ pub struct CreateUserRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct Track {
     pub id: String,
     pub title: String,
@@ -84,6 +90,7 @@ pub struct Track {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct Album {
     pub id: String,
     pub title: String,
@@ -99,6 +106,7 @@ pub struct Album {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct Artist {
     pub id: String,
     pub name: String,
@@ -112,6 +120,7 @@ pub struct Artist {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct Playlist {
     pub id: String,
     pub name: String,
@@ -137,6 +146,7 @@ pub struct PlaylistTrack {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct Library {
     pub id: String,
     pub name: String,
@@ -191,6 +201,7 @@ pub struct QueryParams {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct SearchQuery {
     pub q: String,
     pub limit: Option<i32>,
@@ -198,6 +209,7 @@ pub struct SearchQuery {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code, unused_variables)]
 pub struct PaginatedResponse<T: Serialize> {
     pub items: Vec<T>,
     pub total: i64,
@@ -207,6 +219,7 @@ pub struct PaginatedResponse<T: Serialize> {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code, unused_variables)]
 pub struct SearchResults {
     pub tracks: Vec<Track>,
     pub albums: Vec<Album>,
@@ -216,6 +229,7 @@ pub struct SearchResults {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct CreatePlaylistRequest {
     pub name: String,
     pub description: Option<String>,
@@ -225,12 +239,14 @@ pub struct CreatePlaylistRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct AddTrackToPlaylistRequest {
     pub track_id: String,
     pub position: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct UpdateTrackRequest {
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -244,23 +260,27 @@ pub struct UpdateTrackRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct CreateLibraryRequest {
     pub name: String,
     pub path: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ShufflePlaylistRequest {
     pub mode: Option<String>, // "random", "smart", "no-consecutive-artist"
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct SortPlaylistRequest {
     pub sort_by: String, // "title", "artist", "album", "duration", "year", "date_added", "play_count", "random"
     pub order: Option<String>, // "asc" or "desc"
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct DedupePlaylistRequest {
     pub strategy: Option<String>, // "exact", "title_artist", "fingerprint"
 }
@@ -279,6 +299,7 @@ pub struct GeneratePlaylistRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct SharePlaylistRequest {
     pub name: String,
     pub description: Option<String>,
@@ -286,6 +307,7 @@ pub struct SharePlaylistRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code, unused_variables)]
 pub struct PlaylistToolResult {
     pub success: bool,
     pub message: String,
@@ -302,12 +324,14 @@ pub struct WSMessage {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ImportPreviewRequest {
     pub platform: String,
     pub content: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ImportConfirmRequest {
     pub platform: String,
     pub playlist_name: String,
@@ -326,6 +350,7 @@ pub struct ImportConfirmTrack {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct SmartPlaylistRule {
     pub field: String,
     pub op: String,
@@ -333,12 +358,14 @@ pub struct SmartPlaylistRule {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct SmartPlaylistConfig {
     pub rules: Vec<SmartPlaylistRule>,
     pub match_all: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct CastTarget {
     pub id: String,
     pub name: String,
@@ -351,12 +378,14 @@ pub struct CastTarget {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct CastPlayRequest {
     pub target_id: String,
     pub track_id: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct CastControlRequest {
     pub target_id: String,
     pub action: String,
@@ -364,17 +393,20 @@ pub struct CastControlRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct UpdateRatingRequest {
     pub rating: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ScrobblingConfig {
     pub lastfm: LastfmConfig,
     pub listenbrainz: ListenbrainzConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct LastfmConfig {
     pub enabled: bool,
     pub api_key: Option<String>,
@@ -384,18 +416,21 @@ pub struct LastfmConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ListenbrainzConfig {
     pub enabled: bool,
     pub token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct UpdateScrobblingRequest {
     pub lastfm: Option<LastfmConfig>,
     pub listenbrainz: Option<ListenbrainzConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct TranscodeConfig {
     pub enabled: bool,
     pub format: String,
@@ -403,6 +438,7 @@ pub struct TranscodeConfig {
 }
 
 #[derive(Debug, Deserialize, FromRow)]
+#[allow(dead_code, unused_variables)]
 pub struct SettingRow {
     pub key: String,
     pub value: String,

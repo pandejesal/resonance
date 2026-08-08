@@ -3,17 +3,21 @@ use std::sync::OnceLock;
 use std::sync::RwLock;
 use std::time::Instant;
 
+#[allow(dead_code, unused_variables)]
 struct RateEntry {
     count: u32,
     window_start: Instant,
 }
 
+#[allow(dead_code, unused_variables)]
 static RATE_LIMITS: OnceLock<RwLock<HashMap<String, RateEntry>>> = OnceLock::new();
 
+#[allow(dead_code, unused_variables)]
 fn get_map() -> &'static RwLock<HashMap<String, RateEntry>> {
     RATE_LIMITS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn check_rate_limit(ip: &str, max_requests: u32, window_secs: u64) -> bool {
     let now = Instant::now();
     let window = std::time::Duration::from_secs(window_secs);
@@ -23,10 +27,8 @@ pub fn check_rate_limit(ip: &str, max_requests: u32, window_secs: u64) -> bool {
         if let Some(entry) = map.get(ip) {
             if now.duration_since(entry.window_start) >= window {
                 // Window expired, need write lock to reset
-            } else if entry.count >= max_requests {
-                return false;
             } else {
-                return true;
+                return entry.count < max_requests;
             }
         }
     }

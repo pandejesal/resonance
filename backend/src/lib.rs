@@ -1,12 +1,15 @@
+#![allow(dead_code)]
 pub mod auth;
 pub mod db;
-pub mod ratelimit;
+pub mod dodo_handlers;
+pub mod dodo_webhook;
 pub mod handlers;
 pub mod importer;
 pub mod license;
 pub mod license_handlers;
 pub mod lyrics;
 pub mod models;
+pub mod ratelimit;
 pub mod scanner;
 pub mod scrobble;
 pub mod subsonic;
@@ -28,7 +31,7 @@ static FRONTEND_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
 
 async fn spa_fallback(
     req: actix_web::HttpRequest,
-    static_dir: actix_web::web::Data<String>,
+    _static_dir: actix_web::web::Data<String>,
     index_path: actix_web::web::Data<String>,
 ) -> actix_web::HttpResponse {
     let path = req.path();
@@ -128,7 +131,7 @@ pub async fn start_server(
 
     info!("Connecting to database: {}", sqlite_url);
 
-    let database = db::db::Database::new(&sqlite_url)
+    let database = db::Database::new(&sqlite_url)
         .await
         .expect("Failed to connect to database");
 
@@ -196,11 +199,20 @@ pub async fn start_server(
             .route("/api/auth/login", web::post().to(handlers::login_handler))
             .route("/api/auth/logout", web::post().to(handlers::logout_handler))
             .route("/api/auth/me", web::get().to(handlers::get_current_user))
-            .route("/api/auth/register", web::post().to(handlers::register_handler))
-            .route("/api/auth/guest", web::post().to(handlers::guest_login_handler))
+            .route(
+                "/api/auth/register",
+                web::post().to(handlers::register_handler),
+            )
+            .route(
+                "/api/auth/guest",
+                web::post().to(handlers::guest_login_handler),
+            )
             .route("/api/auth/users", web::get().to(handlers::list_users))
             .route("/api/auth/users", web::post().to(handlers::create_user))
-            .route("/api/auth/users/{id}", web::delete().to(handlers::delete_user))
+            .route(
+                "/api/auth/users/{id}",
+                web::delete().to(handlers::delete_user),
+            )
             .route("/api/libraries", web::get().to(handlers::get_libraries))
             .route("/api/libraries", web::post().to(handlers::create_library))
             .route(
@@ -239,10 +251,19 @@ pub async fn start_server(
             .route("/api/genres", web::get().to(handlers::get_genres))
             .route("/api/folders", web::get().to(handlers::get_folders))
             .route("/api/search", web::get().to(handlers::search))
-            .route("/api/tracks/recently-played", web::get().to(handlers::get_recently_played))
-            .route("/api/tracks/most-played", web::get().to(handlers::get_most_played))
+            .route(
+                "/api/tracks/recently-played",
+                web::get().to(handlers::get_recently_played),
+            )
+            .route(
+                "/api/tracks/most-played",
+                web::get().to(handlers::get_most_played),
+            )
             .route("/api/stats", web::get().to(handlers::get_stats))
-            .route("/api/history", web::get().to(handlers::get_listening_history))
+            .route(
+                "/api/history",
+                web::get().to(handlers::get_listening_history),
+            )
             .route(
                 "/api/tracks/{id}/play/record",
                 web::post().to(handlers::record_play),
@@ -378,8 +399,14 @@ pub async fn start_server(
                 "/api/playlists/{id}/smart/rules",
                 web::put().to(handlers::update_smart_playlist_rules),
             )
-            .route("/api/tracks/batch-delete", web::post().to(handlers::batch_delete_tracks))
-            .route("/api/tracks/batch-rating", web::put().to(handlers::batch_update_rating))
+            .route(
+                "/api/tracks/batch-delete",
+                web::post().to(handlers::batch_delete_tracks),
+            )
+            .route(
+                "/api/tracks/batch-rating",
+                web::put().to(handlers::batch_update_rating),
+            )
             .route(
                 "/api/tracks/duplicates",
                 web::get().to(handlers::find_duplicates),
@@ -392,21 +419,53 @@ pub async fn start_server(
                 "/api/tracks/duplicates/delete",
                 web::post().to(handlers::delete_duplicates_batch),
             )
-            .route("/api/cast/targets", web::get().to(handlers::list_cast_targets))
-            .route("/api/cast/targets", web::post().to(handlers::register_cast_target))
+            .route(
+                "/api/cast/targets",
+                web::get().to(handlers::list_cast_targets),
+            )
+            .route(
+                "/api/cast/targets",
+                web::post().to(handlers::register_cast_target),
+            )
             .route(
                 "/api/cast/targets/{id}",
                 web::delete().to(handlers::unregister_cast_target),
             )
             .route("/api/cast/play", web::post().to(handlers::cast_play))
             .route("/api/cast/control", web::post().to(handlers::cast_control))
-            .route("/api/license/status", web::get().to(license_handlers::get_license_status))
-            .route("/api/license/activate", web::post().to(license_handlers::activate_license))
-            .route("/api/license/deactivate", web::post().to(license_handlers::deactivate_license))
-            .route("/api/license/features/{tier}", web::get().to(license_handlers::get_tier_features))
-            .route("/api/license/generate/{tier}", web::post().to(license_handlers::generate_license_key))
+            .route(
+                "/api/license/status",
+                web::get().to(license_handlers::get_license_status),
+            )
+            .route(
+                "/api/license/activate",
+                web::post().to(license_handlers::activate_license),
+            )
+            .route(
+                "/api/license/deactivate",
+                web::post().to(license_handlers::deactivate_license),
+            )
+            .route(
+                "/api/license/features/{tier}",
+                web::get().to(license_handlers::get_tier_features),
+            )
+            .route(
+                "/api/license/generate/{tier}",
+                web::post().to(license_handlers::generate_license_key),
+            )
+            .route(
+                "/api/dodo/checkout/{tier}",
+                web::post().to(dodo_handlers::create_checkout_session),
+            )
+            .route(
+                "/api/dodo/webhook",
+                web::post().to(dodo_webhook::handle_webhook),
+            )
             .route("/api/health", web::get().to(handlers::health_check))
-            .route("/api/stats/database", web::get().to(handlers::get_database_stats))
+            .route(
+                "/api/stats/database",
+                web::get().to(handlers::get_database_stats),
+            )
             .route("/api/ws", web::get().to(ws::ws_handler))
             .app_data(web::Data::new(ws_clients.clone()))
             .default_service(web::to(spa_fallback))

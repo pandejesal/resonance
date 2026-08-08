@@ -15,7 +15,7 @@
 
 # Keep the native library name
 -keep class com.pandejesal.resonance.BackendPlugin {
-    private external fun startNative(...);
+    native void startNative(...);
 }
 
 # AndroidX

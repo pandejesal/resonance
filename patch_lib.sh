@@ -1,0 +1,2 @@
+sed -i '1i #![allow(dead_code)]\npub mod dodo_handlers;\npub mod dodo_webhook;' backend/src/lib.rs
+sed -i 's/.route("\/api\/health", web::get().to(handlers::health_check))/.route("\/api\/dodo\/checkout\/{tier}", web::post().to(dodo_handlers::create_checkout_session))\n            .route("\/api\/dodo\/webhook", web::post().to(dodo_webhook::handle_webhook))\n            .route("\/api\/health", web::get().to(handlers::health_check))/g' backend/src/lib.rs

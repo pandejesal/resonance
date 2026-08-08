@@ -18,7 +18,7 @@ export default function LyricsPanel() {
   const syncedLines = useMemo(() => {
     if (!lyrics?.synced) return [];
     return parseLrc(lyrics.synced);
-  }, [lyrics?.synced]);
+  }, [lyrics]);
 
   const hasSyncedLyrics = syncedLines.length > 0;
 

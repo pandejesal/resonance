@@ -6,16 +6,20 @@ use crate::updater;
 use crate::ws::WsClients;
 use actix_web::http::header::{HeaderName, HeaderValue};
 use actix_web::{web, HttpRequest, HttpResponse};
-use argon2::{Argon2, PasswordVerifier, password_hash::{PasswordHash, PasswordHasher, SaltString, rand_core::OsRng}};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, SaltString},
+    Argon2, PasswordVerifier,
+};
 use parking_lot::Mutex;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tokio::io::AsyncReadExt;
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 
+#[allow(dead_code, unused_variables)]
 pub struct AppState {
     pub db: SqlitePool,
     pub scanner: Arc<Mutex<Scanner>>,
@@ -23,8 +27,11 @@ pub struct AppState {
     pub cast_targets: Arc<Mutex<HashMap<String, CastTarget>>>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries ORDER BY name")
         .fetch_all(&data.db)
         .await;
@@ -37,12 +44,15 @@ pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpR
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn create_library(
     data: web::Data<AppState>,
     body: web::Json<CreateLibraryRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let result = sqlx::query("INSERT INTO libraries (id, name, path) VALUES (?, ?, ?)")
         .bind(&id)
@@ -69,8 +79,15 @@ pub async fn create_library(
     }
 }
 
-pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn delete_library(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     // Only remove from database — do NOT delete user files from disk
@@ -87,7 +104,12 @@ pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>, 
     }
 }
 
-pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+#[allow(dead_code, unused_variables)]
+pub async fn scan_library(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
     }
@@ -230,7 +252,11 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, re
         }
 
         if let Err(e) = tx.commit().await {
-            log::error!("scan_library transaction commit failed for {}: {}", lib_id, e);
+            log::error!(
+                "scan_library transaction commit failed for {}: {}",
+                lib_id,
+                e
+            );
             sqlx::query("UPDATE libraries SET is_scanning = FALSE WHERE id = ?")
                 .bind(&lib_id)
                 .execute(&db)
@@ -277,8 +303,15 @@ pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, re
     }))
 }
 
-pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn get_scan_progress(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let library_id = path.into_inner();
     let scanner = data.scanner.lock();
 
@@ -302,8 +335,15 @@ pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String
     }
 }
 
-pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn get_tracks(
+    data: web::Data<AppState>,
+    query: web::Query<QueryParams>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let per_page = query.per_page.unwrap_or(50).min(500);
 
     let mut where_clauses = vec!["1=1".to_string()];
@@ -386,9 +426,7 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
         for bind in &binds {
             q = q.bind(bind);
         }
-        q.fetch_all(&data.db)
-            .await
-            .unwrap_or_default()
+        q.fetch_all(&data.db).await.unwrap_or_default()
     } else {
         let page = query.page.unwrap_or(1).max(1);
         let offset = (page - 1) * per_page;
@@ -400,9 +438,7 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
         for bind in &binds {
             q = q.bind(bind);
         }
-        q.fetch_all(&data.db)
-            .await
-            .unwrap_or_default()
+        q.fetch_all(&data.db).await.unwrap_or_default()
     };
 
     let total_pages = (total as f64 / per_page as f64).ceil() as i32;
@@ -417,8 +453,15 @@ pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams
     })
 }
 
-pub async fn get_track(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn get_track(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(&id)
@@ -431,13 +474,16 @@ pub async fn get_track(data: web::Data<AppState>, path: web::Path<String>, req: 
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<UpdateTrackRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let mut updates = vec![];
@@ -524,8 +570,15 @@ pub async fn update_track(
     }
 }
 
-pub async fn play_track(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn play_track(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
@@ -579,12 +632,15 @@ pub async fn play_track(data: web::Data<AppState>, path: web::Path<String>, req:
     HttpResponse::Ok().json(serde_json::json!({"success": true}))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn stream_track(
     data: web::Data<AppState>,
     path: web::Path<String>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(&id)
@@ -616,14 +672,14 @@ pub async fn stream_track(
             });
             if !allowed {
                 log::warn!("Stream: path outside libraries: {}", track.file_path);
-                return HttpResponse::Forbidden()
-                    .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+                return HttpResponse::Forbidden().json(
+                    serde_json::json!({"error": "File path is outside configured libraries"}),
+                );
             }
         }
         Err(_) => {
             log::warn!("Stream: file not found: {}", track.file_path);
-            return HttpResponse::NotFound()
-                .json(serde_json::json!({"error": "File not found"}));
+            return HttpResponse::NotFound().json(serde_json::json!({"error": "File not found"}));
         }
     }
 
@@ -633,8 +689,7 @@ pub async fn stream_track(
             track.file_path,
             file_path.exists()
         );
-        return HttpResponse::NotFound()
-            .json(serde_json::json!({"error": "File not found"}));
+        return HttpResponse::NotFound().json(serde_json::json!({"error": "File not found"}));
     }
 
     let mime = get_mime_type(&track.format);
@@ -657,13 +712,21 @@ pub async fn stream_track(
     }
 }
 
-pub async fn get_waveform(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn get_waveform(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
-    let result = sqlx::query_scalar::<_, Option<String>>("SELECT waveform_peaks FROM tracks WHERE id = ?")
-        .bind(&id)
-        .fetch_one(&data.db)
-        .await;
+    let result =
+        sqlx::query_scalar::<_, Option<String>>("SELECT waveform_peaks FROM tracks WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&data.db)
+            .await;
 
     match result {
         Ok(Some(peaks_json)) => {
@@ -674,8 +737,15 @@ pub async fn get_waveform(data: web::Data<AppState>, path: web::Path<String>, re
     }
 }
 
-pub async fn get_artwork(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn get_artwork(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
     let cached = sqlx::query_as::<_, (Vec<u8>, String)>(
@@ -722,8 +792,15 @@ pub async fn get_artwork(data: web::Data<AppState>, path: web::Path<String>, req
     }
 }
 
-pub async fn get_albums(data: web::Data<AppState>, query: web::Query<QueryParams>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn get_albums(
+    data: web::Data<AppState>,
+    query: web::Query<QueryParams>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(50).min(500);
     let offset = (page - 1) * per_page;
@@ -769,12 +846,15 @@ pub async fn get_albums(data: web::Data<AppState>, query: web::Query<QueryParams
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_artists(
     data: web::Data<AppState>,
     query: web::Query<QueryParams>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(50).min(500);
     let offset = (page - 1) * per_page;
@@ -805,8 +885,15 @@ pub async fn get_artists(
     })
 }
 
-pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn search(
+    data: web::Data<AppState>,
+    query: web::Query<SearchQuery>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let q = format!("%{}%", query.q.replace('\'', "''"));
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = query.offset.unwrap_or(0);
@@ -840,7 +927,7 @@ pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, r
     .unwrap_or_default();
 
     let playlists = sqlx::query_as::<_, Playlist>(
-        "SELECT * FROM playlists WHERE name LIKE ?1 OR description LIKE ?1 ORDER BY name LIMIT ?2"
+        "SELECT * FROM playlists WHERE name LIKE ?1 OR description LIKE ?1 ORDER BY name LIMIT ?2",
     )
     .bind(&q)
     .bind(limit / 2)
@@ -848,7 +935,8 @@ pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, r
     .await
     .unwrap_or_default();
 
-    let total = tracks.len() as i64 + albums.len() as i64 + artists.len() as i64 + playlists.len() as i64;
+    let total =
+        tracks.len() as i64 + albums.len() as i64 + artists.len() as i64 + playlists.len() as i64;
 
     HttpResponse::Ok().json(SearchResults {
         tracks,
@@ -859,13 +947,20 @@ pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, r
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_recently_played(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
-    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20).min(100);
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+    let limit: i64 = query
+        .get("limit")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(20)
+        .min(100);
     let tracks = sqlx::query_as::<_, Track>(
         "SELECT t.* FROM tracks t INNER JOIN listening_history lh ON t.id = lh.track_id GROUP BY t.id ORDER BY MAX(lh.played_at) DESC LIMIT ?"
     )
@@ -876,15 +971,22 @@ pub async fn get_recently_played(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_most_played(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
-    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20).min(100);
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+    let limit: i64 = query
+        .get("limit")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(20)
+        .min(100);
     let tracks = sqlx::query_as::<_, Track>(
-        "SELECT * FROM tracks WHERE play_count > 0 ORDER BY play_count DESC LIMIT ?"
+        "SELECT * FROM tracks WHERE play_count > 0 ORDER BY play_count DESC LIMIT ?",
     )
     .bind(limit)
     .fetch_all(&data.db)
@@ -893,8 +995,11 @@ pub async fn get_most_played(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let genres = sqlx::query_scalar::<_, String>(
         "SELECT DISTINCT genre FROM tracks WHERE genre IS NOT NULL AND genre != '' ORDER BY genre",
     )
@@ -905,8 +1010,11 @@ pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResp
     HttpResponse::Ok().json(genres)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let folders =
         sqlx::query_scalar::<_, String>("SELECT DISTINCT folder FROM tracks ORDER BY folder")
             .fetch_all(&data.db)
@@ -916,8 +1024,11 @@ pub async fn get_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpRes
     HttpResponse::Ok().json(folders)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let total_tracks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
         .fetch_one(&data.db)
         .await
@@ -976,12 +1087,15 @@ pub async fn get_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn create_playlist(
     data: web::Data<AppState>,
     body: web::Json<CreatePlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = uuid::Uuid::new_v4().to_string();
 
     let result = sqlx::query(
@@ -1014,8 +1128,11 @@ pub async fn create_playlist(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlists =
         sqlx::query_as::<_, Playlist>("SELECT * FROM playlists ORDER BY sort_order, name")
             .fetch_all(&data.db)
@@ -1029,13 +1146,16 @@ pub async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpR
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn add_track_to_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<AddTrackToPlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
     let position = body.position.unwrap_or(0);
 
@@ -1064,12 +1184,15 @@ pub async fn add_track_to_playlist(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_playlist_tracks(
     data: web::Data<AppState>,
     path: web::Path<String>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
 
     let tracks = sqlx::query_as::<_, Track>(
@@ -1083,8 +1206,15 @@ pub async fn get_playlist_tracks(
     HttpResponse::Ok().json(tracks)
 }
 
-pub async fn delete_playlist(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn delete_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
     let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
         .bind(&id)
@@ -1103,6 +1233,7 @@ pub async fn delete_playlist(data: web::Data<AppState>, path: web::Path<String>,
     }
 }
 
+#[allow(dead_code, unused_variables)]
 fn get_mime_type(format: &str) -> &str {
     match format.to_lowercase().as_str() {
         "mp3" => "audio/mpeg",
@@ -1120,13 +1251,20 @@ fn get_mime_type(format: &str) -> &str {
 
 // ── Listening History ──────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_listening_history(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
-    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(50).min(200);
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+    let limit: i64 = query
+        .get("limit")
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(50)
+        .min(200);
     let rows = sqlx::query_as::<_, (String, String, String, Option<i64>)>(
         "SELECT lh.track_id, t.title, t.artist, lh.played_at FROM listening_history lh JOIN tracks t ON lh.track_id = t.id ORDER BY lh.played_at DESC LIMIT ?"
     )
@@ -1140,33 +1278,41 @@ pub async fn get_listening_history(
     HttpResponse::Ok().json(history)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn record_play(
     data: web::Data<AppState>,
     path: web::Path<String>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let track_id = path.into_inner();
     let _ = sqlx::query("INSERT INTO listening_history (track_id) VALUES (?)")
         .bind(&track_id)
         .execute(&data.db)
         .await;
-    let _ = sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
-        .bind(&track_id)
-        .execute(&data.db)
-        .await;
+    let _ = sqlx::query(
+        "UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?",
+    )
+    .bind(&track_id)
+    .execute(&data.db)
+    .await;
     HttpResponse::Ok().json(serde_json::json!({"ok": true}))
 }
 
 // ── Playlist Tools ────────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn shuffle_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<ShufflePlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
     let mode = body.mode.as_deref().unwrap_or("smart");
 
@@ -1254,13 +1400,16 @@ pub async fn shuffle_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn sort_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<SortPlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
 
     let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
@@ -1315,13 +1464,16 @@ pub async fn sort_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn dedupe_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<DedupePlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
     let strategy = body.strategy.as_deref().unwrap_or("title_artist");
 
@@ -1379,12 +1531,15 @@ pub async fn dedupe_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn generate_playlist(
     data: web::Data<AppState>,
     body: web::Json<GeneratePlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let count = body.count.unwrap_or(20).min(100);
 
     let mut where_clauses = vec!["1=1".to_string()];
@@ -1488,13 +1643,16 @@ pub async fn generate_playlist(
     })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn share_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<SharePlaylistRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
 
     let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
@@ -1550,8 +1708,15 @@ pub async fn share_playlist(
     })
 }
 
-pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+#[allow(dead_code, unused_variables)]
+pub async fn playlist_stats(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let playlist_id = path.into_inner();
     let tracks = get_playlist_tracks_full(&data.db, &playlist_id).await;
 
@@ -1607,55 +1772,95 @@ pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>, 
 
 // ── Batch Operations ─────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn batch_delete_tracks(
     data: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
-    let ids = body.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let ids: Vec<String> = ids.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+    let ids = body
+        .get("ids")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let ids: Vec<String> = ids
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
     if ids.is_empty() {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "No track IDs provided"}));
     }
     let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
-    let query = format!("DELETE FROM tracks WHERE id IN ({})", placeholders.join(","));
+    let query = format!(
+        "DELETE FROM tracks WHERE id IN ({})",
+        placeholders.join(",")
+    );
     let mut q = sqlx::query(&query);
-    for id in &ids { q = q.bind(id); }
+    for id in &ids {
+        q = q.bind(id);
+    }
     match q.execute(&data.db).await {
         Ok(r) => HttpResponse::Ok().json(serde_json::json!({"deleted": r.rows_affected()})),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn batch_update_rating(
     data: web::Data<AppState>,
     body: web::Json<serde_json::Value>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
-    let ids = body.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+    let ids = body
+        .get("ids")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     let rating = body.get("rating").and_then(|v| v.as_i64());
-    let ids: Vec<String> = ids.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    let ids: Vec<String> = ids
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
     let rating = match rating {
         Some(r) if (0..=5).contains(&r) => r as i32,
-        _ => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid rating (0-5)"})),
+        _ => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Invalid rating (0-5)"}))
+        }
     };
     if ids.is_empty() {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "No track IDs provided"}));
     }
     let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
-    let query = format!("UPDATE tracks SET rating = ? WHERE id IN ({})", placeholders.join(","));
+    let query = format!(
+        "UPDATE tracks SET rating = ? WHERE id IN ({})",
+        placeholders.join(",")
+    );
     let mut q = sqlx::query(&query).bind(rating);
-    for id in &ids { q = q.bind(id); }
+    for id in &ids {
+        q = q.bind(id);
+    }
     match q.execute(&data.db).await {
         Ok(r) => HttpResponse::Ok().json(serde_json::json!({"updated": r.rows_affected()})),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
     }
 }
 
 // ── Helper functions ──────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 async fn get_playlist_track_ids(db: &SqlitePool, playlist_id: &str) -> Vec<(String, i32)> {
     sqlx::query_as::<_, (String, i32)>(
         "SELECT pt.track_id, t.play_count FROM playlist_tracks pt JOIN tracks t ON pt.track_id = t.id WHERE pt.playlist_id = ? ORDER BY pt.position",
@@ -1666,6 +1871,7 @@ async fn get_playlist_track_ids(db: &SqlitePool, playlist_id: &str) -> Vec<(Stri
     .unwrap_or_default()
 }
 
+#[allow(dead_code, unused_variables)]
 async fn get_playlist_tracks_full(db: &SqlitePool, playlist_id: &str) -> Vec<Track> {
     sqlx::query_as::<_, Track>(
         "SELECT t.* FROM tracks t JOIN playlist_tracks pt ON t.id = pt.track_id WHERE pt.playlist_id = ? ORDER BY pt.position"
@@ -1676,6 +1882,7 @@ async fn get_playlist_tracks_full(db: &SqlitePool, playlist_id: &str) -> Vec<Tra
     .unwrap_or_default()
 }
 
+#[allow(dead_code, unused_variables)]
 async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> String {
     sqlx::query_scalar::<_, String>("SELECT artist FROM tracks WHERE id = ?")
         .bind(track_id)
@@ -1684,6 +1891,7 @@ async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> String {
         .unwrap_or_default()
 }
 
+#[allow(dead_code, unused_variables)]
 async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[String]) {
     let mut tx = match db.begin().await {
         Ok(tx) => tx,
@@ -1720,6 +1928,7 @@ async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[St
     let _ = tx.commit().await;
 }
 
+#[allow(dead_code, unused_variables)]
 fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {
     if order == "desc" {
         b.to_lowercase().cmp(&a.to_lowercase())
@@ -1728,6 +1937,7 @@ fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 fn cmp_with_order_num(a: i64, b: i64, order: &str) -> std::cmp::Ordering {
     if order == "desc" {
         b.cmp(&a)
@@ -1736,6 +1946,7 @@ fn cmp_with_order_num(a: i64, b: i64, order: &str) -> std::cmp::Ordering {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 fn cmp_with_order_opt(a: Option<i32>, b: Option<i32>, order: &str) -> std::cmp::Ordering {
     match (a, b) {
         (Some(x), Some(y)) => {
@@ -1752,17 +1963,20 @@ fn cmp_with_order_opt(a: Option<i32>, b: Option<i32>, order: &str) -> std::cmp::
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct BrowseQuery {
     pub path: Option<String>,
 }
 
 #[derive(serde::Serialize)]
+#[allow(dead_code, unused_variables)]
 pub struct BrowseEntry {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn browse_directory(
     data: web::Data<AppState>,
     query: web::Query<BrowseQuery>,
@@ -1845,12 +2059,16 @@ pub async fn browse_directory(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_scrobbling_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let config = scrobble::get_scrobbling_config(&data.db).await;
     HttpResponse::Ok().json(config)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_scrobbling_settings(
     data: web::Data<AppState>,
     body: web::Json<UpdateScrobblingRequest>,
@@ -1876,6 +2094,7 @@ pub async fn update_scrobbling_settings(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn test_scrobbling(
     data: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -1917,7 +2136,12 @@ pub async fn test_scrobbling(
     }))
 }
 
-pub async fn get_lyrics(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+#[allow(dead_code, unused_variables)]
+pub async fn get_lyrics(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
     }
@@ -1954,10 +2178,12 @@ pub async fn get_lyrics(data: web::Data<AppState>, path: web::Path<String>, req:
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct UpdateLyricsRequest {
     pub lyrics: String,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_lyrics(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -1982,7 +2208,12 @@ pub async fn update_lyrics(
     }
 }
 
-pub async fn fetch_lyrics(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+#[allow(dead_code, unused_variables)]
+pub async fn fetch_lyrics(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
     }
@@ -2043,6 +2274,7 @@ pub async fn fetch_lyrics(data: web::Data<AppState>, path: web::Path<String>, re
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_updater_status(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2051,6 +2283,7 @@ pub async fn get_updater_status(data: web::Data<AppState>, req: HttpRequest) -> 
     HttpResponse::Ok().json(status)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn check_for_updates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2063,6 +2296,7 @@ pub async fn check_for_updates(data: web::Data<AppState>, req: HttpRequest) -> H
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn apply_update(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2078,6 +2312,7 @@ pub async fn apply_update(data: web::Data<AppState>, req: HttpRequest) -> HttpRe
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_updater_config(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2086,6 +2321,7 @@ pub async fn get_updater_config(data: web::Data<AppState>, req: HttpRequest) -> 
     HttpResponse::Ok().json(config)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_updater_config(
     data: web::Data<AppState>,
     body: web::Json<updater::UpdaterConfig>,
@@ -2102,6 +2338,7 @@ pub async fn update_updater_config(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn preview_import(
     data: web::Data<AppState>,
     body: web::Json<ImportPreviewRequest>,
@@ -2145,6 +2382,7 @@ pub async fn preview_import(
     HttpResponse::Ok().json(preview)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn confirm_import(
     data: web::Data<AppState>,
     body: web::Json<ImportConfirmRequest>,
@@ -2219,11 +2457,13 @@ pub struct DeviceTrack {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct DeviceScanRequest {
     pub library_id: Option<String>,
     pub tracks: Vec<DeviceTrack>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn import_device_music(
     data: web::Data<AppState>,
     body: web::Json<DeviceScanRequest>,
@@ -2334,6 +2574,7 @@ pub async fn import_device_music(
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_import_formats(req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2387,11 +2628,13 @@ pub async fn get_import_formats(req: HttpRequest) -> HttpResponse {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct ExportRequest {
     pub playlist_id: String,
     pub target_platform: String,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn export_playlist(
     data: web::Data<AppState>,
     body: web::Json<ExportRequest>,
@@ -2476,6 +2719,7 @@ pub async fn export_playlist(
         .body(content)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_transfer_platforms(req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -2518,6 +2762,7 @@ pub async fn get_transfer_platforms(req: HttpRequest) -> HttpResponse {
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_track_rating(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2563,6 +2808,7 @@ pub async fn update_track_rating(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn evaluate_smart_playlist(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2695,51 +2941,45 @@ pub async fn evaluate_smart_playlist(
                 };
                 (format!("date_added {} ?", op), Some(rule.value.clone()))
             }
-            "genre" => {
-                match rule.op.as_str() {
-                    "eq" => ("genre = ?".to_string(), Some(rule.value.clone())),
-                    "neq" => ("genre <> ?".to_string(), Some(rule.value.clone())),
-                    "contains" => (
-                        "genre LIKE ?".to_string(),
-                        Some(format!("%{}%", rule.value)),
-                    ),
-                    "not_contains" => (
-                        "genre NOT LIKE ?".to_string(),
-                        Some(format!("%{}%", rule.value)),
-                    ),
-                    _ => continue,
-                }
-            }
-            "artist" => {
-                match rule.op.as_str() {
-                    "eq" => ("artist = ?".to_string(), Some(rule.value.clone())),
-                    "neq" => ("artist <> ?".to_string(), Some(rule.value.clone())),
-                    "contains" => (
-                        "artist LIKE ?".to_string(),
-                        Some(format!("%{}%", rule.value)),
-                    ),
-                    "not_contains" => (
-                        "artist NOT LIKE ?".to_string(),
-                        Some(format!("%{}%", rule.value)),
-                    ),
-                    _ => continue,
-                }
-            }
-            "album" => {
-                match rule.op.as_str() {
-                    "eq" => ("album = ?".to_string(), Some(rule.value.clone())),
-                    "neq" => ("album <> ?".to_string(), Some(rule.value.clone())),
-                    "contains" => (
-                        "album LIKE ?".to_string(),
-                        Some(format!("%{}%", rule.value)),
-                    ),
-                    "not_contains" => (
-                        "album NOT LIKE ?".to_string(),
-                        Some(format!("%{}%", rule.value)),
-                    ),
-                    _ => continue,
-                }
-            }
+            "genre" => match rule.op.as_str() {
+                "eq" => ("genre = ?".to_string(), Some(rule.value.clone())),
+                "neq" => ("genre <> ?".to_string(), Some(rule.value.clone())),
+                "contains" => (
+                    "genre LIKE ?".to_string(),
+                    Some(format!("%{}%", rule.value)),
+                ),
+                "not_contains" => (
+                    "genre NOT LIKE ?".to_string(),
+                    Some(format!("%{}%", rule.value)),
+                ),
+                _ => continue,
+            },
+            "artist" => match rule.op.as_str() {
+                "eq" => ("artist = ?".to_string(), Some(rule.value.clone())),
+                "neq" => ("artist <> ?".to_string(), Some(rule.value.clone())),
+                "contains" => (
+                    "artist LIKE ?".to_string(),
+                    Some(format!("%{}%", rule.value)),
+                ),
+                "not_contains" => (
+                    "artist NOT LIKE ?".to_string(),
+                    Some(format!("%{}%", rule.value)),
+                ),
+                _ => continue,
+            },
+            "album" => match rule.op.as_str() {
+                "eq" => ("album = ?".to_string(), Some(rule.value.clone())),
+                "neq" => ("album <> ?".to_string(), Some(rule.value.clone())),
+                "contains" => (
+                    "album LIKE ?".to_string(),
+                    Some(format!("%{}%", rule.value)),
+                ),
+                "not_contains" => (
+                    "album NOT LIKE ?".to_string(),
+                    Some(format!("%{}%", rule.value)),
+                ),
+                _ => continue,
+            },
             _ => continue,
         };
 
@@ -2755,7 +2995,10 @@ pub async fn evaluate_smart_playlist(
 
     let joiner = if config.match_all { " AND " } else { " OR " };
     let where_str = where_clauses.join(joiner);
-    let sql = format!("SELECT * FROM tracks WHERE {} ORDER BY date_added DESC", where_str);
+    let sql = format!(
+        "SELECT * FROM tracks WHERE {} ORDER BY date_added DESC",
+        where_str
+    );
 
     let mut query = sqlx::query_as::<_, Track>(&sql);
     for val in &bind_values {
@@ -2767,6 +3010,7 @@ pub async fn evaluate_smart_playlist(
     HttpResponse::Ok().json(tracks)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_smart_playlist_rules(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -2784,8 +3028,7 @@ pub async fn update_smart_playlist_rules(
         .await;
 
     if playlist.is_err() {
-        return HttpResponse::NotFound()
-            .json(serde_json::json!({"error": "Playlist not found"}));
+        return HttpResponse::NotFound().json(serde_json::json!({"error": "Playlist not found"}));
     }
 
     let filter_json = match serde_json::to_string(&body.into_inner()) {
@@ -2822,25 +3065,42 @@ pub async fn update_smart_playlist_rules(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_transcode_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
     }
-    let result = sqlx::query_as::<_, SettingRow>("SELECT key, value FROM settings WHERE key LIKE 'transcode_%'")
-        .fetch_all(&data.db)
-        .await;
+    let result = sqlx::query_as::<_, SettingRow>(
+        "SELECT key, value FROM settings WHERE key LIKE 'transcode_%'",
+    )
+    .fetch_all(&data.db)
+    .await;
 
     let settings = result.unwrap_or_default();
-    let enabled = settings.iter().find(|s| s.key == "transcode_enabled")
-        .map(|s| s.value == "true").unwrap_or(false);
-    let format = settings.iter().find(|s| s.key == "transcode_format")
-        .map(|s| s.value.clone()).unwrap_or_else(|| "aac".to_string());
-    let bitrate = settings.iter().find(|s| s.key == "transcode_bitrate")
-        .and_then(|s| s.value.parse().ok()).unwrap_or(192);
+    let enabled = settings
+        .iter()
+        .find(|s| s.key == "transcode_enabled")
+        .map(|s| s.value == "true")
+        .unwrap_or(false);
+    let format = settings
+        .iter()
+        .find(|s| s.key == "transcode_format")
+        .map(|s| s.value.clone())
+        .unwrap_or_else(|| "aac".to_string());
+    let bitrate = settings
+        .iter()
+        .find(|s| s.key == "transcode_bitrate")
+        .and_then(|s| s.value.parse().ok())
+        .unwrap_or(192);
 
-    HttpResponse::Ok().json(TranscodeConfig { enabled, format, bitrate })
+    HttpResponse::Ok().json(TranscodeConfig {
+        enabled,
+        format,
+        bitrate,
+    })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn update_transcode_settings(
     data: web::Data<AppState>,
     body: web::Json<TranscodeConfig>,
@@ -2867,34 +3127,44 @@ pub async fn update_transcode_settings(
     HttpResponse::Ok().json(body.into_inner())
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn stream_track_transcoded(
     data: web::Data<AppState>,
     path: web::Path<String>,
     req: HttpRequest,
 ) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
     let id = path.into_inner();
 
-    let transcode_enabled = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_enabled'")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or_else(|_| "false".to_string()) == "true";
+    let transcode_enabled = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM settings WHERE key = 'transcode_enabled'",
+    )
+    .fetch_one(&data.db)
+    .await
+    .unwrap_or_else(|_| "false".to_string())
+        == "true";
 
     if !transcode_enabled {
         return stream_track_raw(&data.db, &id, &req).await;
     }
 
-    let format = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_format'")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or_else(|_| "aac".to_string());
+    let format = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM settings WHERE key = 'transcode_format'",
+    )
+    .fetch_one(&data.db)
+    .await
+    .unwrap_or_else(|_| "aac".to_string());
 
-    let bitrate = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_bitrate'")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or_else(|_| "192".to_string())
-        .parse::<i32>()
-        .unwrap_or(192);
+    let bitrate = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM settings WHERE key = 'transcode_bitrate'",
+    )
+    .fetch_one(&data.db)
+    .await
+    .unwrap_or_else(|_| "192".to_string())
+    .parse::<i32>()
+    .unwrap_or(192);
 
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(&id)
@@ -2938,12 +3208,18 @@ pub async fn stream_track_transcoded(
 
             let child = tokio::process::Command::new("ffmpeg")
                 .args([
-                    "-hide_banner", "-loglevel", "error",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
                     "--",
-                    "-i", &t.file_path,
-                    "-c:a", output_format,
-                    "-b:a", &format!("{}k", bitrate),
-                    "-f", "adts",
+                    "-i",
+                    &t.file_path,
+                    "-c:a",
+                    output_format,
+                    "-b:a",
+                    &format!("{}k", bitrate),
+                    "-f",
+                    "adts",
                     "pipe:1",
                 ])
                 .stdout(std::process::Stdio::piped())
@@ -2952,9 +3228,10 @@ pub async fn stream_track_transcoded(
 
             match child {
                 Ok(mut proc) => {
-                    let mut stdout = proc.stdout.take().unwrap_or_else(|| {
-                        panic!("stdout should be piped")
-                    });
+                    let mut stdout = proc
+                        .stdout
+                        .take()
+                        .unwrap_or_else(|| panic!("stdout should be piped"));
 
                     let content_type = match format.as_str() {
                         "aac" => "audio/aac",
@@ -2963,7 +3240,9 @@ pub async fn stream_track_transcoded(
                         _ => "audio/aac",
                     };
 
-                    let (tx, rx) = tokio::sync::mpsc::channel(16);
+                    let (tx, rx) = tokio::sync::mpsc::channel::<
+                        Result<actix_web::web::Bytes, std::io::Error>,
+                    >(16);
 
                     tokio::spawn(async move {
                         let mut buf = vec![0u8; 64 * 1024]; // 64KB chunks
@@ -2971,7 +3250,11 @@ pub async fn stream_track_transcoded(
                             match stdout.read(&mut buf).await {
                                 Ok(0) => break, // EOF
                                 Ok(n) => {
-                                    if tx.send(Ok(actix_web::web::Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
+                                    if tx
+                                        .send(Ok(actix_web::web::Bytes::copy_from_slice(&buf[..n])))
+                                        .await
+                                        .is_err()
+                                    {
                                         break;
                                     }
                                 }
@@ -2987,15 +3270,14 @@ pub async fn stream_track_transcoded(
                         .append_header(("Accept-Ranges", "none"))
                         .streaming(stream)
                 }
-                Err(_) => {
-                    stream_track_raw(&data.db, &id, &req).await
-                }
+                Err(_) => stream_track_raw(&data.db, &id, &req).await,
             }
         }
         Err(_) => HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
     }
 }
 
+#[allow(dead_code, unused_variables)]
 async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpResponse {
     let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
         .bind(id)
@@ -3026,8 +3308,9 @@ async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpR
             });
             if !allowed {
                 log::warn!("Stream raw: path outside libraries: {}", track.file_path);
-                return HttpResponse::Forbidden()
-                    .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+                return HttpResponse::Forbidden().json(
+                    serde_json::json!({"error": "File path is outside configured libraries"}),
+                );
             }
         }
         Err(_) => {
@@ -3059,34 +3342,37 @@ async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpR
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
     let db_ok = sqlx::query_scalar::<_, i64>("SELECT 1")
         .fetch_one(&data.db)
         .await
         .is_ok();
-    
+
     let track_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
         .fetch_one(&data.db)
         .await
         .unwrap_or(0);
-    
+
     let library_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM libraries")
         .fetch_one(&data.db)
         .await
         .unwrap_or(0);
-    
+
     let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
         .fetch_one(&data.db)
         .await
         .unwrap_or(0);
-    
-    let scanning = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM libraries WHERE is_scanning = 1)")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or(false);
+
+    let scanning = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM libraries WHERE is_scanning = 1)",
+    )
+    .fetch_one(&data.db)
+    .await
+    .unwrap_or(false);
 
     let version = env!("CARGO_PKG_VERSION");
-    
+
     HttpResponse::Ok().json(serde_json::json!({
         "status": if db_ok { "ok" } else { "degraded" },
         "version": version,
@@ -3098,29 +3384,36 @@ pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_database_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    if let Err(e) = require_auth(&req) { return e; }
-    
-    let total_size: i64 = sqlx::query_scalar("SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or(0);
-    
+    if let Err(e) = require_auth(&req) {
+        return e;
+    }
+
+    let total_size: i64 = sqlx::query_scalar(
+        "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()",
+    )
+    .fetch_one(&data.db)
+    .await
+    .unwrap_or(0);
+
     let total_plays: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(play_count), 0) FROM tracks")
         .fetch_one(&data.db)
         .await
         .unwrap_or(0);
-    
-    let total_duration: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(duration_ms), 0) FROM tracks")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or(0);
-    
-    let total_size_bytes: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM tracks")
-        .fetch_one(&data.db)
-        .await
-        .unwrap_or(0);
-    
+
+    let total_duration: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(duration_ms), 0) FROM tracks")
+            .fetch_one(&data.db)
+            .await
+            .unwrap_or(0);
+
+    let total_size_bytes: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM tracks")
+            .fetch_one(&data.db)
+            .await
+            .unwrap_or(0);
+
     HttpResponse::Ok().json(serde_json::json!({
         "database_size_bytes": total_size,
         "total_plays": total_plays,
@@ -3131,6 +3424,7 @@ pub async fn get_database_stats(data: web::Data<AppState>, req: HttpRequest) -> 
 
 // ── Cast Target Handlers ──────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn list_cast_targets(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3140,6 +3434,7 @@ pub async fn list_cast_targets(data: web::Data<AppState>, req: HttpRequest) -> H
     HttpResponse::Ok().json(list)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn register_cast_target(
     data: web::Data<AppState>,
     body: web::Json<CastTarget>,
@@ -3167,6 +3462,7 @@ pub async fn register_cast_target(
     HttpResponse::Created().json(entry)
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn unregister_cast_target(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -3179,10 +3475,13 @@ pub async fn unregister_cast_target(
     let mut targets = data.cast_targets.lock();
     match targets.remove(&id) {
         Some(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
-        None => HttpResponse::NotFound().json(serde_json::json!({"error": "Cast target not found"})),
+        None => {
+            HttpResponse::NotFound().json(serde_json::json!({"error": "Cast target not found"}))
+        }
     }
 }
 
+#[allow(dead_code, unused_variables)]
 #[allow(clippy::await_holding_lock)]
 pub async fn cast_play(
     data: web::Data<AppState>,
@@ -3267,6 +3566,7 @@ pub async fn cast_play(
     }
 }
 
+#[allow(dead_code, unused_variables)]
 #[allow(clippy::await_holding_lock)]
 pub async fn cast_control(
     data: web::Data<AppState>,
@@ -3316,12 +3616,10 @@ pub async fn cast_control(
         .send()
         .await
     {
-        Ok(_) => {
-            HttpResponse::Ok().json(serde_json::json!({
-                "success": true,
-                "target": target_info,
-            }))
-        }
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "target": target_info,
+        })),
         Err(e) => {
             log::warn!(
                 "Failed to send control to cast target {}: {}",
@@ -3339,6 +3637,7 @@ pub async fn cast_control(
 
 // ── Duplicate Detection ───────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3350,7 +3649,8 @@ pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> Htt
     .await
     .unwrap_or_default();
 
-    let mut groups: std::collections::HashMap<String, Vec<Track>> = std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<String, Vec<Track>> =
+        std::collections::HashMap::new();
     for track in duplicates {
         if let Some(ref fp) = track.fingerprint {
             groups.entry(fp.clone()).or_default().push(track);
@@ -3366,6 +3666,7 @@ pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> Htt
     }))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     if let Err(e) = require_auth(&req) {
         return e;
@@ -3382,7 +3683,7 @@ pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) ->
         let parts: Vec<&str> = key.split("|||").collect();
         if parts.len() == 2 {
             let tracks = sqlx::query_as::<_, Track>(
-                "SELECT * FROM tracks WHERE LOWER(title) = ?1 AND LOWER(artist) = ?2"
+                "SELECT * FROM tracks WHERE LOWER(title) = ?1 AND LOWER(artist) = ?2",
             )
             .bind(parts[0])
             .bind(parts[1])
@@ -3406,10 +3707,12 @@ pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) ->
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code, unused_variables)]
 pub struct DeleteDuplicatesRequest {
     pub track_ids: Vec<String>,
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn delete_duplicates_batch(
     data: web::Data<AppState>,
     body: web::Json<DeleteDuplicatesRequest>,
@@ -3419,7 +3722,8 @@ pub async fn delete_duplicates_batch(
         return e;
     }
     if body.track_ids.is_empty() {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "No track IDs provided"}));
     }
 
     let mut deleted = 0;
@@ -3441,6 +3745,7 @@ pub async fn delete_duplicates_batch(
 
 // ── Auth ──────────────────────────────────────────────────────────
 
+#[allow(dead_code, unused_variables)]
 fn hash_password(password: &str) -> Result<String, HttpResponse> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -3454,19 +3759,25 @@ fn hash_password(password: &str) -> Result<String, HttpResponse> {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn verify_password(password: &str, hash: &str) -> bool {
     let parsed_hash = match PasswordHash::new(hash) {
         Ok(h) => h,
         Err(_) => return false,
     };
-    Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok()
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok()
 }
 
+#[allow(dead_code, unused_variables)]
 pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
-    let token = req.cookie("auth_token")
+    let token = req
+        .cookie("auth_token")
         .map(|c| c.value().to_string())
         .or_else(|| {
-            req.headers().get("Authorization")
+            req.headers()
+                .get("Authorization")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.strip_prefix("Bearer "))
                 .map(|v| v.to_string())
@@ -3474,9 +3785,8 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
         .or_else(|| {
             req.uri().query().and_then(|q| {
                 q.split('&').find_map(|part| {
-                    let mut kv = part.splitn(2, '=');
-                    let key = kv.next()?;
-                    let val = kv.next()?;
+                    let (key, val) = part.split_once('=')?;
+
                     if key == "token" {
                         Some(val.to_string())
                     } else {
@@ -3488,16 +3798,21 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
 
     match token.and_then(|t| crate::auth::validate_token(&t)) {
         Some(user) => Ok(user),
-        None => Err(HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"}))),
+        None => Err(HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Authentication required"}))),
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn login_handler(
     data: web::Data<AppState>,
     body: web::Json<LoginRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    let ip = req
+        .peer_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
     if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
         return HttpResponse::TooManyRequests()
             .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
@@ -3544,14 +3859,13 @@ pub async fn login_handler(
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
 
-    HttpResponse::Ok()
-        .cookie(cookie)
-        .json(LoginResponse {
-            token,
-            user: user_info,
-        })
+    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
+        token,
+        user: user_info,
+    })
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn logout_handler() -> HttpResponse {
     let cookie = actix_web::cookie::Cookie::build("auth_token", "")
         .path("/")
@@ -3566,6 +3880,7 @@ pub async fn logout_handler() -> HttpResponse {
         .json(serde_json::json!({"success": true}))
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn get_current_user(req: HttpRequest) -> HttpResponse {
     match require_auth(&req) {
         Ok(user) => HttpResponse::Ok().json(user),
@@ -3573,6 +3888,7 @@ pub async fn get_current_user(req: HttpRequest) -> HttpResponse {
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn create_user(
     data: web::Data<AppState>,
     body: web::Json<CreateUserRequest>,
@@ -3606,17 +3922,19 @@ pub async fn create_user(
     let role = body.role.as_deref().unwrap_or("user");
 
     if !["user", "admin", "guest"].contains(&role) {
-        return HttpResponse::BadRequest()
-            .json(serde_json::json!({"error": "Invalid role. Must be one of: user, admin, guest"}));
+        return HttpResponse::BadRequest().json(
+            serde_json::json!({"error": "Invalid role. Must be one of: user, admin, guest"}),
+        );
     }
 
-    let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
-        .bind(&id)
-        .bind(&body.username)
-        .bind(&password_hash)
-        .bind(role)
-        .execute(&data.db)
-        .await;
+    let result =
+        sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
+            .bind(&id)
+            .bind(&body.username)
+            .bind(&password_hash)
+            .bind(role)
+            .execute(&data.db)
+            .await;
 
     match result {
         Ok(_) => {
@@ -3634,11 +3952,13 @@ pub async fn create_user(
                     .json(serde_json::json!({"error": e.to_string()})),
             }
         }
-        Err(e) => HttpResponse::InternalServerError()
-            .json(serde_json::json!({"error": e.to_string()})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn list_users(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let admin = match require_auth(&req) {
         Ok(u) => u,
@@ -3656,18 +3976,23 @@ pub async fn list_users(data: web::Data<AppState>, req: HttpRequest) -> HttpResp
 
     match users {
         Ok(users) => {
-            let infos: Vec<UserInfo> = users.into_iter().map(|u| UserInfo {
-                id: u.id,
-                username: u.username,
-                role: u.role,
-            }).collect();
+            let infos: Vec<UserInfo> = users
+                .into_iter()
+                .map(|u| UserInfo {
+                    id: u.id,
+                    username: u.username,
+                    role: u.role,
+                })
+                .collect();
             HttpResponse::Ok().json(infos)
         }
-        Err(e) => HttpResponse::InternalServerError()
-            .json(serde_json::json!({"error": e.to_string()})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn delete_user(
     data: web::Data<AppState>,
     path: web::Path<String>,
@@ -3703,32 +4028,41 @@ pub async fn delete_user(
                 HttpResponse::Ok().json(serde_json::json!({"success": true}))
             }
         }
-        Err(e) => HttpResponse::InternalServerError()
-            .json(serde_json::json!({"error": e.to_string()})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
     }
 }
 
+#[allow(dead_code, unused_variables)]
 pub async fn register_handler(
     data: web::Data<AppState>,
     body: web::Json<CreateUserRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
-    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    let ip = req
+        .peer_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
     if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
         return HttpResponse::TooManyRequests()
             .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
     }
     if body.username.trim().is_empty() || body.username.len() < 3 {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Username must be at least 3 characters"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Username must be at least 3 characters"}));
     }
     if body.username.len() > 50 {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Username must be 50 characters or fewer"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Username must be 50 characters or fewer"}));
     }
     if body.password.is_empty() || body.password.len() < 4 {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Password must be at least 4 characters"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Password must be at least 4 characters"}));
     }
     if body.password.len() > 128 {
-        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Password must be 128 characters or fewer"}));
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Password must be 128 characters or fewer"}));
     }
     let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
         .bind(&body.username)
@@ -3746,12 +4080,14 @@ pub async fn register_handler(
         Err(e) => return e,
     };
 
-    let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'user')")
-        .bind(&id)
-        .bind(&body.username)
-        .bind(&password_hash)
-        .execute(&data.db)
-        .await;
+    let result = sqlx::query(
+        "INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'user')",
+    )
+    .bind(&id)
+    .bind(&body.username)
+    .bind(&password_hash)
+    .execute(&data.db)
+    .await;
 
     match result {
         Ok(_) => {
@@ -3770,23 +4106,23 @@ pub async fn register_handler(
                 .same_site(actix_web::cookie::SameSite::Lax)
                 .finish();
 
-            HttpResponse::Created()
-                .cookie(cookie)
-                .json(LoginResponse {
-                    token,
-                    user: user_info,
-                })
+            HttpResponse::Created().cookie(cookie).json(LoginResponse {
+                token,
+                user: user_info,
+            })
         }
-        Err(e) => HttpResponse::InternalServerError()
-            .json(serde_json::json!({"error": e.to_string()})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
     }
 }
 
-pub async fn guest_login_handler(
-    data: web::Data<AppState>,
-    req: HttpRequest,
-) -> HttpResponse {
-    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+#[allow(dead_code, unused_variables)]
+pub async fn guest_login_handler(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    let ip = req
+        .peer_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
     if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
         return HttpResponse::TooManyRequests()
             .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
@@ -3823,10 +4159,8 @@ pub async fn guest_login_handler(
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
 
-    HttpResponse::Ok()
-        .cookie(cookie)
-        .json(LoginResponse {
-            token,
-            user: user_info,
-        })
+    HttpResponse::Ok().cookie(cookie).json(LoginResponse {
+        token,
+        user: user_info,
+    })
 }

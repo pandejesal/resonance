@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 use dashmap::DashMap;
 use log::{error, info, warn};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -88,7 +89,9 @@ impl WatcherService {
     }
 
     pub fn start_watching(&mut self) -> Result<(), String> {
-        let paths: Vec<(String, String)> = self.library_paths.iter()
+        let paths: Vec<(String, String)> = self
+            .library_paths
+            .iter()
             .map(|r| (r.key().clone(), r.value().clone()))
             .collect();
         let mut errors = Vec::new();
