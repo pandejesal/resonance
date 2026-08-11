@@ -1,4 +1,4 @@
-FROM rust:1-slim-bookworm AS builder
+FROM rust:1.82.0-slim-bookworm AS builder
 
 WORKDIR /app
 COPY Cargo.toml ./
@@ -12,7 +12,7 @@ RUN cargo build --release -p resonance-backend
 COPY backend/src ./backend/src
 RUN touch backend/src/main.rs && cargo build --release -p resonance-backend
 
-FROM node:20-slim AS frontend-builder
+FROM node:20.18.0-slim AS frontend-builder
 
 WORKDIR /app
 COPY frontend/package.json ./

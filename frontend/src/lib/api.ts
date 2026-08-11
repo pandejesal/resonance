@@ -47,6 +47,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
       if (isAuthenticated) {
         useAuthStore.setState({ user: null, isAuthenticated: false, isGuest: false });
         localStorage.removeItem('resonance-auth');
+        window.location.href = '/login';
       }
       throw new Error('Unauthorized');
     }
@@ -190,11 +191,11 @@ export const api = {
     },
   },
 
-  search: (q: string, limit?: number, offset?: number) => {
+  search: (q: string, limit?: number, offset?: number, signal?: AbortSignal) => {
     const searchParams = new URLSearchParams({ q });
     if (limit) searchParams.set('limit', String(limit));
     if (offset) searchParams.set('offset', String(offset));
-    return fetchJson<SearchResults>(`/search?${searchParams.toString()}`);
+    return fetchJson<SearchResults>(`/search?${searchParams.toString()}`, { signal });
   },
 
   genres: () => fetchJson<string[]>('/genres'),

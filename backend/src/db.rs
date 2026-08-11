@@ -69,7 +69,17 @@ use std::path::Path;
 
                 let salt = SaltString::generate(&mut OsRng);
                 let argon2 = Argon2::default();
-                let password_hash = argon2.hash_password(b"admin", &salt).unwrap().to_string();
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                let admin_password: String = (0..16)
+                    .map(|_| {
+                        let idx = rng.gen_range(0..62);
+                        if idx < 10 { (b'0' + idx) as char }
+                        else if idx < 36 { (b'a' + idx - 10) as char }
+                        else { (b'A' + idx - 36) as char }
+                    })
+                    .collect();
+                let password_hash = argon2.hash_password(admin_password.as_bytes(), &salt).unwrap().to_string();
 
                 let id = uuid::Uuid::new_v4().to_string();
                 sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, 'admin', ?, 'admin')")
@@ -78,7 +88,7 @@ use std::path::Path;
                     .execute(&self.pool)
                     .await?;
 
-                info!("Created default admin user (username: admin, password: admin)");
+                info!("Created default admin user (username: admin, password: {})", admin_password);
             }
 
             Ok(())

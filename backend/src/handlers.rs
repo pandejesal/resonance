@@ -3781,25 +3781,22 @@ pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.strip_prefix("Bearer "))
                 .map(|v| v.to_string())
-        })
-        .or_else(|| {
-            req.uri().query().and_then(|q| {
-                q.split('&').find_map(|part| {
-                    let (key, val) = part.split_once('=')?;
-
-                    if key == "token" {
-                        Some(val.to_string())
-                    } else {
-                        None
-                    }
-                })
-            })
         });
 
     match token.and_then(|t| crate::auth::validate_token(&t)) {
         Some(user) => Ok(user),
         None => Err(HttpResponse::Unauthorized()
             .json(serde_json::json!({"error": "Authentication required"}))),
+    }
+}
+
+pub fn require_role(req: &HttpRequest, allowed_roles: &[&str]) -> Result<UserInfo, HttpResponse> {
+    let user = require_auth(req)?;
+    if allowed_roles.contains(&user.role.as_str()) {
+        Ok(user)
+    } else {
+        Err(HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Insufficient permissions"})))
     }
 }
 
@@ -3854,7 +3851,7 @@ pub async fn login_handler(
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .max_age(actix_web::cookie::time::Duration::days(7))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -3870,7 +3867,7 @@ pub async fn logout_handler() -> HttpResponse {
     let cookie = actix_web::cookie::Cookie::build("auth_token", "")
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .max_age(actix_web::cookie::time::Duration::seconds(-1))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();
@@ -4040,6 +4037,10 @@ pub async fn register_handler(
     body: web::Json<CreateUserRequest>,
     req: HttpRequest,
 ) -> HttpResponse {
+    if std::env::var("RESONANCE_ALLOW_REGISTRATION").unwrap_or_default() != "true" {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Registration is disabled"}));
+    }
     let ip = req
         .peer_addr()
         .map(|a| a.to_string())
@@ -4101,7 +4102,7 @@ pub async fn register_handler(
             let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
                 .path("/")
                 .http_only(true)
-                .secure(false)
+                .secure(true)
                 .max_age(actix_web::cookie::time::Duration::days(7))
                 .same_site(actix_web::cookie::SameSite::Lax)
                 .finish();
@@ -4119,6 +4120,10 @@ pub async fn register_handler(
 
 #[allow(dead_code, unused_variables)]
 pub async fn guest_login_handler(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    if std::env::var("RESONANCE_ALLOW_GUEST").unwrap_or_default() != "true" {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Guest access is disabled"}));
+    }
     let ip = req
         .peer_addr()
         .map(|a| a.to_string())
@@ -4154,7 +4159,7 @@ pub async fn guest_login_handler(data: web::Data<AppState>, req: HttpRequest) ->
     let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .max_age(actix_web::cookie::time::Duration::hours(24))
         .same_site(actix_web::cookie::SameSite::Lax)
         .finish();

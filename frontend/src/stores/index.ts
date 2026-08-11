@@ -7,9 +7,7 @@ import { audioEngine, EQ_PRESETS } from '../lib/audio-engine';
 import { toast } from '../components/Toast';
 
 function getStreamUrl(trackId: string): string {
-  const { authToken } = useAuthStore.getState();
-  const base = `/api/tracks/${trackId}/stream`;
-  return authToken ? `${base}?token=${encodeURIComponent(authToken)}` : base;
+  return `/api/tracks/${trackId}/stream`;
 }
 
 interface PlayerStore {

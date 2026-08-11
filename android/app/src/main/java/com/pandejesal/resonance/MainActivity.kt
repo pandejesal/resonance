@@ -126,6 +126,18 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(AppBridge(this), "AndroidBridge")
 
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return true
+                // Only allow local backend URLs
+                val allowed = url.startsWith("http://127.0.0.1:$PORT") ||
+                              url.startsWith("http://localhost:$PORT")
+                if (!allowed) {
+                    Log.w(TAG, "Blocked navigation to: $url")
+                    return true
+                }
+                return false
+            }
+
             override fun onReceivedError(
                 view: WebView?,
                 request: WebResourceRequest?,

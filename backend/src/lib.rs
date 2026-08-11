@@ -18,6 +18,7 @@ pub mod watcher;
 pub mod ws;
 
 use actix_cors::Cors;
+use actix_web::middleware::DefaultHeaders;
 use actix_web::{middleware, web, App, HttpServer};
 use handlers::AppState;
 use include_dir::{include_dir, Dir};
@@ -192,6 +193,14 @@ pub async fn start_server(
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
+            .wrap(
+                DefaultHeaders::new()
+                    .add(("X-Content-Type-Options", "nosniff"))
+                    .add(("X-Frame-Options", "DENY"))
+                    .add(("X-XSS-Protection", "1; mode=block"))
+                    .add(("Referrer-Policy", "strict-origin-when-cross-origin"))
+                    .add(("Permissions-Policy", "camera=(), microphone=(), geolocation=()"))
+            )
             .app_data(state.clone())
             .app_data(static_dir_data)
             .app_data(index_path_data)

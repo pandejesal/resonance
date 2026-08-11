@@ -34,20 +34,27 @@ export default function SearchModal() {
       return;
     }
 
+    const controller = new AbortController();
+
     const timeoutId = setTimeout(async () => {
       setLoading(true);
       try {
-        const results = await api.search(query, 10);
+        const results = await api.search(query, 10, undefined, controller.signal);
         setTracks(results.tracks);
         setAlbums(results.albums);
         setArtists(results.artists);
-      } catch (e) {
-        console.error('Search failed:', e);
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          console.error('Search failed:', e);
+        }
       }
       setLoading(false);
     }, 200);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [query]);
 
   useEffect(() => {

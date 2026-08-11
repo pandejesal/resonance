@@ -22,7 +22,7 @@ export default function WaveformSeekBar({
     let cancelled = false;
     const fetchPeaks = async () => {
       try {
-        const response = await fetch(`/api/tracks/${trackId}/waveform`);
+        const response = await fetch(`/api/tracks/${trackId}/waveform`, { credentials: 'include' });
         const data = await response.json();
         if (!cancelled && data.peaks && data.peaks.length > 0) {
           setPeaks(data.peaks);

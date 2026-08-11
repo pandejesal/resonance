@@ -13,6 +13,15 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
 
+            // Generate per-instance API token to prevent other local apps from accessing the API
+            let api_token: String = {
+                use std::io::Read;
+                let mut bytes = [0u8; 32];
+                getrandom::getrandom(&mut bytes).expect("Failed to generate random token");
+                bytes.iter().map(|b| format!("{:02x}", b)).collect()
+            };
+            std::env::set_var("RESONANCE_API_TOKEN", &api_token);
+
             // Signal when backend is ready
             let (tx, rx) = mpsc::channel();
 

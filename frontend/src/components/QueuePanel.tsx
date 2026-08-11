@@ -32,10 +32,16 @@ export default function QueuePanel() {
     if (!name) return;
     try {
       const playlist = await api.playlists.create({ name });
-      for (const item of queue) {
-        await api.playlists.addTrack(playlist.id, item.track.id);
+      const results = await Promise.allSettled(
+        queue.map((item) => api.playlists.addTrack(playlist.id, item.track.id))
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        toast.warning(`Added ${succeeded}/${queue.length} tracks (${failed} failed)`);
+      } else {
+        toast.success(`Playlist "${name}" created with ${succeeded} tracks`);
       }
-      toast.success(`Playlist "${name}" created with ${queue.length} tracks`);
     } catch (e) {
       toast.error('Failed to create playlist');
     }
