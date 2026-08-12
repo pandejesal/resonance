@@ -554,6 +554,10 @@ async fn stream(
                 .await
                 .unwrap_or_default();
             let allowed = libraries.iter().any(|lib| {
+                if lib.path.trim().is_empty() {
+                    // Whole-device library (Android MediaStore import): no path restriction
+                    return true;
+                }
                 std::path::PathBuf::from(&lib.path)
                     .canonicalize()
                     .map(|p| canonical.starts_with(&p))

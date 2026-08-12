@@ -665,6 +665,10 @@ pub async fn stream_track(
                 .await
                 .unwrap_or_default();
             let allowed = libraries.iter().any(|lib| {
+                if lib.path.trim().is_empty() {
+                    // Whole-device library (Android MediaStore import): no path restriction
+                    return true;
+                }
                 PathBuf::from(&lib.path)
                     .canonicalize()
                     .map(|p| canonical.starts_with(&p))
@@ -2008,6 +2012,10 @@ pub async fn browse_directory(
         .await
         .unwrap_or_default();
     let allowed = libraries.iter().any(|lib| {
+        if lib.path.trim().is_empty() {
+            // Whole-device library (Android MediaStore import): no path restriction
+            return true;
+        }
         PathBuf::from(&lib.path)
             .canonicalize()
             .map(|p| canonical.starts_with(&p))
@@ -3182,6 +3190,10 @@ pub async fn stream_track_transcoded(
                         .await
                         .unwrap_or_default();
                     let allowed = libraries.iter().any(|lib| {
+                        if lib.path.trim().is_empty() {
+                            // Whole-device library (Android MediaStore import): no path restriction
+                            return true;
+                        }
                         PathBuf::from(&lib.path)
                             .canonicalize()
                             .map(|p| canonical.starts_with(&p))
@@ -3301,6 +3313,10 @@ async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpR
                 .await
                 .unwrap_or_default();
             let allowed = libraries.iter().any(|lib| {
+                if lib.path.trim().is_empty() {
+                    // Whole-device library (Android MediaStore import): no path restriction
+                    return true;
+                }
                 PathBuf::from(&lib.path)
                     .canonicalize()
                     .map(|p| canonical.starts_with(&p))

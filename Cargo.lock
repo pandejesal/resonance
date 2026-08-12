@@ -4381,7 +4381,6 @@ name = "resonance"
 version = "0.7.3"
 dependencies = [
  "env_logger",
- "getrandom 0.2.17",
  "log",
  "resonance-backend",
  "serde",
@@ -4394,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "resonance-backend"
-version = "0.7.0"
+version = "0.7.3"
 dependencies = [
  "actix-cors",
  "actix-files",

@@ -130,7 +130,7 @@ export default function Sidebar() {
             </p>
           )}
           <div className="text-[10px] text-tertiary/60 text-center uppercase tracking-wider">
-            Resonance v0.7.0
+            Resonance v0.7.3
           </div>
         </div>
       </motion.aside>
