@@ -48,19 +48,10 @@ export default function FoldersPage() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: Math.min(i * 0.03, 0.5) }}
-              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 active:bg-white/10 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 active:bg-white/10 cursor-pointer transition-colors"
               onClick={() => {
                 const folderName = folder.split(/[/\\]/).pop() || folder;
                 navigate(`/library?search=${encodeURIComponent(folderName)}`);
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  const folderName = folder.split(/[/\\]/).pop() || folder;
-                  navigate(`/library?search=${encodeURIComponent(folderName)}`);
-                }
               }}
             >
               <svg className="w-5 h-5 text-brand-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

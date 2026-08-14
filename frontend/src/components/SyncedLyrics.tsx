@@ -61,7 +61,7 @@ export default function SyncedLyrics({ lyrics, className = '' }: SyncedLyricsPro
           return (
             <motion.p
               key={`${i}-${line.time}`}
-              className={`text-center transition-all duration-300 cursor-pointer select-none px-4 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+              className={`text-center transition-all duration-300 cursor-pointer select-none px-4 ${
                 isActive
                   ? 'text-white text-2xl font-bold scale-105'
                   : isPast
@@ -69,15 +69,6 @@ export default function SyncedLyrics({ lyrics, className = '' }: SyncedLyricsPro
                   : 'text-white/40 text-lg hover:text-white/60'
               }`}
               onClick={() => seek(line.time * 1000)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  seek(line.time * 1000);
-                }
-              }}
-              aria-label={`Seek to ${line.time}s`}
               animate={{
                 opacity: isActive ? 1 : isPast ? 0.2 : 0.4,
                 scale: isActive ? 1.05 : 1,

@@ -25,7 +25,6 @@ class AudioEngine {
   private source: MediaElementAudioSourceNode | null = null;
   private filters: BiquadFilterNode[] = [];
   private gainNode: GainNode | null = null;
-  private replayGainNode: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
   private connected = false;
   private _eqEnabled = false;
@@ -45,6 +44,14 @@ class AudioEngine {
     return this.ctx !== null && this.connected;
   }
 
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
+  get masterGain(): GainNode | null {
+    return this.gainNode;
+  }
+
   init(audio: HTMLAudioElement): void {
     if (this.ctx) {
       this.reconnect(audio);
@@ -56,7 +63,6 @@ class AudioEngine {
     this.audio = audio;
 
     this.gainNode = this.ctx.createGain();
-    this.replayGainNode = this.ctx.createGain();
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
 
@@ -112,7 +118,6 @@ class AudioEngine {
 
   private disconnectAll(): void {
     this.source?.disconnect();
-    this.replayGainNode?.disconnect();
     this.gainNode?.disconnect();
     this.filters.forEach((f) => f.disconnect());
     this.reverbNode?.disconnect();
@@ -123,11 +128,9 @@ class AudioEngine {
 
   private reconnectEffects(): void {
     this.disconnectAll();
-    if (!this.source || !this.ctx || !this.gainNode || !this.analyser || !this.replayGainNode) return;
+    if (!this.source || !this.ctx || !this.gainNode || !this.analyser) return;
 
     let lastNode: AudioNode = this.source;
-    lastNode.connect(this.replayGainNode);
-    lastNode = this.replayGainNode;
 
     if (this._eqEnabled) {
       for (const filter of this.filters) {
@@ -152,6 +155,7 @@ class AudioEngine {
     }
 
     if (this.echoMix > 0 && this.echoNode && this.echoFeedback) {
+      this.gainNode.connect(this.analyser);
       this.gainNode.connect(this.echoNode);
       this.echoNode.connect(this.echoFeedback);
       this.echoFeedback.connect(this.echoNode);
@@ -181,22 +185,12 @@ class AudioEngine {
     }
   }
 
-  setReplayGain(dB: number): void {
-    if (!this.replayGainNode || !this.ctx) return;
-    const linear = Math.pow(10, dB / 20);
-    this.replayGainNode.gain.setTargetAtTime(linear, this.ctx.currentTime, 0.02);
-  }
-
-  resetReplayGain(): void {
-    this.setReplayGain(0);
-  }
-
   setEQEnabled(enabled: boolean): void {
     this._eqEnabled = enabled;
     this.reconnect();
   }
 
-  getEQEnabled(): boolean {
+  get eqEnabled(): boolean {
     return this._eqEnabled;
   }
 
@@ -257,7 +251,6 @@ class AudioEngine {
       this.source = null;
       this.filters = [];
       this.gainNode = null;
-      this.replayGainNode = null;
       this.analyser = null;
       this.reverbNode = null;
       this.echoNode = null;

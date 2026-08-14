@@ -129,14 +129,11 @@ export interface QueryParams {
   search?: string;
   artist?: string;
   album?: string;
-  artist_id?: string;
-  album_id?: string;
   genre?: string;
   year?: number;
   folder?: string;
   mood?: string;
   min_rating?: number;
-  recent?: boolean;
   library_id?: string;
 }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { usePlayerStore, useUIStore, useCastStore, useOfflineStore } from '../stores';
+import { usePlayerStore, useUIStore, useCastStore } from '../stores';
 import { getArtworkUrl, formatDuration } from '../lib/utils';
 import SyncedLyrics from './SyncedLyrics';
 import WaveformDisplay from './WaveformDisplay';
@@ -36,10 +36,6 @@ export default function NowPlaying() {
     targets, activeTarget, isCasting, castMenuOpen,
     fetchTargets, castPlay, castControl, stopCasting, setCastMenuOpen,
   } = useCastStore();
-  const {
-    offlineTracks, downloading,
-    downloadForOffline, removeFromOffline, isOfflineAvailable,
-  } = useOfflineStore();
   const [artworkError, setArtworkError] = useState(false);
   const [trackRating, setTrackRating] = useState<number | null>(null);
   const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
@@ -49,7 +45,7 @@ export default function NowPlaying() {
   const [volume, setVolume] = useState(1);
   const [prevVolume, setPrevVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [volumeHover, setVolumeHover] = useState(() => window.matchMedia('(pointer: coarse)').matches);
+  const [volumeHover, setVolumeHover] = useState(false);
   const [likedTracks, setLikedTracks] = useState<Set<string>>(getLikedTracks);
   const [isLiked, setIsLiked] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -405,31 +401,6 @@ export default function NowPlaying() {
             </AnimatePresence>
           </div>
 
-          {/* Offline download button */}
-          <button
-            onClick={() => {
-              if (currentTrack && isOfflineAvailable(currentTrack.id)) {
-                removeFromOffline(currentTrack.id);
-              } else if (currentTrack) {
-                downloadForOffline(currentTrack.id);
-              }
-            }}
-            disabled={downloading.includes(currentTrack.id)}
-            style={{ touchAction: 'manipulation' }}
-            className={`absolute top-4 right-24 z-20 px-3 py-1.5 rounded-full text-sm transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50 ${
-              currentTrack && isOfflineAvailable(currentTrack.id)
-                ? 'bg-brand-500 text-white'
-                : 'bg-white/10 text-white/60 hover:bg-white/20'
-            }`}
-            aria-label="Save for offline playback"
-            title="Save for offline playback"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
-            </svg>
-            {downloading.includes(currentTrack.id) ? 'Saving...' : 'Offline'}
-          </button>
-
           {/* Lyrics button */}
           <button
             onClick={toggleLyrics}
@@ -451,7 +422,7 @@ export default function NowPlaying() {
               <motion.div
                 className={`relative overflow-hidden album-shadow-lg flex-shrink-0 ${
                   isFullScreen
-                    ? 'w-[400px] h-[400px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-8rem)] aspect-square rounded-3xl'
+                    ? 'w-[400px] h-[400px] rounded-3xl'
                     : 'w-full max-w-[320px] aspect-square rounded-3xl mb-8'
                 }`}
                 animate={{ scale: isPlaying ? 1 : 0.95 }}
@@ -610,7 +581,7 @@ export default function NowPlaying() {
                   />
                   {/* Draggable thumb */}
                   <div
-                    className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -translate-y-1/2 top-1/2 pointer-events-none touch-visible"
+                    className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity -translate-y-1/2 top-1/2 pointer-events-none"
                     style={{ left: `calc(${progressPercent}% - 7px)` }}
                   />
                 </div>

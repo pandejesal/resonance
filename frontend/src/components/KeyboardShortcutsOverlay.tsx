@@ -38,35 +38,21 @@ export default function KeyboardShortcutsOverlay() {
   return (
     <AnimatePresence>
       {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setIsOpen(false)}
+        >
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => setIsOpen(false)}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-surface-1/95 backdrop-blur-xl rounded-2xl border border-white/10 p-6 max-w-md w-full mx-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
           >
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Keyboard shortcuts"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-surface-1/95 backdrop-blur-xl rounded-2xl border border-white/10 p-6 max-w-md w-full mx-4 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-primary">Keyboard Shortcuts</h2>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-secondary transition-colors"
-                  aria-label="Close keyboard shortcuts"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+            <h2 className="text-lg font-bold text-primary mb-4">Keyboard Shortcuts</h2>
             <div className="space-y-2">
               {shortcuts.map((s, i) => (
                 <div key={i} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">

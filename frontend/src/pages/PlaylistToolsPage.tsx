@@ -110,10 +110,9 @@ export default function PlaylistToolsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-primary">Playlist Tools</h1>
 
+      {error && <ErrorState message={error} onRetry={() => setReload((r) => r + 1)} />}
+
       {/* Playlist Selector */}
-      {error ? (
-        <ErrorState message={error} onRetry={() => setReload((r) => r + 1)} />
-      ) : (
       <div className="surface-card p-4">
         <label className="block text-sm text-secondary mb-2">Select a playlist to work with</label>
         <select
@@ -127,7 +126,6 @@ export default function PlaylistToolsPage() {
           ))}
         </select>
       </div>
-      )}
 
       {/* Result Toast */}
       <AnimatePresence>

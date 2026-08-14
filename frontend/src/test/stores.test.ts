@@ -54,7 +54,7 @@ describe('Player Store', () => {
       const { setVolume } = usePlayerStore.getState();
       setVolume(1.5);
       // Note: The store doesn't clamp, but the UI should
-      expect(usePlayerStore.getState().volume).toBe(1.5);
+      expect(usePlayerStore.getState().volume).toBe(1);
     });
   });
 

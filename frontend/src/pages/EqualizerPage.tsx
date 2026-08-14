@@ -19,7 +19,7 @@ function EQSlider({ index, label, gain, onChange }: { index: number; label: stri
           style={{
             bottom: '50%',
             height: `${Math.abs(gain) / 12 * 50}%`,
-            background: gain >= 0 ? 'linear-gradient(to top, rgb(var(--brand-500)), rgb(var(--brand-400)))' : 'linear-gradient(to bottom, rgb(var(--brand-500)), rgb(var(--brand-400)))',
+            background: gain >= 0 ? 'linear-gradient(to top, var(--color-brand-500), var(--color-brand-400))' : 'linear-gradient(to bottom, var(--color-brand-500), var(--color-brand-400))',
           }}
         />
         <input
@@ -125,7 +125,7 @@ export default function EqualizerPage() {
                 return `M ${points.join(' L ')}`;
               })()}
               fill="none"
-              stroke={eqEnabled ? 'rgb(var(--brand-500))' : 'rgba(255,255,255,0.2)'}
+              stroke={eqEnabled ? 'var(--color-brand-500)' : 'rgba(255,255,255,0.2)'}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -137,7 +137,7 @@ export default function EqualizerPage() {
                 cx={(i / (eqBands.length - 1)) * 400}
                 cy={50 - (gain / 12) * 50}
                 r="3"
-                fill={eqEnabled ? 'rgb(var(--brand-500))' : 'rgba(255,255,255,0.2)'}
+                fill={eqEnabled ? 'var(--color-brand-500)' : 'rgba(255,255,255,0.2)'}
               />
             ))}
           </svg>

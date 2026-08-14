@@ -8,8 +8,8 @@ import type { Artist, PaginatedResponse } from '../types';
 export default function ArtistsPage() {
   const [data, setData] = useState<PaginatedResponse<Artist> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {

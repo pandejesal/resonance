@@ -2,8 +2,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
-import ErrorState from '../components/ErrorState';
-import { formatFileSize } from '../lib/utils';
 import type { ImportPreview, ImportFormat, ImportConfirmTrack } from '../types';
 
 type Step = 'upload' | 'preview' | 'result';
@@ -53,13 +51,9 @@ const platformIcons: Record<string, React.ReactNode> = {
 export default function ImportPage() {
   const [step, setStep] = useState<Step>('upload');
   const [formats, setFormats] = useState<ImportFormat[]>([]);
-  const [formatsLoading, setFormatsLoading] = useState(true);
-  const [formatsError, setFormatsError] = useState<string | null>(null);
-  const [formatsReload, setFormatsReload] = useState(0);
   const [selectedPlatform, setSelectedPlatform] = useState('spotify');
   const [fileContent, setFileContent] = useState<string>('');
   const [fileName, setFileName] = useState('');
-  const [fileSize, setFileSize] = useState<number>(0);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [playlistName, setPlaylistName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,11 +62,8 @@ export default function ImportPage() {
   const [dragActive, setDragActive] = useState(false);
 
   useEffect(() => {
-    api.import.formats()
-      .then((res) => setFormats(res.formats))
-      .catch((e) => setFormatsError(e instanceof Error ? e.message : 'Failed to load formats'))
-      .finally(() => setFormatsLoading(false));
-  }, [formatsReload]);
+    api.import.formats().then((res) => setFormats(res.formats)).catch(() => {});
+  }, []);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -95,7 +86,6 @@ export default function ImportPage() {
 
   const handleFile = (file: File) => {
     setFileName(file.name);
-    setFileSize(file.size);
     setError('');
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -205,41 +195,31 @@ export default function ImportPage() {
             {/* Platform selector */}
             <div className="surface-card p-5">
               <h2 className="text-lg font-semibold mb-4">Select Platform</h2>
-              {formatsError ? (
-                <ErrorState message={formatsError} onRetry={() => setFormatsReload((r) => r + 1)} />
-              ) : formatsLoading ? (
-                <div className="flex items-center justify-center h-24">
-                  <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {formats.map((fmt) => {
+                  const colors = platformColors[fmt.id] || platformColors.m3u;
+                  return (
+                    <button
+                      key={fmt.id}
+                      onClick={() => setSelectedPlatform(fmt.id)}
+                      className={`p-4 rounded-xl border-2 transition-all duration-200 text-center ${
+                        selectedPlatform === fmt.id
+                          ? `${colors.border} ${colors.bg} ring-2 ring-offset-0`
+                          : 'border-white/10 hover:border-white/20 bg-white/5'
+                      }`}
+                    >
+                      <div className={`flex justify-center mb-2 ${colors.text}`}>
+                        {platformIcons[fmt.id]}
+                      </div>
+                      <div className="text-sm font-medium">{fmt.name}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedPlatform && (
+                <div className="mt-4 p-3 rounded-lg bg-white/5 text-sm text-tertiary">
+                  {formats.find((f) => f.id === selectedPlatform)?.example}
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {formats.map((fmt) => {
-                      const colors = platformColors[fmt.id] || platformColors.m3u;
-                      return (
-                        <button
-                          key={fmt.id}
-                          onClick={() => setSelectedPlatform(fmt.id)}
-                          className={`p-4 rounded-xl border-2 transition-all duration-200 text-center ${
-                            selectedPlatform === fmt.id
-                              ? `${colors.border} ${colors.bg} ring-2 ring-offset-0`
-                              : 'border-white/10 hover:border-white/20 bg-white/5'
-                          }`}
-                        >
-                          <div className={`flex justify-center mb-2 ${colors.text}`}>
-                            {platformIcons[fmt.id]}
-                          </div>
-                          <div className="text-sm font-medium">{fmt.name}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {selectedPlatform && (
-                    <div className="mt-4 p-3 rounded-lg bg-white/5 text-sm text-tertiary">
-                      {formats.find((f) => f.id === selectedPlatform)?.example}
-                    </div>
-                  )}
-                </>
               )}
             </div>
 
@@ -261,11 +241,9 @@ export default function ImportPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <p className="text-sm font-medium">{fileName}</p>
-                    <p className="text-xs text-tertiary">{formatFileSize(fileSize)}</p>
+                    <p className="text-xs text-tertiary">{(fileContent.length / 1024).toFixed(1)} KB</p>
                     <button
-                      onClick={() => {     setFileName('');
-    setFileContent('');
-    setFileSize(0); setFileSize(0); }}
+                      onClick={() => { setFileName(''); setFileContent(''); }}
                       className="text-xs text-brand-400 hover:text-brand-300"
                     >
                       Choose different file

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import { useUIStore, usePlayerStore, useAuthStore, useCastStore, refreshReplayGainSettings } from '../stores';
+import { useUIStore, usePlayerStore, useAuthStore, useCastStore } from '../stores';
 import { cn } from '../lib/utils';
 import FileBrowser from '../components/FileBrowser';
 import { toast } from '../components/Toast';
@@ -33,14 +33,11 @@ export default function SettingsPage() {
   } = usePlayerStore();
   const [scrobblingConfig, setScrobblingConfig] = useState<ScrobblingConfig>(DEFAULT_SCROBBLE_CONFIG);
   const [scrobblingSaving, setScrobblingSaving] = useState(false);
-  const [scrobbleTests, setScrobbleTests] = useState<Record<string, { testing: boolean; connected?: boolean; username?: string; error?: string }>>({});
   const [updaterStatus, setUpdaterStatus] = useState<UpdateStatus | null>(null);
   const [updaterConfig, setUpdaterConfig] = useState<UpdaterConfig>(DEFAULT_UPDATER_CONFIG);
   const [updaterChecking, setUpdaterChecking] = useState(false);
   const [updaterUpdating, setUpdaterUpdating] = useState(false);
   const [updaterMessage, setUpdaterMessage] = useState('');
-  const [replayGainMode, setReplayGainMode] = useState<'off' | 'track' | 'album'>('off');
-  const [replayGainPreventClipping, setReplayGainPreventClipping] = useState(true);
   const [deviceScanning, setDeviceScanning] = useState(false);
   const [deviceScanResult, setDeviceScanResult] = useState('');
   const { user } = useAuthStore();
@@ -81,13 +78,6 @@ export default function SettingsPage() {
     api.updater.getConfig()
       .then(setUpdaterConfig)
       .catch(() => toast.error('Failed to load updater config'));
-
-    api.settings.getReplayGain()
-      .then((cfg) => {
-        setReplayGainMode(cfg.mode);
-        setReplayGainPreventClipping(cfg.prevent_clipping);
-      })
-      .catch(() => toast.error('Failed to load ReplayGain settings'));
 
     fetchCastTargets().catch(() => toast.error('Failed to load cast targets'));
 
@@ -184,25 +174,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTestScrobbling = async (service: 'lastfm' | 'listenbrainz') => {
-    setScrobbleTests((prev) => ({ ...prev, [service]: { testing: true } }));
-    try {
-      const result = await api.settings.testScrobbling(service);
-      const status = result.services?.[service];
-      setScrobbleTests((prev) => ({
-        ...prev,
-        [service]: status
-          ? { testing: false, connected: status.connected, username: status.username, error: status.error }
-          : { testing: false, connected: false, error: 'No result from server' },
-      }));
-    } catch (e) {
-      setScrobbleTests((prev) => ({
-        ...prev,
-        [service]: { testing: false, connected: false, error: 'Request failed — is the server reachable?' },
-      }));
-    }
-  };
-
   const handleCheckForUpdates = async () => {
     setUpdaterChecking(true);
     setUpdaterMessage('');
@@ -218,18 +189,6 @@ export default function SettingsPage() {
       setUpdaterMessage('Error checking for updates');
     } finally {
       setUpdaterChecking(false);
-    }
-  };
-
-  const handleReplayGainSave = async (mode: 'off' | 'track' | 'album', preventClipping: boolean) => {
-    setReplayGainMode(mode);
-    setReplayGainPreventClipping(preventClipping);
-    try {
-      await api.settings.updateReplayGain({ mode, prevent_clipping: preventClipping });
-      await refreshReplayGainSettings();
-      toast.success('ReplayGain settings saved');
-    } catch (e) {
-      toast.error('Failed to save ReplayGain settings');
     }
   };
 
@@ -388,7 +347,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-primary">Settings</h1>
 
       {/* Libraries */}
@@ -897,7 +856,7 @@ export default function SettingsPage() {
               <div
                 className={cn(
                   'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                  gapless ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  gapless ? 'translate-x-5.5' : 'translate-x-0.5'
                 )}
               />
             </button>
@@ -919,7 +878,7 @@ export default function SettingsPage() {
               <div
                 className={cn(
                   'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                  crossfade ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  crossfade ? 'translate-x-5.5' : 'translate-x-0.5'
                 )}
               />
             </button>
@@ -947,50 +906,6 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
-
-          {/* ReplayGain */}
-          <div className="pt-3 border-t border-surface-2">
-            <p className="text-sm font-medium text-primary mb-1">ReplayGain / Loudness Normalization</p>
-            <p className="text-xs text-tertiary mb-3">
-              Normalize playback loudness from ReplayGain tags or computed analysis. Applies client-side; streams stay bit-perfect.
-            </p>
-            <div className="flex gap-2 mb-4">
-              {(['off', 'track', 'album'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => handleReplayGainSave(m, replayGainPreventClipping)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                    replayGainMode === m
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-surface-2 text-secondary hover:bg-surface-3'
-                  )}
-                >
-                  {m === 'off' ? 'Off' : m === 'track' ? 'Track' : 'Album'}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-secondary">Prevent Clipping</p>
-                <p className="text-xs text-tertiary">Lower gain when peak exceeds 1.0</p>
-              </div>
-              <button
-                onClick={() => handleReplayGainSave(replayGainMode, !replayGainPreventClipping)}
-                className={cn(
-                  'relative w-11 h-6 rounded-full transition-colors',
-                  replayGainPreventClipping ? 'bg-brand-600' : 'bg-surface-3'
-                )}
-              >
-                <div
-                  className={cn(
-                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                    replayGainPreventClipping ? 'translate-x-[22px]' : 'translate-x-0.5'
-                  )}
-                />
-              </button>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -1015,7 +930,7 @@ export default function SettingsPage() {
                 <div
                   className={cn(
                     'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                    scrobblingConfig.lastfm.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    scrobblingConfig.lastfm.enabled ? 'translate-x-5.5' : 'translate-x-0.5'
                   )}
                 />
               </button>
@@ -1047,20 +962,6 @@ export default function SettingsPage() {
                 <p className="text-xs text-tertiary">
                   Get your API key at last.fm/api/account/create. Session key obtained via web auth flow.
                 </p>
-                <button
-                  onClick={() => handleTestScrobbling('lastfm')}
-                  disabled={scrobbleTests.lastfm?.testing}
-                  className="btn-secondary disabled:opacity-50"
-                >
-                  {scrobbleTests.lastfm?.testing ? 'Testing...' : 'Test Connection'}
-                </button>
-                {scrobbleTests.lastfm && !scrobbleTests.lastfm.testing && (
-                  <p className={cn('text-xs', scrobbleTests.lastfm.connected ? 'text-brand-400' : 'text-red-400')}>
-                    {scrobbleTests.lastfm.connected
-                      ? `Connected as ${scrobbleTests.lastfm.username}`
-                      : scrobbleTests.lastfm.error || 'Connection failed'}
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -1082,7 +983,7 @@ export default function SettingsPage() {
                 <div
                   className={cn(
                     'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                    scrobblingConfig.listenbrainz.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    scrobblingConfig.listenbrainz.enabled ? 'translate-x-5.5' : 'translate-x-0.5'
                   )}
                 />
               </button>
@@ -1100,20 +1001,6 @@ export default function SettingsPage() {
                 <p className="text-xs text-tertiary">
                   Get your token at listenbrainz.org/settings
                 </p>
-                <button
-                  onClick={() => handleTestScrobbling('listenbrainz')}
-                  disabled={scrobbleTests.listenbrainz?.testing}
-                  className="btn-secondary disabled:opacity-50"
-                >
-                  {scrobbleTests.listenbrainz?.testing ? 'Testing...' : 'Test Connection'}
-                </button>
-                {scrobbleTests.listenbrainz && !scrobbleTests.listenbrainz.testing && (
-                  <p className={cn('text-xs', scrobbleTests.listenbrainz.connected ? 'text-brand-400' : 'text-red-400')}>
-                    {scrobbleTests.listenbrainz.connected
-                      ? `Connected as ${scrobbleTests.listenbrainz.username}`
-                      : scrobbleTests.listenbrainz.error || 'Connection failed'}
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -1160,7 +1047,7 @@ export default function SettingsPage() {
               <div
                 className={cn(
                   'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                  updaterConfig.auto_check ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  updaterConfig.auto_check ? 'translate-x-5.5' : 'translate-x-0.5'
                 )}
               />
             </button>
@@ -1203,7 +1090,7 @@ export default function SettingsPage() {
               <div
                 className={cn(
                   'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                  updaterConfig.docker_socket ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  updaterConfig.docker_socket ? 'translate-x-5.5' : 'translate-x-0.5'
                 )}
               />
             </button>
@@ -1251,7 +1138,7 @@ export default function SettingsPage() {
       <section>
         <h2 className="text-lg font-semibold text-primary mb-4">About</h2>
         <div className="surface-card p-4 space-y-2">
-          <p className="text-sm text-secondary">Resonance Music Library v{__APP_VERSION__}</p>
+          <p className="text-sm text-secondary">Resonance Music Library v0.1.0</p>
           <p className="text-sm text-secondary">
             A self-hosted music archival system that prioritizes speed, audio quality, and a premium user experience.
           </p>

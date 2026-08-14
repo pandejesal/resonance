@@ -40,23 +40,21 @@ export default function StarRating({ rating, onChange, size = 'md' }: StarRating
             'transition-all duration-100',
             sizeMap[size],
             onChange ? 'cursor-pointer hover:scale-110' : 'cursor-default',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 rounded'
+            'focus:outline-none'
           )}
           onClick={() => handleClick(star)}
           onMouseEnter={() => onChange && setHoverRating(star)}
           style={{ touchAction: 'manipulation' }}
-          aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-          aria-pressed={displayRating !== null && star <= displayRating}
         >
           <svg
             viewBox="0 0 24 24"
-            fill={displayRating !== null && star <= displayRating ? 'rgb(var(--brand-500))' : 'none'}
-            stroke={displayRating !== null && star <= displayRating ? 'rgb(var(--brand-500))' : 'currentColor'}
+            fill={displayRating !== null && star <= displayRating ? '#1DB954' : 'none'}
+            stroke={displayRating !== null && star <= displayRating ? '#1DB954' : 'currentColor'}
             strokeWidth={2}
             className={cn(
               'w-full h-full transition-colors',
               displayRating !== null && star <= displayRating
-                ? 'text-brand-500'
+                ? 'text-[#1DB954]'
                 : 'text-white/20'
             )}
           >

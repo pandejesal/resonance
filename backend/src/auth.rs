@@ -1,7 +1,7 @@
+use crate::models::UserInfo;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::sync::OnceLock;
-use crate::models::UserInfo;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -9,82 +9,58 @@ static HMAC_SECRET: OnceLock<String> = OnceLock::new();
 
 fn get_secret() -> &'static str {
     HMAC_SECRET.get_or_init(|| {
+        // 1. Environment variable takes precedence
         if let Ok(secret) = std::env::var("HMAC_SECRET") {
-            return secret;
+            if !secret.is_empty() {
+                return secret;
+            }
         }
-        if let Some(secret) = load_persisted_secret() {
-            return secret;
+
+        // 2. Try loading from persistent file
+        let secret_path = std::env::var("RESONANCE_SECRET_PATH")
+            .unwrap_or_else(|_| {
+                let dir = std::env::var("RESONANCE_DATA_DIR")
+                    .unwrap_or_else(|_| ".".to_string());
+                format!("{}/.resonance_hmac_secret", dir)
+            });
+
+        if let Ok(existing) = std::fs::read_to_string(&secret_path) {
+            let trimmed = existing.trim().to_string();
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
         }
+
+        // 3. Generate new random secret and persist it
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let secret: String = (0..64)
             .map(|_| format!("{:02x}", rng.gen::<u8>()))
             .collect();
-        persist_secret(&secret);
-        eprintln!("[auth] No HMAC_SECRET env var set. Generated random secret and persisted it.");
+
+        if let Err(e) = std::fs::write(&secret_path, &secret) {
+            eprintln!("[auth] Failed to persist HMAC secret to {}: {}", secret_path, e);
+            eprintln!("[auth] Tokens will not survive restart.");
+        } else {
+            eprintln!("[auth] Generated and persisted HMAC secret to {}", secret_path);
+        }
+
         secret
     })
-}
-
-fn secret_file_path() -> Option<std::path::PathBuf> {
-    let db_url = std::env::var("DATABASE_URL").ok()?;
-    let db_path = db_url
-        .strip_prefix("sqlite:")
-        .unwrap_or(&db_url)
-        .split('?')
-        .next()
-        .unwrap_or(&db_url);
-    let path = std::path::Path::new(db_path);
-    Some(path.parent()?.join(".hmac_secret"))
-}
-
-fn load_persisted_secret() -> Option<String> {
-    let path = secret_file_path()?;
-    let secret = std::fs::read_to_string(path).ok()?.trim().to_string();
-    if secret.len() >= 32 {
-        Some(secret)
-    } else {
-        None
-    }
-}
-
-#[cfg(unix)]
-fn set_restrictive_perms(path: &std::path::Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-}
-
-#[cfg(not(unix))]
-fn set_restrictive_perms(_path: &std::path::Path) {}
-
-fn persist_secret(secret: &str) {
-    if let Some(path) = secret_file_path() {
-        if let Some(dir) = path.parent() {
-            if std::fs::create_dir_all(dir).is_ok() {
-                use std::io::Write;
-                if std::fs::File::create(&path)
-                    .and_then(|mut f| f.write_all(secret.as_bytes()))
-                    .is_ok()
-                {
-                    set_restrictive_perms(&path);
-                    eprintln!("[auth] Persisted HMAC secret to {}", path.display());
-                }
-            }
-        }
-    }
 }
 
 pub fn create_token(user: &UserInfo) -> String {
     let exp = chrono::Utc::now().timestamp() + 7 * 24 * 3600;
     let payload = format!("{}:{}:{}:{}", user.id, user.username, user.role, exp);
 
-    let mut mac = HmacSha256::new_from_slice(get_secret().as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(get_secret().as_bytes()).expect("HMAC can take key of any size");
     mac.update(payload.as_bytes());
     let signature = mac.finalize().into_bytes();
 
     use base64::Engine;
-    let encoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.as_bytes());
+    let encoded_payload =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.as_bytes());
     let encoded_sig = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature);
 
     format!("{}.{}", encoded_payload, encoded_sig)
@@ -94,13 +70,14 @@ pub fn create_guest_token() -> String {
     let exp = chrono::Utc::now().timestamp() + 24 * 3600;
     let payload = format!("guest:guest:guest:{}", exp);
 
-    let mut mac = HmacSha256::new_from_slice(get_secret().as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(get_secret().as_bytes()).expect("HMAC can take key of any size");
     mac.update(payload.as_bytes());
     let signature = mac.finalize().into_bytes();
 
     use base64::Engine;
-    let encoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.as_bytes());
+    let encoded_payload =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.as_bytes());
     let encoded_sig = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature);
 
     format!("{}.{}", encoded_payload, encoded_sig)
@@ -113,11 +90,15 @@ pub fn validate_token(token: &str) -> Option<UserInfo> {
     }
 
     use base64::Engine;
-    let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(parts[0]).ok()?;
-    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
+    let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[0])
+        .ok()?;
+    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .ok()?;
 
-    let mut mac = HmacSha256::new_from_slice(get_secret().as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(get_secret().as_bytes()).expect("HMAC can take key of any size");
     mac.update(&payload_bytes);
     mac.verify_slice(&signature).ok()?;
 

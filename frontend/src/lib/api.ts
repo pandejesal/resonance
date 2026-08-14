@@ -43,9 +43,13 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
       const { useAuthStore } = await import('../stores');
-      useAuthStore.getState().logout();
-      window.location.href = '/';
-      throw new Error('Session expired. Please log in again.');
+      const { isAuthenticated } = useAuthStore.getState();
+      if (isAuthenticated) {
+        useAuthStore.setState({ user: null, isAuthenticated: false, isGuest: false });
+        localStorage.removeItem('resonance-auth');
+        window.location.href = '/login';
+      }
+      throw new Error('Unauthorized');
     }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || `HTTP ${response.status}`);
@@ -116,19 +120,7 @@ export const api = {
       fetchJson(`/tracks/${id}/play`, { method: 'POST' }),
     streamUrl: (id: string) => `${BASE_URL}/tracks/${id}/stream`,
     artworkUrl: (id: string) => `${BASE_URL}/tracks/${id}/artwork`,
-    uploadArtwork: (id: string, file: File) =>
-      fetchJson(`/tracks/${id}/artwork`, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'image/jpeg' },
-      }),
-    removeArtwork: (id: string) =>
-      fetchJson(`/tracks/${id}/artwork`, { method: 'DELETE' }),
     waveformUrl: (id: string) => `${BASE_URL}/tracks/${id}/waveform`,
-    getGain: (id: string) =>
-      fetchJson<{ track_gain: number | null; track_peak: number | null; album_gain: number | null; album_peak: number | null; computed: boolean }>(`/tracks/${id}/gain`),
-    computeGain: (id: string) =>
-      fetchJson<{ track_gain: number | null; track_peak: number | null; album_gain: number | null; album_peak: number | null; computed: boolean }>(`/tracks/${id}/gain/compute`, { method: 'POST' }),
     updateRating: (id: string, rating: number | null) =>
       fetchJson<Track>(`/tracks/${id}/rating`, {
         method: 'PUT',
@@ -199,11 +191,11 @@ export const api = {
     },
   },
 
-  search: (q: string, limit?: number, offset?: number) => {
+  search: (q: string, limit?: number, offset?: number, signal?: AbortSignal) => {
     const searchParams = new URLSearchParams({ q });
     if (limit) searchParams.set('limit', String(limit));
     if (offset) searchParams.set('offset', String(offset));
-    return fetchJson<SearchResults>(`/search?${searchParams.toString()}`);
+    return fetchJson<SearchResults>(`/search?${searchParams.toString()}`, { signal });
   },
 
   genres: () => fetchJson<string[]>('/genres'),
@@ -277,17 +269,10 @@ export const api = {
         body: JSON.stringify(data),
       }),
     testScrobbling: (service: string = 'all') =>
-      fetchJson<{ success: boolean; services: Record<string, { connected: boolean; username?: string; error?: string }> }>(
+      fetchJson<{ success: boolean; services: Record<string, { connected: boolean; username?: string }> }>(
         `/settings/scrobbling/test?service=${service}`,
         { method: 'POST' }
       ),
-    getReplayGain: () =>
-      fetchJson<{ mode: 'off' | 'track' | 'album'; prevent_clipping: boolean }>('/settings/replaygain'),
-    updateReplayGain: (data: { mode: 'off' | 'track' | 'album'; prevent_clipping: boolean }) =>
-      fetchJson<{ success: boolean; mode: string; prevent_clipping: boolean }>('/settings/replaygain', {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      }),
   },
 
   updater: {

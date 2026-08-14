@@ -1,6 +1,6 @@
 [package]
 name = "resonance-backend"
-version = "0.7.0"
+version = "0.7.3"
 edition = "2021"
 
 [lib]
@@ -19,6 +19,7 @@ serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
+tokio-stream = "0.1"
 lofty.workspace = true
 symphonia.workspace = true
 notify.workspace = true
@@ -45,6 +46,7 @@ hmac.workspace = true
 sha2.workspace = true
 ebur128.workspace = true
 include_dir = "0.7"
+hex = "0.4.3"
 
 [profile.release]
 opt-level = 3

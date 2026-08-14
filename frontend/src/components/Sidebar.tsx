@@ -29,25 +29,25 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile overlay - disabled on mobile since sidebar is hidden */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+            className="fixed inset-0 bg-black/50 z-30 hidden"
             onClick={toggleSidebar}
           />
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
+      {/* Sidebar - hidden on mobile, visible on desktop only */}
       <motion.aside
         className={cn(
-          'fixed top-0 left-0 h-full z-30 w-64 flex flex-col',
+          'fixed top-0 left-0 h-full z-30 w-64 flex-col',
           'bg-surface-1/80 backdrop-blur-2xl border-r border-white/[0.08]',
-          'lg:translate-x-0 transition-transform duration-300 ease-out',
+          'hidden lg:flex lg:translate-x-0 transition-transform duration-300 ease-out',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -130,7 +130,7 @@ export default function Sidebar() {
             </p>
           )}
           <div className="text-[10px] text-tertiary/60 text-center uppercase tracking-wider">
-            Resonance v0.7.0
+            Resonance v0.7.3
           </div>
         </div>
       </motion.aside>

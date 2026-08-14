@@ -4405,7 +4405,7 @@ dependencies = [
 
 [[package]]
 name = "resonance"
-version = "0.7.0"
+version = "0.7.3"
 dependencies = [
  "env_logger",
  "log",
@@ -4420,7 +4420,7 @@ dependencies = [
 
 [[package]]
 name = "resonance-backend"
-version = "0.7.0"
+version = "0.7.3"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -4435,6 +4435,7 @@ dependencies = [
  "ebur128",
  "env_logger",
  "futures",
+ "hex",
  "hmac",
  "image",
  "include_dir",
@@ -4455,6 +4456,7 @@ dependencies = [
  "sqlx",
  "symphonia",
  "tokio",
+ "tokio-stream",
  "urlencoding",
  "uuid",
  "walkdir",

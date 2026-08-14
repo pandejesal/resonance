@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
 import { toast } from './Toast';
 import { useLicenseStore } from '../stores';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../types';
-import { getArtworkUrl } from '../lib/utils';
 
 interface MetadataEditorProps {
   track: Track;
@@ -25,8 +24,6 @@ export default function MetadataEditor({ track, isOpen, onClose, onSave }: Metad
   const [bpm, setBpm] = useState('');
   const [musicalKey, setMusicalKey] = useState('');
   const [saving, setSaving] = useState(false);
-  const [uploadingArtwork, setUploadingArtwork] = useState(false);
-  const artworkInputRef = useRef<HTMLInputElement>(null);
   const { hasFeature } = useLicenseStore();
   const navigate = useNavigate();
 
@@ -65,35 +62,6 @@ export default function MetadataEditor({ track, isOpen, onClose, onSave }: Metad
       toast.error('Failed to save metadata');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleArtworkChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingArtwork(true);
-    try {
-      await api.tracks.uploadArtwork(track.id, file);
-      toast.success('Artwork updated');
-      onSave();
-    } catch {
-      toast.error('Failed to upload artwork');
-    } finally {
-      setUploadingArtwork(false);
-      if (artworkInputRef.current) artworkInputRef.current.value = '';
-    }
-  };
-
-  const handleRemoveArtwork = async () => {
-    setUploadingArtwork(true);
-    try {
-      await api.tracks.removeArtwork(track.id);
-      toast.success('Artwork removed');
-      onSave();
-    } catch {
-      toast.error('Failed to remove artwork');
-    } finally {
-      setUploadingArtwork(false);
     }
   };
 
@@ -152,46 +120,6 @@ export default function MetadataEditor({ track, isOpen, onClose, onSave }: Metad
           onClick={(e) => e.stopPropagation()}
         >
           <h2 className="text-lg font-bold text-primary mb-4">Edit Metadata</h2>
-
-          {/* Artwork */}
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-surface-2">
-              {track.has_artwork ? (
-                <img src={getArtworkUrl(track.id)} alt={track.album} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white/20" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                  </svg>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <input
-                ref={artworkInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-                onChange={handleArtworkChange}
-                className="hidden"
-              />
-              <button
-                onClick={() => artworkInputRef.current?.click()}
-                disabled={uploadingArtwork}
-                className="btn-secondary text-sm disabled:opacity-50"
-              >
-                {uploadingArtwork ? 'Uploading...' : 'Upload Artwork'}
-              </button>
-              {track.has_artwork && (
-                <button
-                  onClick={handleRemoveArtwork}
-                  disabled={uploadingArtwork}
-                  className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
-                >
-                  Remove Artwork
-                </button>
-              )}
-            </div>
-          </div>
           
           <div className="space-y-3">
             <div>

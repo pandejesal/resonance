@@ -81,19 +81,11 @@ export default function HistoryPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.02 }}
-              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+              className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
               onClick={() => handlePlayTrack(entry)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handlePlayTrack(entry);
-                }
-              }}
             >
-              <div className="w-8 text-center text-sm text-tertiary group-hover:hidden touch-hidden">{i + 1}</div>
-              <PlayIcon className="w-4 h-4 text-brand-500 hidden group-hover:block touch-visible" />
+              <div className="w-8 text-center text-sm text-white/40 group-hover:hidden">{i + 1}</div>
+              <PlayIcon className="w-4 h-4 text-brand-500 hidden group-hover:block" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-primary truncate">{entry.title}</div>
                 <div className="text-xs text-secondary truncate">{entry.artist}</div>

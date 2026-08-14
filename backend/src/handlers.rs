@@ -88,6 +88,10 @@ pub async fn fts_backfill(pool: SqlitePool, ready: Arc<AtomicBool>) {
 
 pub fn path_within_libraries(libraries: &[Library], canonical: &std::path::Path) -> bool {
     libraries.iter().any(|lib| {
+        if lib.path.trim().is_empty() {
+            // Whole-device library (Android MediaStore import): no path restriction
+            return true;
+        }
         PathBuf::from(&lib.path)
             .canonicalize()
             .map(|p| canonical.starts_with(&p))
@@ -4762,6 +4766,14 @@ pub fn register_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/license/deactivate", web::post().to(crate::license_handlers::deactivate_license))
         .route("/api/license/features/{tier}", web::get().to(crate::license_handlers::get_tier_features))
         .route("/api/license/generate/{tier}", web::post().to(crate::license_handlers::generate_license_key))
+        .route(
+            "/api/dodo/checkout/{tier}",
+            web::post().to(crate::dodo_handlers::create_checkout_session),
+        )
+        .route(
+            "/api/dodo/webhook",
+            web::post().to(crate::dodo_webhook::handle_webhook),
+        )
         .route("/api/health", web::get().to(health_check))
         .route("/api/stats/database", web::get().to(get_database_stats))
         .route("/api/ws", web::get().to(crate::ws::ws_handler));

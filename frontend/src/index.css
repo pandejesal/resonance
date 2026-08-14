@@ -9,8 +9,6 @@
     --surface-2: 30 30 42;
     --surface-3: 40 40 55;
     --surface-4: 55 55 75;
-    --brand-400: 59 228 119;
-    --brand-500: 29 185 84;
   }
 
   .light {
@@ -83,10 +81,6 @@
     @apply bg-white/[0.03] backdrop-blur-lg border border-white/5;
   }
 
-  .glass-panel {
-    @apply bg-surface-1/80 backdrop-blur-xl border border-white/10 shadow-2xl;
-  }
-
   .light .glass {
     @apply bg-black/5 border-black/10;
   }
@@ -97,10 +91,6 @@
 
   .light .glass-subtle {
     @apply bg-black/[0.03] border-black/5;
-  }
-
-  .light .glass-panel {
-    @apply bg-surface-1/95 border-black/10;
   }
 
   .surface-card {
@@ -215,32 +205,6 @@
 
   .no-scrollbar::-webkit-scrollbar {
     display: none;
-  }
-
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mask-gradient {
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 85%, transparent 100%);
-    mask-image: linear-gradient(to bottom, black 0%, black 85%, transparent 100%);
-  }
-
-  @media (pointer: coarse) {
-    .touch-visible {
-      opacity: 1 !important;
-      pointer-events: auto !important;
-      display: block !important;
-    }
-
-    .touch-hidden {
-      display: none !important;
-    }
   }
 
   .text-shadow {

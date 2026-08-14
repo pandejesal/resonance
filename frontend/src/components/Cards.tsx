@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import type { Album } from '../types';
 import { usePlayerStore } from '../stores';
 import { getArtworkUrl, cn } from '../lib/utils';
@@ -13,8 +12,6 @@ interface AlbumCardProps {
 
 export function AlbumCard({ album, onClick }: AlbumCardProps) {
   const playTrack = usePlayerStore((s) => s.playTrack);
-  const navigate = useNavigate();
-  const handleCardClick = onClick ?? (() => navigate(`/library?album=${encodeURIComponent(album.id)}`));
 
   const handlePlay = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -32,7 +29,7 @@ export function AlbumCard({ album, onClick }: AlbumCardProps) {
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       className="surface-card p-3 cursor-pointer group"
-      onClick={handleCardClick}
+      onClick={onClick}
     >
       <div className="relative aspect-square rounded-xl overflow-hidden mb-3 album-shadow">
         {album.has_artwork ? (
@@ -55,9 +52,8 @@ export function AlbumCard({ album, onClick }: AlbumCardProps) {
           <motion.button
             initial={{ scale: 0, opacity: 0 }}
             whileHover={{ scale: 1.1 }}
-            className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg touch-visible"
+            className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
             onClick={handlePlay}
-            aria-label={`Play ${album.title}`}
           >
             <svg className="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
@@ -85,14 +81,12 @@ interface ArtistCardProps {
 }
 
 export function ArtistCard({ artist, onClick }: ArtistCardProps) {
-  const navigate = useNavigate();
-  const handleCardClick = onClick ?? (() => navigate(`/library?artist=${encodeURIComponent(artist.id)}`));
   return (
     <motion.div
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       className="surface-card p-3 cursor-pointer group text-center"
-      onClick={handleCardClick}
+      onClick={onClick}
     >
       <div className="relative w-24 h-24 mx-auto rounded-full overflow-hidden mb-3 album-shadow">
         {artist.has_artwork ? (

@@ -2,6 +2,8 @@ pub mod auth;
 
 pub mod compute_gain;
 pub mod db;
+pub mod dodo_handlers;
+pub mod dodo_webhook;
 pub mod ratelimit;
 pub mod handlers;
 pub mod importer;
@@ -17,6 +19,7 @@ pub mod watcher;
 pub mod ws;
 
 use actix_cors::Cors;
+use actix_web::middleware::DefaultHeaders;
 use actix_web::{middleware, web, App, HttpServer};
 use handlers::AppState;
 use include_dir::{include_dir, Dir};
@@ -130,14 +133,68 @@ pub async fn start_server(
 
     info!("Connecting to database: {}", sqlite_url);
 
-    let database = db::db::Database::new(&sqlite_url)
+    let database = db::Database::new(&sqlite_url)
         .await
         .expect("Failed to connect to database");
 
-    database
-        .run_migrations()
-        .await
-        .expect("Failed to run migrations");
+    let database = match database.run_migrations().await {
+        Ok(()) => database,
+        Err(e) => {
+            match &e {
+                sqlx::Error::Migrate(migrate_err) => {
+                    // Incompatible/legacy database (e.g. created by an older
+                    // sqlx migration format): quarantining the old file and
+                    // starting a fresh database is the only viable upgrade
+                    // path. Music files are never touched; only the
+                    // index/metadata DB is replaced.
+                    log::warn!(
+                        "Database migration failed ({}); quarantining incompatible database",
+                        migrate_err
+                    );
+                }
+                _ => {
+                    panic!("Failed to run migrations: {}", e);
+                }
+            }
+            drop(database);
+
+            let file_path = sqlite_url
+                .strip_prefix("sqlite:")
+                .unwrap_or(&sqlite_url)
+                .split('?')
+                .next()
+                .unwrap_or(&sqlite_url);
+            let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+            let backup_path = format!("{}.incompatible-{}", file_path, timestamp);
+            let renamed = std::fs::rename(file_path, &backup_path).is_ok();
+            for suffix in ["-wal", "-shm"] {
+                let _ = std::fs::rename(
+                    format!("{}{}", file_path, suffix),
+                    format!("{}{}", backup_path, suffix),
+                );
+            }
+
+            let fresh = db::Database::new(&sqlite_url)
+                .await
+                .expect("Failed to create fresh database");
+            fresh
+                .run_migrations()
+                .await
+                .expect("Failed to run migrations on fresh database");
+            if renamed {
+                log::warn!(
+                    "Quarantined existing database to {}; started a fresh one",
+                    backup_path
+                );
+            } else {
+                log::warn!(
+                    "Could not quarantine {} (continuing with fresh database)",
+                    file_path
+                );
+            }
+            fresh
+        }
+    };
 
     let scanner = Arc::new(Mutex::new(Scanner::new()));
     let ws_clients = Arc::new(ws::WsClients::new());
@@ -198,6 +255,14 @@ pub async fn start_server(
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
+            .wrap(
+                DefaultHeaders::new()
+                    .add(("X-Content-Type-Options", "nosniff"))
+                    .add(("X-Frame-Options", "DENY"))
+                    .add(("X-XSS-Protection", "1; mode=block"))
+                    .add(("Referrer-Policy", "strict-origin-when-cross-origin"))
+                    .add(("Permissions-Policy", "camera=(), microphone=(), geolocation=()"))
+            )
             .app_data(state.clone())
             .app_data(static_dir_data)
             .app_data(index_path_data)
@@ -250,7 +315,7 @@ pub mod android {
             let rt = actix_rt::System::new();
 
             rt.block_on(async move {
-                let database = match db::db::Database::new(&sqlite_url).await {
+                let database = match db::Database::new(&sqlite_url).await {
                     Ok(db) => db,
                     Err(e) => {
                         log::error!("Database error: {}", e);

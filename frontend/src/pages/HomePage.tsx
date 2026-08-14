@@ -14,7 +14,7 @@ function getGreeting() {
   return 'Good evening';
 }
 
-function QuickPickCard({ track, onClick }: { track: Track; onClick: () => void }) {
+function QuickPickCard({ track, queue, onClick }: { track: Track; queue: Track[]; onClick: () => void }) {
   return (
     <motion.button
       whileTap={{ scale: 0.97 }}
@@ -261,6 +261,7 @@ export default function HomePage() {
               <QuickPickCard
                 key={track.id}
                 track={track}
+                queue={stats?.recently_played || []}
                 onClick={() => playTrack(track, stats?.recently_played || [])}
               />
             ))}
@@ -371,47 +372,13 @@ export default function HomePage() {
         >
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              {
-                label: 'Tracks',
-                value: formatNumber(stats.total_tracks),
-                icon: (
-                  <svg className="w-6 h-6 text-brand-500" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                  </svg>
-                ),
-              },
-              {
-                label: 'Albums',
-                value: formatNumber(stats.total_albums),
-                icon: (
-                  <svg className="w-6 h-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <circle cx="12" cy="12" r="9" />
-                    <circle cx="12" cy="12" r="2.5" />
-                  </svg>
-                ),
-              },
-              {
-                label: 'Artists',
-                value: formatNumber(stats.total_artists),
-                icon: (
-                  <svg className="w-6 h-6 text-brand-500" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                ),
-              },
-              {
-                label: 'Duration',
-                value: formatDurationLong(stats.total_duration_ms),
-                icon: (
-                  <svg className="w-6 h-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <circle cx="12" cy="12" r="9" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
-                  </svg>
-                ),
-              },
+              { label: 'Tracks', value: formatNumber(stats.total_tracks), icon: '🎵' },
+              { label: 'Albums', value: formatNumber(stats.total_albums), icon: '💿' },
+              { label: 'Artists', value: formatNumber(stats.total_artists), icon: '👤' },
+              { label: 'Duration', value: formatDurationLong(stats.total_duration_ms), icon: '⏱️' },
             ].map((stat) => (
               <div key={stat.label} className="surface-card p-3 sm:p-4">
-                <div className="mb-1">{stat.icon}</div>
+                <div className="text-lg mb-1">{stat.icon}</div>
                 <p className="text-lg sm:text-xl font-bold text-primary">{stat.value}</p>
                 <p className="text-xs text-secondary">{stat.label}</p>
               </div>

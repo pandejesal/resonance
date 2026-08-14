@@ -5,7 +5,6 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:allow-open",
     "core:window:default",
     "core:window:allow-close",
     "core:window:allow-minimize",

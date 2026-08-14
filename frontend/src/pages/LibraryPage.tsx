@@ -36,8 +36,6 @@ export default function LibraryPage() {
   const [filter, setFilter] = useState<string>('');
   const [activeChip, setActiveChip] = useState<string>('all');
   const [genreFilter, setGenreFilter] = useState<string>('');
-  const [albumIdFilter, setAlbumIdFilter] = useState<string>('');
-  const [artistIdFilter, setArtistIdFilter] = useState<string>('');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { viewMode, setViewMode } = useUIStore();
@@ -51,22 +49,12 @@ export default function LibraryPage() {
   useEffect(() => {
     const urlGenre = searchParams.get('genre');
     const urlSearch = searchParams.get('search');
-    const urlAlbum = searchParams.get('album');
-    const urlArtist = searchParams.get('artist');
     if (urlGenre) {
       setGenreFilter(urlGenre);
       setActiveChip(`genre-${urlGenre}`);
     }
     if (urlSearch) {
       setFilter(urlSearch);
-    }
-    if (urlAlbum) {
-      setAlbumIdFilter(urlAlbum);
-      setActiveChip('album');
-    }
-    if (urlArtist) {
-      setArtistIdFilter(urlArtist);
-      setActiveChip('artist');
     }
   }, []);
 
@@ -84,13 +72,16 @@ export default function LibraryPage() {
 
       if (filter) params.search = filter;
       if (genreFilter) params.genre = genreFilter;
-      if (albumIdFilter) params.album_id = albumIdFilter;
-      if (artistIdFilter) params.artist_id = artistIdFilter;
       if (activeChip === 'favorites') params.min_rating = 4;
-      if (activeChip === 'recent') params.recent = true;
 
       const result = await api.tracks.list(params as any);
-      const items = result.items;
+      let items = result.items;
+
+      if (activeChip === 'recent') {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        items = items.filter((t: Track) => new Date(t.date_added) >= sevenDaysAgo);
+      }
 
       if (reset) {
         setTracks(items);
@@ -104,7 +95,7 @@ export default function LibraryPage() {
     }
     setLoading(false);
     setLoadingMore(false);
-  }, [sortField, sortOrder, filter, genreFilter, albumIdFilter, artistIdFilter, activeChip]);
+  }, [sortField, sortOrder, filter, genreFilter, activeChip]);
 
   useEffect(() => {
     setTracks([]);
@@ -149,8 +140,6 @@ export default function LibraryPage() {
   const handleChipClick = (chip: FilterChip) => {
     setActiveChip(chip.id);
     setGenreFilter(chip.genre || '');
-    setAlbumIdFilter('');
-    setArtistIdFilter('');
   };
 
   const sortLabel = useMemo(() => {
@@ -235,7 +224,7 @@ export default function LibraryPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -290,7 +279,7 @@ export default function LibraryPage() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
-                  className="absolute right-0 top-full mt-1 w-52 bg-surface-2 border border-white/10 rounded-xl shadow-2xl z-50 py-1 overflow-hidden"
+                  className="absolute right-0 top-full mt-1 w-52 bg-gray-800 border border-white/10 rounded-xl shadow-2xl z-50 py-1 overflow-hidden"
                 >
                   {SORT_OPTIONS.map((option) => (
                     <button
@@ -433,11 +422,10 @@ export default function LibraryPage() {
                         </svg>
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3 touch-visible">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
                       <button
                         onClick={(e) => { e.stopPropagation(); playTrack(track, tracks); }}
                         className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
-                        aria-label={`Play ${track.title}`}
                       >
                         <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M8 5v14l11-7z" />
@@ -454,7 +442,6 @@ export default function LibraryPage() {
                             ? 'bg-brand-500 text-white'
                             : 'bg-white/10 text-white hover:bg-white/20'
                         )}
-                        aria-label={selectedIds.has(track.id) ? `Deselect ${track.title}` : `Select ${track.title}`}
                       >
                         {selectedIds.has(track.id) ? (
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -534,7 +521,7 @@ export default function LibraryPage() {
 
       {/* Floating Batch Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-surface-2 border border-white/10 rounded-xl px-6 py-3 shadow-2xl flex items-center gap-4 z-50">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 bg-gray-900 border border-white/10 rounded-xl px-6 py-3 shadow-2xl flex items-center gap-4 z-50">
           <span className="text-sm text-secondary whitespace-nowrap">
             {selectedIds.size} track{selectedIds.size !== 1 ? 's' : ''} selected
           </span>

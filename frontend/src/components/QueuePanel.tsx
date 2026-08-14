@@ -32,10 +32,16 @@ export default function QueuePanel() {
     if (!name) return;
     try {
       const playlist = await api.playlists.create({ name });
-      for (const item of queue) {
-        await api.playlists.addTrack(playlist.id, item.track.id);
+      const results = await Promise.allSettled(
+        queue.map((item) => api.playlists.addTrack(playlist.id, item.track.id))
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        toast.warning(`Added ${succeeded}/${queue.length} tracks (${failed} failed)`);
+      } else {
+        toast.success(`Playlist "${name}" created with ${succeeded} tracks`);
       }
-      toast.success(`Playlist "${name}" created with ${queue.length} tracks`);
     } catch (e) {
       toast.error('Failed to create playlist');
     }
@@ -49,7 +55,7 @@ export default function QueuePanel() {
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-          className="fixed top-0 right-0 h-full w-80 max-w-[calc(100vw-1rem)] glass-strong border-l border-white/10 z-40 flex flex-col"
+          className="fixed top-0 right-0 h-full w-80 glass-strong border-l border-white/10 z-40 flex flex-col"
         >
           {/* Header */}
           <div className="px-4 py-4 border-b border-white/5">
@@ -227,7 +233,7 @@ function QueueItemRow({
 
       <button
         onClick={onRemove}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 transition-all touch-visible"
+        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-white/10 transition-all"
         aria-label={`Remove ${item.track.title} from queue`}
       >
         <svg className="w-4 h-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">

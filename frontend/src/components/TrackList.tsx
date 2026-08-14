@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Track } from '../types';
-import { usePlayerStore, useOfflineStore } from '../stores';
+import { usePlayerStore } from '../stores';
 import { formatDuration, getArtworkUrl, cn } from '../lib/utils';
 import MetadataEditor from './MetadataEditor';
 
@@ -18,11 +18,9 @@ interface TrackListProps {
 
 export default function TrackList({ tracks, showAlbum = true, showArtwork = true, showRating = true, selectedIds, onToggleSelect, onMetadataSaved, className }: TrackListProps) {
   const { playTrack, addToQueue, currentTrack, isPlaying } = usePlayerStore();
-  const { offlineTracks, downloading, downloadForOffline, removeFromOffline } = useOfflineStore();
   const selectionMode = selectedIds !== undefined && onToggleSelect !== undefined;
   const [contextMenuTrack, setContextMenuTrack] = useState<Track | null>(null);
   const [editingTrack, setEditingTrack] = useState<Track | null>(null);
-  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -187,9 +185,9 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
                     viewBox="0 0 24 24"
                     className={cn(
                       'w-3 h-3',
-                      star <= (track.rating ?? 0) ? 'text-brand-500' : 'text-white/10'
+                      star <= (track.rating ?? 0) ? 'text-[#1DB954]' : 'text-white/10'
                     )}
-                    fill={star <= (track.rating ?? 0) ? 'rgb(var(--brand-500))' : 'none'}
+                    fill={star <= (track.rating ?? 0) ? '#1DB954' : 'none'}
                     stroke="currentColor"
                     strokeWidth={2}
                   >
@@ -213,11 +211,8 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
               className="p-1.5 rounded-lg active:bg-white/10 transition-all md:opacity-0 md:group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                setMenuPos({ x: rect.right, y: rect.bottom });
                 setContextMenuTrack(track);
               }}
-              aria-label={`More options for ${track.title}`}
             >
               <svg className="w-4 h-4 text-secondary" fill="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="5" r="1.5" />
@@ -249,11 +244,7 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
               exit={{ opacity: 0, y: 20 }}
               className="fixed z-[90] bg-surface-1 border border-white/10 shadow-xl overflow-hidden
                 bottom-0 left-0 right-0 rounded-t-2xl
-                md:bottom-auto md:left-auto md:right-auto md:w-48 md:rounded-xl md:rounded-t-xl"
-              style={menuPos && window.innerWidth >= 768 ? {
-                top: Math.min(Math.max(menuPos.y + 4, 8), window.innerHeight - 280),
-                left: Math.min(Math.max(menuPos.x - 192, 8), window.innerWidth - 208),
-              } : undefined}
+                md:bottom-auto md:left-auto md:right-auto md:top-1/2 md:-translate-y-1/2 md:w-48 md:rounded-xl md:rounded-t-xl"
             >
               <div className="md:hidden flex justify-center pt-3 pb-1">
                 <div className="w-10 h-1 rounded-full bg-white/20" />
@@ -283,27 +274,6 @@ export default function TrackList({ tracks, showAlbum = true, showArtwork = true
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                   </svg>
                   Add to Queue
-                </button>
-                <button
-                  className="w-full px-3 py-3 flex items-center gap-3 active:bg-white/5 transition-colors text-sm text-primary text-left rounded-xl disabled:opacity-50"
-                  onClick={() => {
-                    if (offlineTracks.includes(contextMenuTrack.id)) {
-                      removeFromOffline(contextMenuTrack.id);
-                    } else {
-                      downloadForOffline(contextMenuTrack.id);
-                    }
-                    setContextMenuTrack(null);
-                  }}
-                  disabled={downloading.includes(contextMenuTrack.id)}
-                >
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
-                  </svg>
-                  {downloading.includes(contextMenuTrack.id)
-                    ? 'Saving for Offline...'
-                    : offlineTracks.includes(contextMenuTrack.id)
-                      ? 'Remove from Offline'
-                      : 'Save for Offline'}
                 </button>
               </div>
             </motion.div>

@@ -8,9 +8,9 @@ import type { Album, PaginatedResponse } from '../types';
 export default function AlbumsPage() {
   const [data, setData] = useState<PaginatedResponse<Album> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('date_added');
+  const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {

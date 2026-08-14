@@ -6,71 +6,8 @@ import { shuffleArray } from '../lib/utils';
 import { audioEngine, EQ_PRESETS } from '../lib/audio-engine';
 import { toast } from '../components/Toast';
 
-interface ReplayGainSettings {
-  mode: 'off' | 'track' | 'album';
-  prevent_clipping: boolean;
-}
-
-let replayGainSettings: ReplayGainSettings | null = null;
-let replayGainSettingsPromise: Promise<ReplayGainSettings | null> | null = null;
-const gainComputeAttempted = new Set<string>();
-
-function loadReplayGainSettings(): Promise<ReplayGainSettings | null> {
-  if (!replayGainSettingsPromise) {
-    replayGainSettingsPromise = api.settings
-      .getReplayGain()
-      .then((s) => {
-        replayGainSettings = s;
-        return s;
-      })
-      .catch(() => null);
-  }
-  return replayGainSettingsPromise;
-}
-
-export async function refreshReplayGainSettings(): Promise<void> {
-  replayGainSettingsPromise = null;
-  replayGainSettings = null;
-  await loadReplayGainSettings();
-}
-
-async function applyReplayGainFor(trackId: string): Promise<void> {
-  const settings = await loadReplayGainSettings();
-  if (!settings || settings.mode === 'off') {
-    audioEngine.resetReplayGain();
-    return;
-  }
-
-  let gain = await api.tracks.getGain(trackId).catch(() => null);
-  if (!gain || (!gain.computed && gain.track_gain == null)) {
-    if (!gainComputeAttempted.has(trackId)) {
-      gainComputeAttempted.add(trackId);
-      gain = await api.tracks.computeGain(trackId).catch(() => null);
-    } else {
-      audioEngine.resetReplayGain();
-      return;
-    }
-  }
-  if (!gain) {
-    audioEngine.resetReplayGain();
-    return;
-  }
-
-  const useAlbum = settings.mode === 'album';
-  let dB =
-    useAlbum && gain.album_gain != null ? gain.album_gain : gain.track_gain;
-  const peak =
-    useAlbum && gain.album_peak != null ? gain.album_peak : gain.track_peak;
-
-  if (dB == null) {
-    audioEngine.resetReplayGain();
-    return;
-  }
-  if (settings.prevent_clipping && peak != null && peak > 0) {
-    const maxDb = 20 * Math.log10(1 / peak);
-    dB = Math.min(dB, maxDb);
-  }
-  audioEngine.setReplayGain(dB);
+function getStreamUrl(trackId: string): string {
+  return `/api/tracks/${trackId}/stream`;
 }
 
 interface PlayerStore {
@@ -143,14 +80,20 @@ export const usePlayerStore = create<PlayerStore>()(
       eqPreset: 'flat',
 
       setAudio: (audio) => {
-        audioEngine.init(audio);
         audioEngine.setVolume(get().volume);
         set({ audio });
       },
 
       playTrack: (track, queue) => {
-        const { audio, shuffle } = get();
-        if (!audio) return;
+        const state = get();
+        let audio = state.audio;
+        const shuffle = state.shuffle;
+
+        if (!audio) {
+          audio = new Audio();
+          audio.preload = 'auto';
+          state.setAudio(audio);
+        }
 
         let newQueue = queue
           ? queue.map((t) => ({ track: t, addedAt: Date.now() }))
@@ -161,7 +104,6 @@ export const usePlayerStore = create<PlayerStore>()(
           startIndex = queue.findIndex((t) => t.id === track.id);
           if (startIndex === -1) startIndex = 0;
 
-          // Apply shuffle if enabled, same logic as playQueue
           if (shuffle && newQueue.length > 1) {
             const current = newQueue[startIndex];
             const rest = newQueue.filter((_, i) => i !== startIndex);
@@ -171,13 +113,24 @@ export const usePlayerStore = create<PlayerStore>()(
           }
         }
 
-        audio.src = `/api/tracks/${track.id}/stream`;
-        audioEngine.resume().then(() => {
-          audio.play().catch((e) => console.warn('Play failed:', e));
+        set({
+          currentTrack: track,
+          queue: newQueue,
+          queueIndex: startIndex,
+          progress: 0,
         });
+
+        audio.src = getStreamUrl(track.id);
+        if (!audioEngine.isReady) {
+          audioEngine.init(audio);
+        }
+        audioEngine.resume();
+        audio.play().then(() => {
+          set({ isPlaying: true });
+        }).catch((e) => console.warn('Play failed:', e));
+
         api.tracks.play(track.id).catch(() => {});
 
-        // Update MediaSession metadata
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: track.title,
@@ -188,20 +141,22 @@ export const usePlayerStore = create<PlayerStore>()(
             ],
           });
         }
-
-        set({
-          currentTrack: track,
-          queue: newQueue,
-          queueIndex: startIndex,
-          isPlaying: true,
-          progress: 0,
-        });
-        applyReplayGainFor(track.id);
       },
 
       playQueue: (tracks, startIndex = 0) => {
-        const { audio, shuffle } = get();
-        if (!audio || tracks.length === 0) return;
+        const state = get();
+        let audio = state.audio;
+        const shuffle = state.shuffle;
+
+        if (!audio || tracks.length === 0) {
+          if (!audio && tracks.length > 0) {
+            audio = new Audio();
+            audio.preload = 'auto';
+            state.setAudio(audio);
+          } else {
+            return;
+          }
+        }
 
         let queue = tracks.map((t) => ({ track: t, addedAt: Date.now() }));
         let index = startIndex;
@@ -215,10 +170,23 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         const track = queue[index].track;
-        audio.src = `/api/tracks/${track.id}/stream`;
-        audioEngine.resume().then(() => {
-          audio.play().catch((e) => console.warn('Play failed:', e));
+
+        set({
+          currentTrack: track,
+          queue,
+          queueIndex: index,
+          progress: 0,
         });
+
+        audio.src = getStreamUrl(track.id);
+        if (!audioEngine.isReady) {
+          audioEngine.init(audio);
+        }
+        audioEngine.resume();
+        audio.play().then(() => {
+          set({ isPlaying: true });
+        }).catch((e) => console.warn('Play failed:', e));
+
         api.tracks.play(track.id).catch(() => {});
 
         // Update MediaSession metadata
@@ -232,15 +200,6 @@ export const usePlayerStore = create<PlayerStore>()(
             ],
           });
         }
-
-        set({
-          currentTrack: track,
-          queue,
-          queueIndex: index,
-          isPlaying: true,
-          progress: 0,
-        });
-        applyReplayGainFor(track.id);
       },
 
       togglePlay: () => {
@@ -254,16 +213,15 @@ export const usePlayerStore = create<PlayerStore>()(
             navigator.mediaSession.playbackState = 'paused';
           }
         } else {
-          audioEngine.resume().then(() => {
-            audio.play().then(() => {
-              set({ isPlaying: true });
-              if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'playing';
-              }
-            }).catch((e) => {
-              console.warn('Play failed:', e);
-              set({ isPlaying: false });
-            });
+          audioEngine.resume();
+          audio.play().then(() => {
+            set({ isPlaying: true });
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.playbackState = 'playing';
+            }
+          }).catch((e) => {
+            console.warn('Play failed:', e);
+            set({ isPlaying: false });
           });
         }
       },
@@ -276,12 +234,10 @@ export const usePlayerStore = create<PlayerStore>()(
         const { queue, queueIndex, repeat, audio, shuffle, crossfade, crossfadeDuration, gapless, isCrossfading } = state;
         if (!audio || queue.length === 0 || isCrossfading) return;
 
-        // Handle repeat one - replay current track
         if (repeat === 'one' && queueIndex >= 0 && queueIndex < queue.length) {
           audio.currentTime = 0;
-          audioEngine.resume().then(() => {
-            audio.play().catch((e) => console.warn('Play failed:', e));
-          });
+          audioEngine.resume();
+          audio.play().catch((e) => console.warn('Play failed:', e));
           api.tracks.play(queue[queueIndex].track.id).catch(() => {});
           set({ isPlaying: true, progress: 0 });
           return;
@@ -313,21 +269,41 @@ export const usePlayerStore = create<PlayerStore>()(
 
         const nextTrack = queue[nextIndex].track;
 
+        set({
+          currentTrack: nextTrack,
+          queueIndex: nextIndex,
+          isPlaying: true,
+          progress: 0,
+        });
+
         if (crossfade && audioEngine.isReady && audio.duration > 0) {
-          const ctx = (audioEngine as any).ctx as AudioContext;
-          const gainNode = (audioEngine as any).gainNode as GainNode;
-          if (!ctx || !gainNode) return;
+          const ctx = audioEngine.context;
+          const gainNode = audioEngine.masterGain;
+          if (!ctx || !gainNode) {
+            audio.src = getStreamUrl(nextTrack.id);
+            audioEngine.resume();
+            audio.play().catch((e) => console.warn('Play failed:', e));
+            return;
+          }
 
           set({ isCrossfading: true });
 
           const crossfadeAudio = new Audio();
-          crossfadeAudio.crossOrigin = 'anonymous';
-          crossfadeAudio.src = `/api/tracks/${nextTrack.id}/stream`;
+          crossfadeAudio.preload = 'metadata';
+          crossfadeAudio.src = getStreamUrl(nextTrack.id);
           crossfadeAudio.volume = 1;
 
-          // Don't create a separate MediaElementSource - route through existing engine
           const crossfadeGain = ctx.createGain();
           crossfadeGain.gain.value = 0;
+
+          // Route crossfade audio through Web Audio API
+          let crossfadeSource: MediaElementAudioSourceNode | null = null;
+          try {
+            crossfadeSource = ctx.createMediaElementSource(crossfadeAudio);
+            crossfadeSource.connect(crossfadeGain);
+          } catch {
+            // If source creation fails, fall back to direct connection
+          }
           crossfadeGain.connect(ctx.destination);
 
           crossfadeAudio.addEventListener('canplaythrough', () => {
@@ -347,6 +323,9 @@ export const usePlayerStore = create<PlayerStore>()(
             if (cleaned) return;
             cleaned = true;
             crossfadeAudio.pause();
+            if (crossfadeSource) {
+              try { crossfadeSource.disconnect(); } catch {}
+            }
             crossfadeGain.disconnect();
             audio.removeEventListener('ended', cleanup);
             crossfadeAudio.removeEventListener('ended', cleanup);
@@ -365,7 +344,6 @@ export const usePlayerStore = create<PlayerStore>()(
             if (get().eqEnabled) {
               get().eqBands.forEach((gain, i) => audioEngine.setEQBand(i, gain));
             }
-            applyReplayGainFor(nextTrack.id);
 
             set({
               audio: crossfadeAudio,
@@ -377,7 +355,6 @@ export const usePlayerStore = create<PlayerStore>()(
               crossfadeTimeoutId: null,
             });
 
-            // Update MediaSession metadata for next track
             if ('mediaSession' in navigator) {
               navigator.mediaSession.metadata = new MediaMetadata({
                 title: nextTrack.title,
@@ -391,13 +368,13 @@ export const usePlayerStore = create<PlayerStore>()(
           }, crossfadeDuration * 1000);
           set({ crossfadeTimeoutId: timeoutId });
         } else {
-          audio.src = `/api/tracks/${nextTrack.id}/stream`;
-          audioEngine.resume().then(() => {
-            audio.play().catch((e) => console.warn('Play failed:', e));
-          });
+          audio.src = getStreamUrl(nextTrack.id);
+          audioEngine.resume();
+          audio.play().then(() => {
+            set({ isPlaying: true });
+          }).catch((e) => console.warn('Play failed:', e));
           api.tracks.play(nextTrack.id).catch(() => {});
 
-          // Update MediaSession metadata for next track
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: nextTrack.title,
@@ -408,19 +385,12 @@ export const usePlayerStore = create<PlayerStore>()(
               ],
             });
           }
-
-          set({
-            currentTrack: nextTrack,
-            queueIndex: nextIndex,
-            isPlaying: true,
-            progress: 0,
-          });
-          applyReplayGainFor(nextTrack.id);
         }
       },
 
       previous: () => {
-        const { queue, queueIndex, audio, progress } = get();
+        const state = get();
+        const { queue, queueIndex, audio, progress } = state;
         if (!audio || queue.length === 0) return;
 
         if (progress > 3000) {
@@ -433,13 +403,21 @@ export const usePlayerStore = create<PlayerStore>()(
         if (prevIndex < 0) prevIndex = queue.length - 1;
 
         const prevTrack = queue[prevIndex].track;
-        audio.src = `/api/tracks/${prevTrack.id}/stream`;
-        audioEngine.resume().then(() => {
-          audio.play().catch((e) => console.warn('Play failed:', e));
+
+        set({
+          currentTrack: prevTrack,
+          queueIndex: prevIndex,
+          progress: 0,
         });
+
+        audio.src = getStreamUrl(prevTrack.id);
+        audioEngine.resume();
+        audio.play().then(() => {
+          set({ isPlaying: true });
+        }).catch((e) => console.warn('Play failed:', e));
+
         api.tracks.play(prevTrack.id).catch(() => {});
 
-        // Update MediaSession metadata for previous track
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: prevTrack.title,
@@ -450,14 +428,6 @@ export const usePlayerStore = create<PlayerStore>()(
             ],
           });
         }
-
-        set({
-          currentTrack: prevTrack,
-          queueIndex: prevIndex,
-          isPlaying: true,
-          progress: 0,
-        });
-        applyReplayGainFor(prevTrack.id);
       },
 
       seek: (time) => {
@@ -541,10 +511,9 @@ export const usePlayerStore = create<PlayerStore>()(
           // Update current track to the new track at newIndex
           const newTrack = newQueue[newIndex].track;
           if (audio) {
-            audio.src = `/api/tracks/${newTrack.id}/stream`;
+             audio.src = getStreamUrl(newTrack.id);
           }
           set({ queue: newQueue, queueIndex: newIndex, currentTrack: newTrack });
-          applyReplayGainFor(newTrack.id);
           return;
         }
 
@@ -692,6 +661,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   isGuest: boolean;
+  authToken: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   loginAsGuest: () => Promise<void>;
@@ -706,20 +676,21 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
       isGuest: false,
+      authToken: null,
 
       login: async (username: string, password: string) => {
         const response = await api.auth.login(username, password);
-        set({ user: response.user, isAuthenticated: true, isGuest: false });
+        set({ user: response.user, isAuthenticated: true, isGuest: false, authToken: response.token });
       },
 
       register: async (username: string, password: string) => {
         const response = await api.auth.register(username, password);
-        set({ user: response.user, isAuthenticated: true, isGuest: false });
+        set({ user: response.user, isAuthenticated: true, isGuest: false, authToken: response.token });
       },
 
       loginAsGuest: async () => {
         const response = await api.auth.guest();
-        set({ user: response.user, isAuthenticated: true, isGuest: true });
+        set({ user: response.user, isAuthenticated: true, isGuest: true, authToken: response.token });
       },
 
       logout: async () => {
@@ -729,15 +700,30 @@ export const useAuthStore = create<AuthState>()(
           // Ignore logout errors
         }
         localStorage.removeItem('resonance-auth');
-        set({ user: null, isAuthenticated: false, isGuest: false });
+        set({ user: null, isAuthenticated: false, isGuest: false, authToken: null });
       },
 
       checkAuth: async () => {
         try {
           const user = await api.auth.me();
-          set({ user, isAuthenticated: true, isLoading: false });
+          const existingToken = useAuthStore.getState().authToken;
+          if (existingToken) {
+            set({ user, isAuthenticated: true, isLoading: false, authToken: existingToken });
+          } else {
+            try {
+              const guestResponse = await api.auth.guest();
+              set({ user: guestResponse.user, isAuthenticated: true, isLoading: false, isGuest: true, authToken: guestResponse.token });
+            } catch {
+              set({ user, isAuthenticated: true, isLoading: false });
+            }
+          }
         } catch {
-          set({ user: null, isAuthenticated: false, isLoading: false, isGuest: false });
+          try {
+            const guestResponse = await api.auth.guest();
+            set({ user: guestResponse.user, isAuthenticated: true, isLoading: false, isGuest: true, authToken: guestResponse.token });
+          } catch {
+            set({ user: null, isAuthenticated: false, isLoading: false, isGuest: false, authToken: null });
+          }
         }
       },
     }),
@@ -747,6 +733,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         isGuest: state.isGuest,
+        authToken: state.authToken,
       }),
     }
   )
@@ -918,67 +905,4 @@ export const useCastStore = create<CastState>()(
 
     setCastMenuOpen: (open) => set({ castMenuOpen: open }),
   })
-);
-
-const OFFLINE_CACHE = 'resonance-streams-v1';
-
-interface OfflineStore {
-  offlineTracks: string[];
-  downloading: string[];
-  downloadForOffline: (trackId: string) => Promise<void>;
-  removeFromOffline: (trackId: string) => Promise<void>;
-  isOfflineAvailable: (trackId: string) => boolean;
-}
-
-export const useOfflineStore = create<OfflineStore>()(
-  persist(
-    (set, get) => ({
-      offlineTracks: [],
-      downloading: [],
-
-      downloadForOffline: async (trackId) => {
-        if (get().downloading.includes(trackId)) return;
-        set((s) => ({ downloading: [...s.downloading, trackId] }));
-        try {
-          const streamUrl = `/api/tracks/${trackId}/stream`;
-          const response = await fetch(streamUrl, { credentials: 'include' });
-          if (!response.ok) throw new Error('Stream fetch failed');
-          const cache = await caches.open(OFFLINE_CACHE);
-          await cache.put(new Request(streamUrl), response);
-          const artworkUrl = `/api/tracks/${trackId}/artwork`;
-          const artResponse = await fetch(artworkUrl, { credentials: 'include' });
-          if (artResponse.ok) {
-            await cache.put(new Request(artworkUrl), artResponse);
-          }
-          set((s) => ({
-            offlineTracks: s.offlineTracks.includes(trackId)
-              ? s.offlineTracks
-              : [...s.offlineTracks, trackId],
-          }));
-          toast.success('Track saved for offline playback');
-        } catch (e) {
-          toast.error('Failed to download for offline');
-        } finally {
-          set((s) => ({ downloading: s.downloading.filter((id) => id !== trackId) }));
-        }
-      },
-
-      removeFromOffline: async (trackId) => {
-        try {
-          const cache = await caches.open(OFFLINE_CACHE);
-          await cache.delete(new Request(`/api/tracks/${trackId}/stream`));
-          await cache.delete(new Request(`/api/tracks/${trackId}/artwork`));
-        } catch {
-          // cache may be unavailable (non-secure context); state still clears
-        }
-        set((s) => ({ offlineTracks: s.offlineTracks.filter((id) => id !== trackId) }));
-      },
-
-      isOfflineAvailable: (trackId) => get().offlineTracks.includes(trackId),
-    }),
-    {
-      name: 'resonance-offline',
-      partialize: (state) => ({ offlineTracks: state.offlineTracks }),
-    }
-  )
 );

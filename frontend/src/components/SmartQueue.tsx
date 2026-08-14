@@ -94,7 +94,7 @@ export default function SmartQueue({ isOpen, onClose }: SmartQueueProps) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-24 right-4 w-80 max-w-[calc(100vw-1rem)] max-h-96 bg-surface-1 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-40 flex flex-col"
+          className="fixed bottom-32 right-4 w-80 max-h-96 bg-surface-1 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-40 flex flex-col"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
@@ -198,7 +198,7 @@ export default function SmartQueue({ isOpen, onClose }: SmartQueueProps) {
                     <span className="text-xs text-tertiary mr-1">{formatDuration(track.duration_ms)}</span>
                     <button
                       onClick={() => handleAddTrack(track)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-brand-500/20 hover:bg-brand-500/30 transition-all touch-visible"
+                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-brand-500/20 hover:bg-brand-500/30 transition-all"
                       aria-label={`Add ${track.title} to queue`}
                     >
                       <svg className="w-4 h-4 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

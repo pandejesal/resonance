@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../lib/api';
-import ErrorState from '../components/ErrorState';
 import { toast } from '../components/Toast';
-import type { Track, Playlist } from '../types';
+import type { Track } from '../types';
 
 interface DuplicateTrack extends Track {}
 
@@ -12,14 +11,12 @@ export default function MusicToolsPage() {
   const [platform, setPlatform] = useState('all');
   const [results, setResults] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Track[]>([]);
   const [activeTab, setActiveTab] = useState<'search' | 'transfer' | 'utils' | 'spotify' | 'duplicates'>('search');
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     setLoading(true);
-    setError(null);
     try {
       const data = await api.search(query, 30);
       let tracks = data.tracks || [];
@@ -28,7 +25,7 @@ export default function MusicToolsPage() {
       }
       setResults(tracks);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Search failed');
+      toast.error('Search failed');
     } finally {
       setLoading(false);
     }
@@ -152,7 +149,6 @@ export default function MusicToolsPage() {
 
           {/* Results */}
           <div className="space-y-1">
-            {error && <ErrorState message={error} onRetry={handleSearch} />}
             {results.map((track, i) => (
               <motion.div
                 key={`${track.platform}-${track.id}`}
@@ -212,100 +208,96 @@ export default function MusicToolsPage() {
 }
 
 function TransferTab() {
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [selectedPlaylist, setSelectedPlaylist] = useState('');
-  const [targetPlatform, setTargetPlatform] = useState('spotify');
+  const [source, setSource] = useState('spotify');
+  const [target, setTarget] = useState('youtube_music');
+  const [playlistId, setPlaylistId] = useState('');
+  const [token, setToken] = useState('');
+  const [targetToken, setTargetToken] = useState('');
+  const [playlistName, setPlaylistName] = useState('');
   const [transferring, setTransferring] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState<any>(null);
 
-  useEffect(() => {
-    api.playlists.list()
-      .then(setPlaylists)
-      .catch(() => toast.error('Failed to load playlists'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleExport = async () => {
-    if (!selectedPlaylist) return;
+  const handleTransfer = async () => {
+    if (!playlistId.trim()) return;
     setTransferring(true);
     try {
-      const response = await api.transfer.export(selectedPlaylist, targetPlatform);
-      if (!response.ok) {
-        const err = await response.json();
-        toast.error(err.error || 'Export failed');
-        return;
-      }
-      const blob = await response.blob();
-      const disposition = response.headers.get('Content-Disposition');
-      let filename = 'playlist';
-      if (disposition) {
-        const match = disposition.match(/filename="?([^"]+)"?/);
-        if (match) filename = match[1];
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Playlist exported');
+      setProgress({
+        status: 'not_implemented',
+        total: 0,
+        matched: 0,
+        not_found: 0,
+        message: 'Cross-platform playlist transfer requires server-side OAuth integration. Use the Import page to import playlists from files.',
+      });
     } catch (e) {
-      toast.error('Export failed');
+      toast.error('Transfer failed');
     } finally {
       setTransferring(false);
     }
   };
 
-  const platforms = [
-    { id: 'spotify', name: 'Spotify', desc: 'CSV format - import via Spotify web player' },
-    { id: 'youtube_music', name: 'YouTube Music', desc: 'Text list - search & add manually' },
-    { id: 'apple_music', name: 'Apple Music', desc: 'M3U format - import via iTunes/File menu' },
-    { id: 'soundcloud', name: 'SoundCloud', desc: 'Text list - search & add manually' },
-  ];
-
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 max-w-2xl">
       <div className="surface-card p-6 space-y-4">
         <h2 className="text-lg font-semibold text-primary">Transfer Playlist</h2>
-        <p className="text-sm text-secondary">
-          Export a Resonance playlist as a file you can import into another music service.
-        </p>
 
-        <div>
-          <label className="block text-xs text-secondary mb-1">Playlist</label>
-          {loading ? (
-            <div className="flex items-center justify-center h-10">
-              <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : (
-            <select
-              value={selectedPlaylist}
-              onChange={(e) => setSelectedPlaylist(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="">Choose a playlist...</option>
-              {playlists.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.track_count} tracks)</option>
-              ))}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-secondary mb-1">From Platform</label>
+            <select value={source} onChange={e => setSource(e.target.value)} className="input-field w-full">
+              <option value="spotify">Spotify</option>
+              <option value="youtube_music">YouTube Music</option>
+              <option value="soundcloud">SoundCloud</option>
             </select>
-          )}
+          </div>
+          <div>
+            <label className="block text-xs text-secondary mb-1">To Platform</label>
+            <select value={target} onChange={e => setTarget(e.target.value)} className="input-field w-full">
+              <option value="spotify">Spotify</option>
+              <option value="youtube_music">YouTube Music</option>
+              <option value="soundcloud">SoundCloud</option>
+            </select>
+          </div>
         </div>
 
         <div>
-          <label className="block text-xs text-secondary mb-1">Target Platform</label>
-          <select value={targetPlatform} onChange={(e) => setTargetPlatform(e.target.value)} className="input-field w-full">
-            {platforms.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} - {p.desc}</option>
-            ))}
-          </select>
+          <label className="block text-xs text-secondary mb-1">Playlist ID or URL</label>
+          <input type="text" value={playlistId} onChange={e => setPlaylistId(e.target.value)} placeholder="e.g., 37i9dQZF1DXcBWIGoYBM5M" className="input-field w-full" />
         </div>
 
-        <button onClick={handleExport} disabled={transferring || !selectedPlaylist} className="btn-primary w-full">
-          {transferring ? 'Exporting...' : 'Export Playlist'}
+        <div>
+          <label className="block text-xs text-secondary mb-1">New Playlist Name</label>
+          <input type="text" value={playlistName} onChange={e => setPlaylistName(e.target.value)} placeholder="Transferred with Resonance" className="input-field w-full" />
+        </div>
+
+        {(source === 'spotify' || target === 'spotify') && (
+          <div>
+            <label className="block text-xs text-secondary mb-1">Spotify Access Token</label>
+            <input type="password" value={source === 'spotify' ? token : targetToken} onChange={e => source === 'spotify' ? setToken(e.target.value) : setTargetToken(e.target.value)} placeholder="BQDj..." className="input-field w-full" />
+          </div>
+        )}
+
+        <button onClick={handleTransfer} disabled={transferring || !playlistId.trim()} className="btn-primary w-full">
+          {transferring ? 'Transferring...' : 'Transfer Playlist'}
         </button>
       </div>
+
+      {progress && (
+        <div className="surface-card p-4">
+          <h3 className="font-medium text-primary mb-2">Transfer Status</h3>
+          <div className="space-y-1 text-sm">
+            {progress.message ? (
+              <p className="text-secondary">{progress.message}</p>
+            ) : (
+              <>
+                <p className="text-secondary">Status: <span className="text-primary">{progress.status}</span></p>
+                <p className="text-secondary">Total: <span className="text-primary">{progress.total}</span></p>
+                <p className="text-secondary">Matched: <span className="text-brand-400">{progress.matched}</span></p>
+                <p className="text-secondary">Not Found: <span className="text-accent-400">{progress.not_found}</span></p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

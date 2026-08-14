@@ -47,7 +47,6 @@ export default function EffectsPanel() {
         onClick={() => navigate('/upgrade')}
         className="p-2 rounded-lg hover:bg-white/5 text-tertiary hover:text-primary transition-colors"
         title="Audio Effects (Pro)"
-        aria-label="Audio Effects (Pro)"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -62,8 +61,6 @@ export default function EffectsPanel() {
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 rounded-lg hover:bg-white/5 text-tertiary hover:text-primary transition-colors"
         title="Audio Effects"
-        aria-label="Audio Effects"
-        aria-expanded={isOpen}
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -76,7 +73,7 @@ export default function EffectsPanel() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-full right-0 mb-2 w-80 max-w-[calc(100vw-1rem)] bg-surface-1/95 backdrop-blur-xl rounded-2xl border border-white/10 p-4 shadow-2xl z-50"
+            className="absolute bottom-full right-0 mb-2 w-80 bg-surface-1/95 backdrop-blur-xl rounded-2xl border border-white/10 p-4 shadow-2xl z-50"
           >
             <h3 className="text-sm font-bold text-primary mb-3">Audio Effects</h3>
 

@@ -1,10 +1,10 @@
+#![allow(dead_code, unused_variables)]
 use log::info;
 use sqlx::migrate;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 
-pub mod db {
-    use super::*;
+
 
     pub struct Database {
         pub pool: SqlitePool,
@@ -62,14 +62,24 @@ pub mod db {
                 .await?;
 
             if user_count.0 == 0 {
-                use argon2::{Argon2, password_hash::{PasswordHasher, SaltString, rand_core::OsRng}};
+                use argon2::{
+                    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+                    Argon2,
+                };
 
                 let salt = SaltString::generate(&mut OsRng);
                 let argon2 = Argon2::default();
-                let password_hash = argon2
-                    .hash_password(b"admin", &salt)
-                    .unwrap()
-                    .to_string();
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                let admin_password: String = (0..16)
+                    .map(|_| {
+                        let idx = rng.gen_range(0..62);
+                        if idx < 10 { (b'0' + idx) as char }
+                        else if idx < 36 { (b'a' + idx - 10) as char }
+                        else { (b'A' + idx - 36) as char }
+                    })
+                    .collect();
+                let password_hash = argon2.hash_password(admin_password.as_bytes(), &salt).unwrap().to_string();
 
                 let id = uuid::Uuid::new_v4().to_string();
                 sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, 'admin', ?, 'admin')")
@@ -78,13 +88,12 @@ pub mod db {
                     .execute(&self.pool)
                     .await?;
 
-                info!("Created default admin user (username: admin, password: admin)");
+                info!("Created default admin user (username: admin, password: {})", admin_password);
             }
 
             Ok(())
         }
     }
-}
 
 #[allow(dead_code)]
 pub fn create_schema() -> String {

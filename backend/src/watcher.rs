@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_imports, unused_mut)]
 use dashmap::DashMap;
 use log::{error, info, warn};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -76,8 +77,21 @@ impl WatcherService {
         Ok(())
     }
 
+    pub fn remove_library(&mut self, library_id: &str) {
+        if let Some((_, mut watcher)) = self.watchers.remove(library_id) {
+            if let Some((_, path)) = self.library_paths.remove(library_id) {
+                let _ = watcher.unwatch(Path::new(&path));
+            }
+            drop(watcher);
+            info!("Stopped watching library {}", library_id);
+        }
+        self.last_event.remove(library_id);
+    }
+
     pub fn start_watching(&mut self) -> Result<(), String> {
-        let paths: Vec<(String, String)> = self.library_paths.iter()
+        let paths: Vec<(String, String)> = self
+            .library_paths
+            .iter()
             .map(|r| (r.key().clone(), r.value().clone()))
             .collect();
         let mut errors = Vec::new();
@@ -154,9 +168,53 @@ fn handle_event(
                     let tracks = Scanner::scan_files_parallel(files, &library_id, &state);
 
                     for track in &tracks {
-if let Err(e) = track.insert(&db).await {
-                            warn!("Failed to insert track {}: {}", track.file_path, e);
-                        }
+                        let _ = sqlx::query(
+                            "INSERT OR REPLACE INTO tracks (id, title, artist, album, album_artist, genre, year, track_number, disc_number, duration_ms, file_path, file_name, file_size, file_modified, format, sample_rate, bit_depth, bitrate, channels, codec, composer, lyricist, mood, bpm, rating, play_count, skip_count, last_played, date_added, has_artwork, artwork_hash, lyrics, comment, grouping, copyright, custom_tags, folder, library_id, fingerprint, waveform_peaks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                        )
+                        .bind(&track.id)
+                        .bind(&track.title)
+                        .bind(&track.artist)
+                        .bind(&track.album)
+                        .bind(&track.album_artist)
+                        .bind(&track.genre)
+                        .bind(track.year)
+                        .bind(track.track_number)
+                        .bind(track.disc_number)
+                        .bind(track.duration_ms)
+                        .bind(&track.file_path)
+                        .bind(&track.file_name)
+                        .bind(track.file_size)
+                        .bind(&track.file_modified)
+                        .bind(&track.format)
+                        .bind(track.sample_rate)
+                        .bind(track.bit_depth)
+                        .bind(track.bitrate)
+                        .bind(track.channels)
+                        .bind(&track.codec)
+                        .bind(&track.composer)
+                        .bind(&track.lyricist)
+                        .bind(&track.mood)
+                        .bind(track.bpm)
+                        .bind(track.rating)
+                        .bind(track.play_count)
+                        .bind(track.skip_count)
+                        .bind(&track.last_played)
+                        .bind(&track.date_added)
+                        .bind(track.has_artwork)
+                        .bind(&track.artwork_hash)
+                        .bind(&track.lyrics)
+                        .bind(&track.comment)
+                        .bind(&track.grouping)
+                        .bind(&track.copyright)
+                        .bind(&track.custom_tags)
+                        .bind(&track.folder)
+                        .bind(&track.library_id)
+                        .bind(&track.fingerprint)
+                        .bind(&track.waveform_peaks)
+                        .execute(&db)
+                        .await
+                        .map_err(|e| warn!("Failed to insert track {}: {}", track.file_path, e))
+                        .ok();
                     }
 
                     info!(
@@ -214,9 +272,53 @@ pub async fn start_watching_task(service: Arc<Mutex<WatcherService>>) {
                 let tracks = Scanner::scan_files_parallel(files, &library_id, &state);
 
                 for track in &tracks {
-                    if let Err(e) = track.insert(&db).await {
-                        warn!("Failed to insert track {}: {}", track.file_path, e);
-                    }
+                    let _ = sqlx::query(
+                        "INSERT OR REPLACE INTO tracks (id, title, artist, album, album_artist, genre, year, track_number, disc_number, duration_ms, file_path, file_name, file_size, file_modified, format, sample_rate, bit_depth, bitrate, channels, codec, composer, lyricist, mood, bpm, rating, play_count, skip_count, last_played, date_added, has_artwork, artwork_hash, lyrics, comment, grouping, copyright, custom_tags, folder, library_id, fingerprint, waveform_peaks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    )
+                    .bind(&track.id)
+                    .bind(&track.title)
+                    .bind(&track.artist)
+                    .bind(&track.album)
+                    .bind(&track.album_artist)
+                    .bind(&track.genre)
+                    .bind(track.year)
+                    .bind(track.track_number)
+                    .bind(track.disc_number)
+                    .bind(track.duration_ms)
+                    .bind(&track.file_path)
+                    .bind(&track.file_name)
+                    .bind(track.file_size)
+                    .bind(&track.file_modified)
+                    .bind(&track.format)
+                    .bind(track.sample_rate)
+                    .bind(track.bit_depth)
+                    .bind(track.bitrate)
+                    .bind(track.channels)
+                    .bind(&track.codec)
+                    .bind(&track.composer)
+                    .bind(&track.lyricist)
+                    .bind(&track.mood)
+                    .bind(track.bpm)
+                    .bind(track.rating)
+                    .bind(track.play_count)
+                    .bind(track.skip_count)
+                    .bind(&track.last_played)
+                    .bind(&track.date_added)
+                    .bind(track.has_artwork)
+                    .bind(&track.artwork_hash)
+                    .bind(&track.lyrics)
+                    .bind(&track.comment)
+                    .bind(&track.grouping)
+                    .bind(&track.copyright)
+                    .bind(&track.custom_tags)
+                    .bind(&track.folder)
+                    .bind(&track.library_id)
+                    .bind(&track.fingerprint)
+                    .bind(&track.waveform_peaks)
+                    .execute(&db)
+                    .await
+                    .map_err(|e| warn!("Failed to insert track {}: {}", track.file_path, e))
+                    .ok();
                 }
 
                 service.lock().last_event.remove(&library_id);

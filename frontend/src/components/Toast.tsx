@@ -58,11 +58,7 @@ export default function ToastContainer() {
   };
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 z-[100] space-y-2 pointer-events-none"
-    >
+    <div className="fixed bottom-32 right-4 z-[100] space-y-2 pointer-events-none">
       <AnimatePresence>
         {items.map((t) => (
           <motion.div

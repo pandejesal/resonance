@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { useUIStore, usePlayerStore } from '../stores';
 import { api } from '../lib/api';
-import ErrorState from '../components/ErrorState';
 import { formatDuration, getArtworkUrl, cn } from '../lib/utils';
+import ErrorState from './ErrorState';
 import type { Track, Album, Artist } from '../types';
 
 export default function SearchModal() {
   const { searchOpen, toggleSearch } = useUIStore();
   const { playTrack } = usePlayerStore();
-  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -27,7 +25,6 @@ export default function SearchModal() {
       setTracks([]);
       setAlbums([]);
       setArtists([]);
-      setError(null);
     }
   }, [searchOpen]);
 
@@ -36,25 +33,31 @@ export default function SearchModal() {
       setTracks([]);
       setAlbums([]);
       setArtists([]);
-      setError(null);
       return;
     }
+
+    const controller = new AbortController();
 
     const timeoutId = setTimeout(async () => {
       setLoading(true);
       setError(null);
       try {
-        const results = await api.search(query, 10);
+        const results = await api.search(query, 10, undefined, controller.signal);
         setTracks(results.tracks);
         setAlbums(results.albums);
         setArtists(results.artists);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Search failed');
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          setError(e instanceof Error ? e.message : 'Search failed');
+        }
       }
       setLoading(false);
     }, 200);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [query]);
 
   useEffect(() => {
@@ -80,11 +83,8 @@ export default function SearchModal() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
             onClick={toggleSearch}
-            role="button"
-            aria-label="Close search"
-            tabIndex={-1}
           />
 
           <motion.div
@@ -92,11 +92,11 @@ export default function SearchModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed top-[10%] left-1/2 -translate-x-1/2 w-full max-w-2xl z-50"
+            className="fixed inset-0 md:inset-auto md:top-[10%] md:left-1/2 md:-translate-x-1/2 w-full md:max-w-2xl md:max-h-[80vh] z-[60] flex flex-col"
           >
-            <div className="glass-strong rounded-2xl overflow-hidden mx-4">
+            <div className="glass-strong md:rounded-2xl overflow-hidden h-full flex flex-col">
               {/* Search input */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
                 <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -109,21 +109,27 @@ export default function SearchModal() {
                   className="flex-1 bg-transparent text-primary placeholder-tertiary outline-none text-lg"
                   aria-label="Search music library"
                 />
-                <kbd className="hidden sm:block text-xs text-tertiary px-2 py-1 rounded-lg bg-white/5">
-                  ESC
-                </kbd>
+                <button
+                  onClick={toggleSearch}
+                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                  aria-label="Close search"
+                >
+                  <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
 
               {/* Results */}
-              <div className="max-h-[60vh] overflow-y-auto p-2">
+              <div className="flex-1 overflow-y-auto p-2 min-h-0">
                 {loading && (
                   <div className="py-8 text-center text-secondary">
                     <div className="inline-block w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}
 
-                {!loading && error && (
-                  <ErrorState message={error} onRetry={undefined} />
+                {error && (
+                  <ErrorState message={error} onRetry={() => setQuery(query)} />
                 )}
 
                 {!loading && !error && query && tracks.length === 0 && albums.length === 0 && artists.length === 0 && (
@@ -173,13 +179,9 @@ export default function SearchModal() {
                   <div className="mb-4">
                     <h3 className="text-xs font-medium text-tertiary px-3 mb-2">Albums</h3>
                     {albums.map((album) => (
-                      <button
+                      <div
                         key={album.id}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors text-left"
-                        onClick={() => {
-                          toggleSearch();
-                          navigate(`/library?album=${encodeURIComponent(album.id)}`);
-                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                       >
                         <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
                           {album.has_artwork ? (
@@ -200,7 +202,7 @@ export default function SearchModal() {
                           <p className="text-sm font-medium text-primary truncate">{album.title}</p>
                           <p className="text-xs text-secondary truncate">{album.artist}</p>
                         </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -209,13 +211,9 @@ export default function SearchModal() {
                   <div>
                     <h3 className="text-xs font-medium text-tertiary px-3 mb-2">Artists</h3>
                     {artists.map((artist) => (
-                      <button
+                      <div
                         key={artist.id}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors text-left"
-                        onClick={() => {
-                          toggleSearch();
-                          navigate(`/library?artist=${encodeURIComponent(artist.id)}`);
-                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
                       >
                         <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-surface-2 flex items-center justify-center">
                           <svg className="w-5 h-5 text-white/20" fill="currentColor" viewBox="0 0 24 24">
@@ -226,7 +224,7 @@ export default function SearchModal() {
                           <p className="text-sm font-medium text-primary truncate">{artist.name}</p>
                           <p className="text-xs text-secondary">{artist.track_count} tracks</p>
                         </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 )}

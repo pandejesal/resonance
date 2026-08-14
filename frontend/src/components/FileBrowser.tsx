@@ -121,7 +121,7 @@ export default function FileBrowser({ isOpen, onClose, onSelect }: FileBrowserPr
             ref={fileInputRef}
             type="file"
             className="hidden"
-            // @ts-ignore
+            // @ts-expect-error fix
             webkitdirectory=""
             directory=""
             multiple
@@ -131,7 +131,7 @@ export default function FileBrowser({ isOpen, onClose, onSelect }: FileBrowserPr
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-white/5">
             <h2 className="text-lg font-semibold text-primary">Select Music Folder</h2>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/5 text-secondary" aria-label="Close file browser">
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/5 text-secondary">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>

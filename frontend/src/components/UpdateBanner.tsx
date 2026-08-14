@@ -58,7 +58,7 @@ export default function UpdateBanner() {
         initial={{ y: -60, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: -60, opacity: 0 }}
-        className="fixed top-0 left-0 right-0 lg:left-64 z-50 bg-brand-600 text-white px-4 py-3 shadow-lg"
+        className="fixed top-0 left-0 right-0 z-50 bg-brand-600 text-white px-4 py-3 shadow-lg"
       >
         <div className="flex items-center justify-between max-w-screen-2xl mx-auto">
           <div className="flex items-center gap-3">
@@ -94,7 +94,6 @@ export default function UpdateBanner() {
                 <button
                   onClick={() => setDismissed(true)}
                   className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-                  aria-label="Dismiss update banner"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -28,7 +28,7 @@ export default function WaveformDisplay({
   useEffect(() => {
     if (!trackId) return;
     let cancelled = false;
-    fetch(`/api/tracks/${trackId}/waveform`)
+    fetch(`/api/tracks/${trackId}/waveform`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled && data.peaks && data.peaks.length > 0) {

@@ -55,7 +55,12 @@ export default function TransferPage() {
     if (!selectedPlaylist || !targetPlatform) return;
     setExporting(true);
     try {
-      const response = await api.transfer.export(selectedPlaylist, targetPlatform);
+      const response = await fetch(`/api/transfer/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ playlist_id: selectedPlaylist, target_platform: targetPlatform }),
+      });
       if (!response.ok) {
         const err = await response.json();
         toast.error(err.error || 'Export failed');
