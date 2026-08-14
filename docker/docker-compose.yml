@@ -1,0 +1,44 @@
+# Resonance - Self-Hosted Music Server
+#
+# For auto-update support, also mount the Docker socket:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+#
+# WARNING: Mounting /var/run/docker.sock gives root-equivalent host access.
+# Only use it if you need the auto-updater feature.
+
+services:
+  resonance:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: resonance
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - resonance-data:/app/data
+      # Mount your music folder here. Examples:
+      #   Windows:  C:\Users\YOU\Music:/music:ro
+      #   macOS:    /Users/YOU/Music:/music:ro
+      #   Linux:    /home/YOU/Music:/music:ro
+      # You can also mount your entire home or a parent folder for browsing:
+      #   Windows:  C:\Users\YOU:/music:ro
+      #   Linux:    /home/YOU:/music:ro
+      # - /path/to/your/music:/music:ro
+      # Docker socket for auto-updates (optional, security risk):
+      # - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=/app/data/resonance.db
+      - HOST=0.0.0.0
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  resonance-data:
+    driver: local

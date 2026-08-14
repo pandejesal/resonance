@@ -1,0 +1,52 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.pandejesal.resonance'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.pandejesal.resonance"
+        minSdk 24
+        targetSdk 34
+        versionCode 7
+        versionName "0.5.3"
+    }
+    signingConfigs {
+        debug {
+            storeFile file(System.getenv("ANDROID_KEYSTORE") ?: "${System.getProperty('user.home')}/.android/debug.keystore")
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "android"
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: "android"
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.9.0'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.core:core-ktx:1.12.0'
+}

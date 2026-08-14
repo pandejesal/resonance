@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+target/
+
+# Build outputs
+dist/
+*.exe
+*.pdb
+*.msi
+*.app
+*.dmg
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Environment
+.env
+.env.local
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Android build artifacts
+android/.gradle/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/
+android/app/src/main/jniLibs/*.so
+android/app/src/main/jniLibs/arm64-v8a/
+android/app/src/main/jniLibs/armeabi-v7a/
+
+# Test/debug files
+*.png
+*.log
+adb-*.txt
+test_*.png
+screen_*.png
+screenshot*.png
+gradle-*.log
+
+# Debug build scripts (not android/gradlew.bat)
+build*.bat

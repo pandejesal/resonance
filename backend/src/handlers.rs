@@ -1,0 +1,4768 @@
+use crate::lyrics;
+use crate::models::*;
+use crate::scanner::Scanner;
+use crate::scrobble::{self, ScrobbleService};
+use crate::updater;
+use crate::ws::WsClients;
+use actix_web::http::header::{HeaderName, HeaderValue};
+use actix_web::{web, HttpRequest, HttpResponse};
+use argon2::{Argon2, PasswordVerifier, password_hash::{PasswordHash, PasswordHasher, SaltString, rand_core::OsRng}};
+use parking_lot::Mutex;
+use rand::seq::SliceRandom;
+use rand::Rng;
+use sha2::Digest;
+use sqlx::SqlitePool;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+macro_rules! auth_guard {
+    ($req:expr) => {
+        if let Err(e) = require_auth(&$req) {
+            return e;
+        }
+    };
+}
+
+pub struct AppState {
+    pub db: SqlitePool,
+    pub scanner: Arc<Mutex<Scanner>>,
+    pub ws_clients: Arc<WsClients>,
+    pub cast_targets: Arc<Mutex<HashMap<String, CastTarget>>>,
+    pub fts_ready: Arc<AtomicBool>,
+}
+
+/// Build a safe FTS5 MATCH expression from a user query: strip query syntax
+/// (quotes, parens, *, ^, -, +, colon), then prefix-match every token so
+/// "machi" finds "machine" (substring-style behavior like the old LIKE).
+pub fn build_fts_query(q: &str) -> String {
+    q.split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
+        .filter(|t| {
+            !t.is_empty()
+                && t.chars()
+                    .all(|c| !matches!(c, '"' | '\'' | ':' | '(' | ')' | '*' | '^' | '-' | '+'))
+        })
+        .map(|t| format!("{}*", t))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Background startup task: rebuild the FTS index once if empty, then mark
+/// search() as ready (search falls back to LIKE until then).
+pub async fn fts_backfill(pool: SqlitePool, ready: Arc<AtomicBool>) {
+    let count = match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tracks_fts")
+        .fetch_one(&pool)
+        .await
+    {
+        Ok(n) => n,
+        Err(e) => {
+            log::error!("FTS backfill count failed: {}", e);
+            return;
+        }
+    };
+
+    if count == 0 {
+        match sqlx::query("INSERT INTO tracks_fts(tracks_fts) VALUES('rebuild')")
+            .execute(&pool)
+            .await
+        {
+            Ok(_) => {
+                let tracks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or(0);
+                log::info!("FTS index rebuilt ({} tracks indexed)", tracks);
+            }
+            Err(e) => {
+                log::error!("FTS rebuild failed: {}", e);
+                return;
+            }
+        }
+    } else {
+        log::info!("FTS index already populated ({} rows)", count);
+    }
+
+    ready.store(true, Ordering::SeqCst);
+}
+
+pub fn path_within_libraries(libraries: &[Library], canonical: &std::path::Path) -> bool {
+    libraries.iter().any(|lib| {
+        PathBuf::from(&lib.path)
+            .canonicalize()
+            .map(|p| canonical.starts_with(&p))
+            .unwrap_or(false)
+    })
+}
+
+pub async fn get_libraries(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let libraries = sqlx::query_as::<_, Library>("SELECT * FROM libraries ORDER BY name")
+        .fetch_all(&data.db)
+        .await;
+
+    match libraries {
+        Ok(libs) => HttpResponse::Ok().json(libs),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn create_library(
+    data: web::Data<AppState>,
+    body: web::Json<CreateLibraryRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    if body.name.trim().is_empty() || body.path.trim().is_empty() {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Library name and path are required"}));
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let result = sqlx::query("INSERT INTO libraries (id, name, path) VALUES (?, ?, ?)")
+        .bind(&id)
+        .bind(&body.name)
+        .bind(&body.path)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => {
+            let library = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&data.db)
+                .await;
+            match library {
+                Ok(lib) => HttpResponse::Created().json(lib),
+                Err(e) => HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": e.to_string()})),
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn delete_library(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let lib = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    if let Ok(lib) = lib {
+        if std::fs::remove_dir_all(&lib.path).is_err() {
+            // Directory may not exist or may be in use; continue with DB cleanup
+        }
+    }
+
+    let result = sqlx::query("DELETE FROM libraries WHERE id = ?")
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn scan_library(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+
+    let library_id = path.into_inner();
+
+    let library = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
+        .bind(&library_id)
+        .fetch_one(&data.db)
+        .await;
+
+    let library = match library {
+        Ok(lib) => lib,
+        Err(_) => {
+            return HttpResponse::NotFound().json(serde_json::json!({"error": "Library not found"}))
+        }
+    };
+
+    // Guard against concurrent scans of the same library
+    {
+        let scanner = data.scanner.lock();
+        if scanner.is_scanning(&library_id) {
+            return HttpResponse::Conflict()
+                .json(serde_json::json!({"error": "Library is already being scanned"}));
+        }
+    }
+
+    let start = std::time::Instant::now();
+
+    let scanner = data.scanner.lock();
+    let state = scanner.scan_library(library_id.clone(), library.path.clone());
+    let is_scanning = state.is_scanning.clone();
+    let files_found = state.files_found.clone();
+    let files_processed = state.files_processed.clone();
+    let files_skipped = state.files_skipped.clone();
+    let errors = state.errors.clone();
+    drop(state);
+    drop(scanner);
+
+    let db = data.db.clone();
+    let lib_id = library_id.clone();
+    let lib_path = library.path.clone();
+    let ws_clients = data.ws_clients.clone();
+
+    tokio::spawn(async move {
+        sqlx::query("UPDATE libraries SET is_scanning = TRUE WHERE id = ?")
+            .bind(&lib_id)
+            .execute(&db)
+            .await
+            .ok();
+
+        sqlx::query(
+            "INSERT OR REPLACE INTO scan_progress (library_id, files_found, files_processed, files_skipped, errors, is_complete, started_at) VALUES (?, 0, 0, 0, 0, FALSE, datetime('now'))"
+        )
+        .bind(&lib_id)
+        .execute(&db)
+        .await
+        .ok();
+
+        let files = Scanner::collect_files(&lib_path);
+        files_found.store(files.len() as i32, std::sync::atomic::Ordering::Relaxed);
+
+        let scan_state = crate::scanner::LibraryScanState {
+            is_scanning: is_scanning.clone(),
+            files_found: files_found.clone(),
+            files_processed: files_processed.clone(),
+            files_skipped: files_skipped.clone(),
+            errors: errors.clone(),
+        };
+
+        let tracks = Scanner::scan_files_parallel(files, &lib_id, &scan_state);
+
+        let mut tx = match db.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                log::error!("scan_library transaction begin failed: {}", e);
+                sqlx::query("UPDATE libraries SET is_scanning = FALSE WHERE id = ?")
+                    .bind(&lib_id)
+                    .execute(&db)
+                    .await
+                    .ok();
+                return;
+            }
+        };
+
+        for track in &tracks {
+            if let Err(e) = track.insert(&mut *tx).await {
+                log::error!("scan_library insert failed for {}: {}", track.file_path, e);
+            }
+        }
+
+        if let Err(e) = tx.commit().await {
+            log::error!("scan_library transaction commit failed for {}: {}", lib_id, e);
+            sqlx::query("UPDATE libraries SET is_scanning = FALSE WHERE id = ?")
+                .bind(&lib_id)
+                .execute(&db)
+                .await
+                .ok();
+            return;
+        }
+
+        sqlx::query("UPDATE libraries SET is_scanning = FALSE, track_count = ?, last_scan = datetime('now') WHERE id = ?")
+            .bind(tracks.len() as i32)
+            .bind(&lib_id)
+            .execute(&db)
+            .await
+            .ok();
+
+        sqlx::query(
+            "UPDATE scan_progress SET files_processed = ?, is_complete = TRUE WHERE library_id = ?",
+        )
+        .bind(files_processed.load(std::sync::atomic::Ordering::Relaxed))
+        .bind(&lib_id)
+        .execute(&db)
+        .await
+        .ok();
+
+        // Broadcast scan completion via WebSocket
+        let processed = files_processed.load(std::sync::atomic::Ordering::Relaxed);
+        let found = files_found.load(std::sync::atomic::Ordering::Relaxed);
+        crate::ws::broadcast_scan_progress(&ws_clients, &lib_id, found, processed, true).await;
+
+        let elapsed = start.elapsed().as_secs_f64();
+        log::info!("Library scan completed in {:.1}s", elapsed);
+    });
+
+    // Broadcast scan start via WebSocket
+    let ws = data.ws_clients.clone();
+    let lib_id_ws = library_id.clone();
+    tokio::spawn(async move {
+        crate::ws::broadcast_scan_progress(&ws, &lib_id_ws, 0, 0, false).await;
+    });
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "Scan started",
+        "library_id": library_id,
+    }))
+}
+
+pub async fn get_scan_progress(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let library_id = path.into_inner();
+    let scanner = data.scanner.lock();
+
+    match scanner.get_progress(&library_id) {
+        Some((found, processed, skipped, errors, is_scanning)) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "files_found": found,
+                "files_processed": processed,
+                "files_skipped": skipped,
+                "errors": errors,
+                "is_scanning": is_scanning,
+            }))
+        }
+        None => HttpResponse::Ok().json(serde_json::json!({
+            "files_found": 0,
+            "files_processed": 0,
+            "files_skipped": 0,
+            "errors": 0,
+            "is_scanning": false,
+        })),
+    }
+}
+
+pub async fn get_tracks(data: web::Data<AppState>, query: web::Query<QueryParams>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let per_page = query.per_page.unwrap_or(50).clamp(1, 200);
+
+    let mut where_clauses = vec!["1=1".to_string()];
+    let mut binds: Vec<String> = Vec::new();
+
+    if let Some(ref artist) = query.artist {
+        where_clauses.push("artist = ?".to_string());
+        binds.push(artist.clone());
+    }
+    if let Some(ref artist_id) = query.artist_id {
+        let name: Option<String> = sqlx::query_scalar("SELECT name FROM artists WHERE id = ?")
+            .bind(artist_id)
+            .fetch_optional(&data.db)
+            .await
+            .ok()
+            .flatten();
+        match name {
+            Some(name) => {
+                where_clauses.push("artist = ?".to_string());
+                binds.push(name);
+            }
+            None => where_clauses.push("1=0".to_string()),
+        }
+    }
+    if let Some(ref album) = query.album {
+        where_clauses.push("album = ?".to_string());
+        binds.push(album.clone());
+    }
+    if let Some(ref album_id) = query.album_id {
+        let meta: Option<(String, String)> =
+            sqlx::query_as("SELECT title, artist FROM albums WHERE id = ?")
+                .bind(album_id)
+                .fetch_optional(&data.db)
+                .await
+                .ok()
+                .flatten();
+        match meta {
+            Some((title, artist)) => {
+                where_clauses.push("album = ?".to_string());
+                binds.push(title);
+                where_clauses.push("artist = ?".to_string());
+                binds.push(artist);
+            }
+            None => where_clauses.push("1=0".to_string()),
+        }
+    }
+    if let Some(ref genre) = query.genre {
+        where_clauses.push("genre = ?".to_string());
+        binds.push(genre.clone());
+    }
+    if let Some(year) = query.year {
+        where_clauses.push("year = ?".to_string());
+        binds.push(year.to_string());
+    }
+    if let Some(ref folder) = query.folder {
+        where_clauses.push("folder LIKE ?".to_string());
+        binds.push(format!("{}%", folder));
+    }
+    if let Some(ref mood) = query.mood {
+        where_clauses.push("mood = ?".to_string());
+        binds.push(mood.clone());
+    }
+    if let Some(min_rating) = query.min_rating {
+        where_clauses.push("rating >= ?".to_string());
+        binds.push(min_rating.to_string());
+    }
+    if query.recent.unwrap_or(false) {
+        where_clauses.push("date_added >= datetime('now', '-7 days')".to_string());
+    }
+
+    let where_str = where_clauses.join(" AND ");
+    let count_query = format!("SELECT COUNT(*) FROM tracks WHERE {}", where_str);
+
+    let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
+    for bind in &binds {
+        count_q = count_q.bind(bind);
+    }
+    let total = match count_q.fetch_one(&data.db).await {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_tracks count failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let sort = query.sort.as_deref().unwrap_or("date_added");
+    let order = query.order.as_deref().unwrap_or("DESC");
+    let allowed_sorts = [
+        "id",
+        "title",
+        "artist",
+        "album",
+        "year",
+        "date_added",
+        "duration_ms",
+        "play_count",
+        "rating",
+        "genre",
+    ];
+    let sort_col = if allowed_sorts.contains(&sort) {
+        sort
+    } else {
+        "date_added"
+    };
+    let order_dir = if order.to_uppercase() == "ASC" {
+        "ASC"
+    } else {
+        "DESC"
+    };
+
+    let use_keyset = query.last_id.is_some() && sort_col == "id";
+
+    let tracks = match if use_keyset {
+        let last_id = query.last_id.as_ref().unwrap();
+        let op = if order_dir == "ASC" { ">" } else { "<" };
+        let sql = format!(
+            "SELECT * FROM tracks WHERE id {} ? AND {} ORDER BY id {} LIMIT {}",
+            op, where_str, order_dir, per_page
+        );
+        let mut q = sqlx::query_as::<_, Track>(&sql);
+        q = q.bind(last_id);
+        for bind in &binds {
+            q = q.bind(bind);
+        }
+        q.fetch_all(&data.db).await
+    } else {
+        let page = query.page.unwrap_or(1).max(1);
+        let offset = (page - 1) * per_page;
+        let sql = format!(
+            "SELECT * FROM tracks WHERE {} ORDER BY {} {} LIMIT {} OFFSET {}",
+            where_str, sort_col, order_dir, per_page, offset
+        );
+        let mut q = sqlx::query_as::<_, Track>(&sql);
+        for bind in &binds {
+            q = q.bind(bind);
+        }
+        q.fetch_all(&data.db).await
+    } {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_tracks fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let total_pages = (total as f64 / per_page as f64).ceil() as i32;
+    let page = query.page.unwrap_or(1).max(1);
+
+    HttpResponse::Ok().json(PaginatedResponse {
+        items: tracks,
+        total,
+        page,
+        per_page,
+        total_pages,
+    })
+}
+
+pub async fn get_track(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    match track {
+        Ok(t) => HttpResponse::Ok().json(t),
+        Err(_) => HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+    }
+}
+
+pub async fn update_track(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<UpdateTrackRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let mut updates = vec![];
+
+    if body.title.is_some() {
+        updates.push("title = ?");
+    }
+    if body.artist.is_some() {
+        updates.push("artist = ?");
+    }
+    if body.album.is_some() {
+        updates.push("album = ?");
+    }
+    if body.album_artist.is_some() {
+        updates.push("album_artist = ?");
+    }
+    if body.genre.is_some() {
+        updates.push("genre = ?");
+    }
+    if body.year.is_some() {
+        updates.push("year = ?");
+    }
+    if body.rating.is_some() {
+        updates.push("rating = ?");
+    }
+    if body.mood.is_some() {
+        updates.push("mood = ?");
+    }
+    if body.bpm.is_some() {
+        updates.push("bpm = ?");
+    }
+    if body.lyrics.is_some() {
+        updates.push("lyrics = ?");
+    }
+    if body.track_number.is_some() {
+        updates.push("track_number = ?");
+    }
+    if body.disc_number.is_some() {
+        updates.push("disc_number = ?");
+    }
+    if body.composer.is_some() {
+        updates.push("composer = ?");
+    }
+    if body.musical_key.is_some() {
+        updates.push("musical_key = ?");
+    }
+
+    if updates.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "No fields to update"}));
+    }
+
+    let sql = format!("UPDATE tracks SET {} WHERE id = ?", updates.join(", "));
+    let mut query = sqlx::query(&sql);
+    if body.title.is_some() {
+        query = query.bind(&body.title);
+    }
+    if body.artist.is_some() {
+        query = query.bind(&body.artist);
+    }
+    if body.album.is_some() {
+        query = query.bind(&body.album);
+    }
+    if body.album_artist.is_some() {
+        query = query.bind(&body.album_artist);
+    }
+    if body.genre.is_some() {
+        query = query.bind(&body.genre);
+    }
+    if body.year.is_some() {
+        query = query.bind(body.year);
+    }
+    if body.rating.is_some() {
+        query = query.bind(body.rating);
+    }
+    if body.mood.is_some() {
+        query = query.bind(&body.mood);
+    }
+    if body.bpm.is_some() {
+        query = query.bind(body.bpm);
+    }
+    if body.lyrics.is_some() {
+        query = query.bind(&body.lyrics);
+    }
+    if body.track_number.is_some() {
+        query = query.bind(body.track_number);
+    }
+    if body.disc_number.is_some() {
+        query = query.bind(body.disc_number);
+    }
+    if body.composer.is_some() {
+        query = query.bind(&body.composer);
+    }
+    if body.musical_key.is_some() {
+        query = query.bind(&body.musical_key);
+    }
+    let result = query.bind(&id).execute(&data.db).await;
+
+    match result {
+        Ok(_) => {
+            let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&data.db)
+                .await;
+            match track {
+                Ok(t) => HttpResponse::Ok().json(t),
+                Err(e) => HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": e.to_string()})),
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn play_track(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await
+        .ok()
+        .flatten();
+
+    if let Some(track) = track {
+        sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
+            .bind(&id)
+            .execute(&data.db)
+            .await
+            .ok();
+
+        sqlx::query(
+            "INSERT INTO listening_history (track_id, played_at) VALUES (?, datetime('now'))",
+        )
+        .bind(&id)
+        .execute(&data.db)
+        .await
+        .ok();
+
+        let db = data.db.clone();
+        let track_id = track.id.clone();
+        let artist = track.artist.clone();
+        let title = track.title.clone();
+        let album = track.album.clone();
+        let timestamp = chrono::Utc::now().timestamp();
+
+        tokio::spawn(async move {
+            let service = ScrobbleService::new();
+            service
+                .update_now_playing(&db, &artist, &title, &album)
+                .await;
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            service
+                .scrobble(&db, &track_id, &artist, &title, &album, timestamp)
+                .await;
+            service.retry_pending_scrobbles(&db).await;
+        });
+
+        // Broadcast now playing via WebSocket
+        let ws = data.ws_clients.clone();
+        tokio::spawn(async move {
+            crate::ws::broadcast_now_playing(&ws, &track).await;
+        });
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({"success": true}))
+}
+
+pub async fn stream_track(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    let track = match track {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("Stream: track not found {}: {}", id, e);
+            return HttpResponse::NotFound().finish();
+        }
+    };
+
+    let file_path = std::path::Path::new(&track.file_path);
+
+    // Validate the file path is within a configured library directory
+    match file_path.canonicalize() {
+        Ok(canonical) => {
+            let libraries = match sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+                .fetch_all(&data.db)
+                .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    log::error!("stream path-validation libraries fetch failed: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .json(serde_json::json!({"error": "Database error"}));
+                }
+            };
+            let allowed = path_within_libraries(&libraries, &canonical);
+            if !allowed {
+                log::warn!("Stream: path outside libraries: {}", track.file_path);
+                return HttpResponse::Forbidden()
+                    .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+            }
+        }
+        Err(_) => {
+            log::warn!("Stream: file not found: {}", track.file_path);
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "File not found"}));
+        }
+    }
+
+    if !file_path.exists() {
+        log::warn!(
+            "Stream: file not found: {} (exists={})",
+            track.file_path,
+            file_path.exists()
+        );
+        return HttpResponse::NotFound()
+            .json(serde_json::json!({"error": "File not found"}));
+    }
+
+    let mime = get_mime_type(&track.format);
+
+    match actix_files::NamedFile::open(file_path) {
+        Ok(f) => {
+            let mut response = f.into_response(&req);
+            response.headers_mut().insert(
+                HeaderName::from_static("accept-ranges"),
+                HeaderValue::from_static("bytes"),
+            );
+            response.headers_mut().insert(
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_str(mime)
+                    .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+            );
+            response
+        }
+        Err(_) => HttpResponse::NotFound().finish(),
+    }
+}
+
+pub async fn get_waveform(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let row = sqlx::query_as::<_, (Option<String>, String)>(
+        "SELECT waveform_peaks, file_path FROM tracks WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_optional(&data.db)
+    .await;
+
+    let (peaks_json, file_path) = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({ "error": "Track not found" }));
+        }
+        Err(e) => {
+            log::error!("get_waveform fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": "Database error" }));
+        }
+    };
+
+    if let Some(peaks_json) = peaks_json {
+        let peaks: Vec<f32> = serde_json::from_str(&peaks_json).unwrap_or_default();
+        return HttpResponse::Ok().json(serde_json::json!({ "peaks": peaks }));
+    }
+
+    // Waveform not computed at scan time: decode + compute on first request,
+    // then persist (same lazy pattern as ReplayGain).
+    let peaks: Vec<f32> = match tokio::task::spawn_blocking(move || crate::scanner::compute_waveform_peaks(&file_path))
+        .await
+    {
+        Ok(Some(json)) => {
+            if let Err(e) = sqlx::query("UPDATE tracks SET waveform_peaks = ? WHERE id = ?")
+                .bind(&json)
+                .bind(&id)
+                .execute(&data.db)
+                .await
+            {
+                log::error!("waveform persist failed for {}: {}", id, e);
+            }
+            serde_json::from_str(&json).unwrap_or_default()
+        }
+        _ => Vec::new(),
+    };
+
+    HttpResponse::Ok().json(serde_json::json!({ "peaks": peaks }))
+}
+
+pub async fn get_track_gain(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    match crate::compute_gain::get_track_gain(&data.db, &id).await {
+        Some(gain) => HttpResponse::Ok().json(gain),
+        None => HttpResponse::NotFound().json(serde_json::json!({ "error": "Track not found" })),
+    }
+}
+
+pub async fn compute_track_gain(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    match crate::compute_gain::compute_track_gain(&data.db, &id).await {
+        Ok(gain) => HttpResponse::Ok().json(gain),
+        Err(e) => HttpResponse::BadRequest().json(serde_json::json!({ "error": e })),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct ReplayGainSettings {
+    pub mode: String,
+    pub prevent_clipping: bool,
+}
+
+pub async fn get_replaygain_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let mode = crate::scrobble::get_setting(&data.db, "replaygain_mode")
+        .await
+        .unwrap_or_else(|| "off".to_string());
+    let prevent_clipping = crate::scrobble::get_setting(&data.db, "replaygain_prevent_clipping")
+        .await
+        .map(|v| v == "true")
+        .unwrap_or(true);
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "mode": mode,
+        "prevent_clipping": prevent_clipping,
+    }))
+}
+
+pub async fn update_replaygain_settings(
+    data: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<ReplayGainSettings>,
+) -> HttpResponse {
+    auth_guard!(req);
+    let settings = body.into_inner();
+
+    if !matches!(settings.mode.as_str(), "off" | "track" | "album") {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "mode must be one of: off, track, album"
+        }));
+    }
+
+    crate::scrobble::set_setting(&data.db, "replaygain_mode", &settings.mode).await;
+    crate::scrobble::set_setting(&data.db, "replaygain_prevent_clipping", &settings.prevent_clipping.to_string()).await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "mode": settings.mode,
+        "prevent_clipping": settings.prevent_clipping,
+    }))
+}
+
+pub async fn get_artwork(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let cached = sqlx::query_as::<_, (Vec<u8>, String)>(
+        "SELECT artwork_data, mime_type FROM artwork_cache WHERE track_id = ?",
+    )
+    .bind(&id)
+    .fetch_optional(&data.db)
+    .await;
+
+    if let Ok(Some((art_data, mime))) = cached {
+        return HttpResponse::Ok().content_type(mime).body(art_data);
+    }
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    let track = match track {
+        Ok(t) => t,
+        Err(_) => return HttpResponse::NotFound().finish(),
+    };
+
+    // Respect explicit artwork removal (upload API sets has_artwork=0; without this,
+    // removal would be undone by re-extraction from the audio file)
+    if !track.has_artwork {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let file_path = std::path::Path::new(&track.file_path);
+    if !file_path.exists() {
+        return HttpResponse::NotFound().finish();
+    }
+
+    match crate::scanner::extract_artwork(file_path) {
+        Ok(Some(artwork)) => {
+            let mime = "image/jpeg".to_string();
+            let _ = sqlx::query(
+                "INSERT OR REPLACE INTO artwork_cache (track_id, artwork_data, mime_type, hash, cached_at) VALUES (?, ?, ?, '', datetime('now'))"
+            )
+            .bind(&id)
+            .bind(&artwork)
+            .bind(&mime)
+            .execute(&data.db)
+            .await;
+
+            HttpResponse::Ok().content_type(mime).body(artwork)
+        }
+        _ => HttpResponse::NotFound().finish(),
+    }
+}
+
+pub async fn upload_artwork(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await;
+    let track = match track {
+        Ok(Some(t)) => t,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+        Err(_) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"})),
+    };
+
+    const MAX_ARTWORK_BYTES: usize = 16 * 1024 * 1024;
+    if body.len() > MAX_ARTWORK_BYTES {
+        return HttpResponse::PayloadTooLarge().json(serde_json::json!({"error": "Artwork too large (max 16 MB)"}));
+    }
+    if body.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Empty image body"}));
+    }
+
+    let mime = match req
+        .headers()
+        .get(actix_web::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_lowercase())
+        .as_deref()
+    {
+        Some("image/jpeg") | Some("image/png") | Some("image/webp") | Some("image/gif") | Some("image/avif") => {
+            Some(req.headers().get(actix_web::http::header::CONTENT_TYPE).unwrap().to_str().unwrap().to_lowercase())
+        }
+        _ => None,
+    };
+    let mime = match mime {
+        Some(m) => m,
+        None => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Content-Type must be image/jpeg, image/png, image/webp, image/gif, or image/avif"})),
+    };
+
+    match image::load_from_memory(&body) {
+        Ok(img) => {
+            let (width, height) = (img.width(), img.height());
+            let hash = sha2::Sha256::digest(&body);
+            let hash_str = format!("{:x}", hash);
+
+            let res = sqlx::query(
+                "INSERT OR REPLACE INTO artwork_cache (track_id, artwork_data, mime_type, width, height, hash, cached_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+            )
+            .bind(&id)
+            .bind(body.as_ref())
+            .bind(&mime)
+            .bind(width as i32)
+            .bind(height as i32)
+            .bind(&hash_str)
+            .execute(&data.db)
+            .await;
+
+            if res.is_err() {
+                return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to store artwork"}));
+            }
+
+            let _ = sqlx::query("UPDATE tracks SET has_artwork = 1, artwork_hash = ? WHERE id = ?")
+                .bind(&hash_str)
+                .bind(&id)
+                .execute(&data.db)
+                .await;
+
+            let _ = sqlx::query("UPDATE albums SET has_artwork = 1, artwork_hash = ? WHERE title = ? AND artist = ?")
+                .bind(&hash_str)
+                .bind(&track.album)
+                .bind(&track.artist)
+                .execute(&data.db)
+                .await;
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "ok": true,
+                "mime_type": mime,
+                "width": width,
+                "height": height,
+                "hash": hash_str,
+            }))
+        }
+        Err(_) => HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid image data"})),
+    }
+}
+
+pub async fn delete_artwork(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await;
+    let track = match track {
+        Ok(Some(t)) => t,
+        Ok(None) => return HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+        Err(_) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"})),
+    };
+
+    let _ = sqlx::query("DELETE FROM artwork_cache WHERE track_id = ?")
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    let _ = sqlx::query("UPDATE tracks SET has_artwork = 0, artwork_hash = NULL WHERE id = ?")
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    let _ = sqlx::query("UPDATE albums SET has_artwork = 0, artwork_hash = NULL WHERE title = ? AND artist = ?")
+        .bind(&track.album)
+        .bind(&track.artist)
+        .execute(&data.db)
+        .await;
+
+    HttpResponse::Ok().json(serde_json::json!({"ok": true}))
+}
+
+pub async fn get_albums(data: web::Data<AppState>, query: web::Query<QueryParams>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(50).clamp(1, 200);
+    let offset = (page - 1) * per_page;
+
+    let sort = query.sort.as_deref().unwrap_or("date_added");
+    let order = query.order.as_deref().unwrap_or("DESC");
+    let sort_col = match sort {
+        "title" => "title",
+        "artist" => "artist",
+        "year" => "year",
+        "track_count" => "track_count",
+        _ => "date_added",
+    };
+    let order_dir = if order.to_uppercase() == "ASC" {
+        "ASC"
+    } else {
+        "DESC"
+    };
+
+    let sql = format!(
+        "SELECT * FROM albums ORDER BY {} {} LIMIT {} OFFSET {}",
+        sort_col, order_dir, per_page, offset
+    );
+
+    let albums = match sqlx::query_as::<_, Album>(&sql)
+        .fetch_all(&data.db)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_albums fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let total: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM albums")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_albums count failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let total_pages = (total as f64 / per_page as f64).ceil() as i32;
+
+    HttpResponse::Ok().json(PaginatedResponse {
+        items: albums,
+        total,
+        page,
+        per_page,
+        total_pages,
+    })
+}
+
+pub async fn get_artists(
+    data: web::Data<AppState>,
+    query: web::Query<QueryParams>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(50).clamp(1, 200);
+    let offset = (page - 1) * per_page;
+
+    let sql = format!(
+        "SELECT * FROM artists ORDER BY name ASC LIMIT {} OFFSET {}",
+        per_page, offset
+    );
+
+    let artists = match sqlx::query_as::<_, Artist>(&sql)
+        .fetch_all(&data.db)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_artists fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let total: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM artists")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_artists count failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let total_pages = (total as f64 / per_page as f64).ceil() as i32;
+
+    HttpResponse::Ok().json(PaginatedResponse {
+        items: artists,
+        total,
+        page,
+        per_page,
+        total_pages,
+    })
+}
+
+pub async fn search(data: web::Data<AppState>, query: web::Query<SearchQuery>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let tracks = if data.fts_ready.load(Ordering::Relaxed) {
+        let match_q = build_fts_query(&query.q);
+        if match_q.is_empty() {
+            Vec::new()
+        } else {
+            match sqlx::query_as::<_, Track>(
+                "SELECT t.* FROM tracks_fts f JOIN tracks t ON t.id = f.track_id WHERE tracks_fts MATCH ? ORDER BY bm25(tracks_fts) LIMIT ? OFFSET ?"
+            )
+            .bind(&match_q)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&data.db)
+            .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    log::error!("search tracks (FTS5) failed: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .json(serde_json::json!({"error": "Database error"}));
+                }
+            }
+        }
+    } else {
+        let q = format!("%{}%", query.q);
+        match sqlx::query_as::<_, Track>(
+            "SELECT * FROM tracks WHERE title LIKE ?1 OR artist LIKE ?1 OR album LIKE ?1 OR genre LIKE ?1 OR file_name LIKE ?1 OR folder LIKE ?1 OR lyrics LIKE ?1 ORDER BY play_count DESC LIMIT ?2 OFFSET ?3"
+        )
+        .bind(&q)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&data.db)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                log::error!("search tracks failed: {}", e);
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": "Database error"}));
+            }
+        }
+    };
+
+    let q = format!("%{}%", query.q);
+
+    let albums = match sqlx::query_as::<_, Album>(
+        "SELECT * FROM albums WHERE title LIKE ?1 OR artist LIKE ?1 ORDER BY track_count DESC LIMIT ?2"
+    )
+    .bind(&q)
+    .bind(limit / 2)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("search albums failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let artists = match sqlx::query_as::<_, Artist>(
+        "SELECT * FROM artists WHERE name LIKE ?1 ORDER BY track_count DESC LIMIT ?2",
+    )
+    .bind(&q)
+    .bind(limit / 2)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("search artists failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let playlists = match sqlx::query_as::<_, Playlist>(
+        "SELECT * FROM playlists WHERE name LIKE ?1 OR description LIKE ?1 ORDER BY name LIMIT ?2"
+    )
+    .bind(&q)
+    .bind(limit / 2)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("search playlists failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let total = tracks.len() as i64 + albums.len() as i64 + artists.len() as i64 + playlists.len() as i64;
+
+    HttpResponse::Ok().json(SearchResults {
+        tracks,
+        albums,
+        artists,
+        playlists,
+        total,
+    })
+}
+
+pub async fn get_recently_played(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20).clamp(1, 100);
+    let tracks = match sqlx::query_as::<_, Track>(
+        "SELECT t.* FROM tracks t INNER JOIN listening_history lh ON t.id = lh.track_id GROUP BY t.id ORDER BY MAX(lh.played_at) DESC LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_recently_played failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    HttpResponse::Ok().json(tracks)
+}
+
+pub async fn get_most_played(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(20).clamp(1, 100);
+    let tracks = match sqlx::query_as::<_, Track>(
+        "SELECT * FROM tracks WHERE play_count > 0 ORDER BY play_count DESC LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_most_played failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    HttpResponse::Ok().json(tracks)
+}
+
+pub async fn get_genres(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let genres = match sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT genre FROM tracks WHERE genre IS NOT NULL AND genre != '' ORDER BY genre",
+    )
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_genres failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    HttpResponse::Ok().json(genres)
+}
+
+pub async fn get_folders(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let folders = match sqlx::query_scalar::<_, String>("SELECT DISTINCT folder FROM tracks ORDER BY folder")
+            .fetch_all(&data.db)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                log::error!("get_folders failed: {}", e);
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": "Database error"}));
+            }
+        };
+
+    HttpResponse::Ok().json(folders)
+}
+
+pub async fn get_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let total_tracks: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_stats total_tracks failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let total_albums: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM albums")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_stats total_albums failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let total_artists: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM artists")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_stats total_artists failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let total_duration: i64 = match sqlx::query_scalar("SELECT COALESCE(SUM(duration_ms), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_stats total_duration failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let total_size: i64 = match sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_stats total_size failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let top_artists = match sqlx::query_as::<_, (String, i64)>(
+        "SELECT artist, COUNT(*) as track_count FROM tracks GROUP BY artist ORDER BY track_count DESC LIMIT 10"
+    )
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_stats top_artists failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    }
+    .into_iter()
+    .map(|(name, track_count)| serde_json::json!({"name": name, "track_count": track_count}))
+    .collect::<Vec<_>>();
+
+    let recently_played = match sqlx::query_as::<_, Track>(
+        "SELECT t.* FROM tracks t JOIN listening_history lh ON t.id = lh.track_id ORDER BY lh.played_at DESC LIMIT 10"
+    )
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_stats recently_played failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let most_played = match sqlx::query_as::<_, Track>(
+        "SELECT * FROM tracks WHERE play_count > 0 ORDER BY play_count DESC LIMIT 10",
+    )
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_stats most_played failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "total_tracks": total_tracks,
+        "total_albums": total_albums,
+        "total_artists": total_artists,
+        "total_duration_ms": total_duration,
+        "total_size_bytes": total_size,
+        "top_artists": top_artists,
+        "recently_played": recently_played,
+        "most_played": most_played,
+    }))
+}
+
+pub async fn create_playlist(
+    data: web::Data<AppState>,
+    body: web::Json<CreatePlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = uuid::Uuid::new_v4().to_string();
+
+    let result = sqlx::query(
+        "INSERT INTO playlists (id, name, description, is_smart, smart_filter, parent_id, library_id) VALUES (?, ?, ?, ?, ?, ?, '')"
+    )
+    .bind(&id)
+    .bind(&body.name)
+    .bind(&body.description)
+    .bind(body.is_smart.unwrap_or(false))
+    .bind(&body.smart_filter)
+    .bind(&body.parent_id)
+    .execute(&data.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            let playlist = sqlx::query_as::<_, Playlist>("SELECT * FROM playlists WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&data.db)
+                .await;
+            match playlist {
+                Ok(p) => HttpResponse::Created().json(p),
+                Err(e) => HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": e.to_string()})),
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn get_playlists(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let playlists =
+        sqlx::query_as::<_, Playlist>("SELECT * FROM playlists ORDER BY sort_order, name")
+            .fetch_all(&data.db)
+            .await;
+
+    match playlists {
+        Ok(p) => HttpResponse::Ok().json(p),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn add_track_to_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<AddTrackToPlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+    let position = body.position.unwrap_or(0);
+
+    let result = sqlx::query(
+        "INSERT OR REPLACE INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES (?, ?, ?, datetime('now'))"
+    )
+    .bind(&playlist_id)
+    .bind(&body.track_id)
+    .bind(position)
+    .execute(&data.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            sqlx::query("UPDATE playlists SET track_count = (SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?), updated_at = datetime('now') WHERE id = ?")
+                .bind(&playlist_id)
+                .bind(&playlist_id)
+                .execute(&data.db)
+                .await
+                .ok();
+            HttpResponse::Ok().json(serde_json::json!({"success": true}))
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn get_playlist_tracks(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+
+    let tracks = match sqlx::query_as::<_, Track>(
+        "SELECT t.* FROM tracks t JOIN playlist_tracks pt ON t.id = pt.track_id WHERE pt.playlist_id = ? ORDER BY pt.position"
+    )
+    .bind(&playlist_id)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_playlist_tracks failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    HttpResponse::Ok().json(tracks)
+}
+
+pub async fn delete_playlist(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+    let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+    let result = sqlx::query("DELETE FROM playlists WHERE id = ?")
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+fn get_mime_type(format: &str) -> &str {
+    match format.to_lowercase().as_str() {
+        "mp3" => "audio/mpeg",
+        "flac" => "audio/flac",
+        "wav" => "audio/wav",
+        "aiff" | "aif" => "audio/aiff",
+        "ogg" => "audio/ogg",
+        "opus" => "audio/opus",
+        "aac" => "audio/aac",
+        "m4a" | "m4b" | "mp4" => "audio/mp4",
+        "dsf" | "dff" => "audio/dsd",
+        _ => "application/octet-stream",
+    }
+}
+
+// ── Listening History ──────────────────────────────────────────────
+
+pub async fn get_listening_history(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let limit: i64 = query.get("limit").and_then(|l| l.parse().ok()).unwrap_or(50).clamp(1, 200);
+    let rows = match sqlx::query_as::<_, (String, String, String, String)>(
+        "SELECT lh.track_id, t.title, t.artist, lh.played_at FROM listening_history lh JOIN tracks t ON lh.track_id = t.id ORDER BY lh.played_at DESC LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_listening_history failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let history: Vec<serde_json::Value> = rows.iter().map(|(id, title, artist, played)| {
+        serde_json::json!({"track_id": id, "title": title, "artist": artist, "played_at": played})
+    }).collect();
+    HttpResponse::Ok().json(history)
+}
+
+pub async fn record_play(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let track_id = path.into_inner();
+    if let Err(e) = sqlx::query("INSERT INTO listening_history (track_id) VALUES (?)")
+        .bind(&track_id)
+        .execute(&data.db)
+        .await
+    {
+        log::error!("record_play history insert failed: {}", e);
+    }
+    if let Err(e) = sqlx::query("UPDATE tracks SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?")
+        .bind(&track_id)
+        .execute(&data.db)
+        .await
+    {
+        log::error!("record_play update failed: {}", e);
+    }
+    HttpResponse::Ok().json(serde_json::json!({"ok": true}))
+}
+
+// ── Playlist Tools ────────────────────────────────────────────────
+
+pub async fn shuffle_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<ShufflePlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+    let mode = body.mode.as_deref().unwrap_or("smart");
+
+    let tracks = match get_playlist_track_ids(&data.db, &playlist_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("shuffle_playlist fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let shuffled = match mode {
+        "random" => {
+            let mut rng = rand::thread_rng();
+            let mut ids: Vec<String> = tracks.into_iter().map(|t| t.0).collect();
+            ids.shuffle(&mut rng);
+            ids
+        }
+        "no-consecutive-artist" => {
+            let mut rng = rand::thread_rng();
+            let mut track_ids: Vec<String> = tracks.into_iter().map(|t| t.0).collect();
+            let mut result = Vec::new();
+
+            while !track_ids.is_empty() {
+                if result.is_empty() {
+                    let idx = rng.gen_range(0..track_ids.len());
+                    result.push(track_ids.remove(idx));
+                } else {
+                    let last_artist = match get_artist_for_track(&data.db, result.last().unwrap()).await {
+                        Ok(a) => a,
+                        Err(e) => {
+                            log::error!("shuffle_playlist artist fetch failed: {}", e);
+                            return HttpResponse::InternalServerError()
+                                .json(serde_json::json!({"error": "Database error"}));
+                        }
+                    };
+                    let mut valid: Vec<usize> = Vec::new();
+                    for (i, id) in track_ids.iter().enumerate() {
+                        let artist = match get_artist_for_track(&data.db, id).await {
+                            Ok(a) => a,
+                            Err(e) => {
+                                log::error!("shuffle_playlist artist fetch failed: {}", e);
+                                return HttpResponse::InternalServerError()
+                                    .json(serde_json::json!({"error": "Database error"}));
+                            }
+                        };
+                        if artist != last_artist {
+                            valid.push(i);
+                        }
+                    }
+                    if valid.is_empty() {
+                        let idx = rng.gen_range(0..track_ids.len());
+                        result.push(track_ids.remove(idx));
+                    } else {
+                        let pick = valid[rng.gen_range(0..valid.len())];
+                        result.push(track_ids.remove(pick));
+                    }
+                }
+            }
+            result
+        }
+        _ => {
+            // "smart" shuffle: interleave high and low play-count tracks
+            let mut by_play: Vec<(String, i32)> = tracks;
+            by_play.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+            let mut result = Vec::new();
+            let mut low = by_play.len() / 2;
+            let mut high = 0;
+            let mut toggle = true;
+            while high < by_play.len() / 2 || low < by_play.len() {
+                if toggle && high < by_play.len() / 2 {
+                    result.push(by_play[high].0.clone());
+                    high += 1;
+                } else if low < by_play.len() {
+                    result.push(by_play[low].0.clone());
+                    low += 1;
+                } else if high < by_play.len() / 2 {
+                    result.push(by_play[high].0.clone());
+                    high += 1;
+                }
+                toggle = !toggle;
+            }
+            result
+        }
+    };
+
+    let count = shuffled.len() as i32;
+    save_playlist_order(&data.db, &playlist_id, &shuffled).await;
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Shuffled {} tracks using '{}' mode", count, mode),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(count),
+        details: Some(serde_json::json!({"mode": mode, "tracks_shuffled": count})),
+    })
+}
+
+pub async fn sort_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<SortPlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+
+    let tracks = match get_playlist_tracks_full(&data.db, &playlist_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("sort_playlist fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let order = body.order.as_deref().unwrap_or("asc");
+    let mut sorted = tracks;
+    match body.sort_by.as_str() {
+        "title" => sorted.sort_by(|a, b| cmp_with_order(&a.title, &b.title, order)),
+        "artist" => sorted.sort_by(|a, b| cmp_with_order(&a.artist, &b.artist, order)),
+        "album" => sorted.sort_by(|a, b| cmp_with_order(&a.album, &b.album, order)),
+        "duration" => {
+            sorted.sort_by(|a, b| cmp_with_order_num(a.duration_ms, b.duration_ms, order))
+        }
+        "year" => sorted.sort_by(|a, b| cmp_with_order_opt(a.year, b.year, order)),
+        "date_added" => sorted.sort_by(|a, b| cmp_with_order(&a.date_added, &b.date_added, order)),
+        "play_count" => sorted
+            .sort_by(|a, b| cmp_with_order_num(a.play_count as i64, b.play_count as i64, order)),
+        "rating" => sorted.sort_by(|a, b| cmp_with_order_opt(a.rating, b.rating, order)),
+        "genre" => sorted.sort_by(|a, b| {
+            let ga = a.genre.as_deref().unwrap_or("");
+            let gb = b.genre.as_deref().unwrap_or("");
+            cmp_with_order(ga, gb, order)
+        }),
+        "random" => {
+            let mut rng = rand::thread_rng();
+            sorted.shuffle(&mut rng);
+        }
+        _ => {}
+    }
+
+    let ids: Vec<String> = sorted.into_iter().map(|t| t.id).collect();
+    let count = ids.len() as i32;
+    save_playlist_order(&data.db, &playlist_id, &ids).await;
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Sorted {} tracks by {}", count, body.sort_by),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(count),
+        details: Some(
+            serde_json::json!({"sort_by": body.sort_by, "order": order, "tracks_sorted": count}),
+        ),
+    })
+}
+
+pub async fn dedupe_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<DedupePlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+    let strategy = body.strategy.as_deref().unwrap_or("title_artist");
+
+    let tracks = match get_playlist_tracks_full(&data.db, &playlist_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("dedupe_playlist fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let before_count = tracks.len();
+    let mut seen = std::collections::HashSet::new();
+    let mut unique_ids = Vec::new();
+    let mut duplicates = Vec::new();
+
+    for track in &tracks {
+        let key = match strategy {
+            "exact" => format!("{}:{}", track.file_path, track.title),
+            "fingerprint" => track
+                .fingerprint
+                .clone()
+                .unwrap_or_else(|| format!("{}:{}", track.title, track.artist)),
+            _ => format!(
+                "{}:{}",
+                track.title.to_lowercase(),
+                track.artist.to_lowercase()
+            ),
+        };
+        if seen.insert(key) {
+            unique_ids.push(track.id.clone());
+        } else {
+            duplicates.push(track.title.clone());
+        }
+    }
+
+    let removed = before_count - unique_ids.len();
+    save_playlist_order(&data.db, &playlist_id, &unique_ids).await;
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Removed {} duplicate tracks", removed),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(removed as i32),
+        details: Some(serde_json::json!({
+            "strategy": strategy,
+            "before": before_count,
+            "after": unique_ids.len(),
+            "removed": removed,
+            "duplicate_titles": duplicates,
+        })),
+    })
+}
+
+pub async fn generate_playlist(
+    data: web::Data<AppState>,
+    body: web::Json<GeneratePlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let count = body.count.unwrap_or(20).clamp(1, 100);
+
+    let mut where_clauses = vec!["1=1".to_string()];
+    let mut binds: Vec<String> = Vec::new();
+
+    match body.source.as_str() {
+        "genre" => {
+            if let Some(ref genre) = body.source_value {
+                where_clauses.push("genre = ?".to_string());
+                binds.push(genre.clone());
+            }
+        }
+        "artist" => {
+            if let Some(ref artist) = body.source_value {
+                where_clauses.push("artist LIKE ?".to_string());
+                binds.push(format!("%{}%", artist));
+            }
+        }
+        "mood" => {
+            if let Some(ref mood) = body.source_value {
+                where_clauses.push("mood = ?".to_string());
+                binds.push(mood.clone());
+            }
+        }
+        "recently_played" => {
+            where_clauses.push("last_played IS NOT NULL".to_string());
+            where_clauses.push("last_played != ''".to_string());
+        }
+        "unplayed" => {
+            where_clauses.push("play_count = 0".to_string());
+        }
+        "top_rated" => {
+            where_clauses.push("rating IS NOT NULL".to_string());
+            where_clauses.push("rating >= 4".to_string());
+        }
+        _ => {} // "library" - no extra filter
+    }
+
+    if let Some(min_dur) = body.min_duration_ms {
+        where_clauses.push("duration_ms >= ?".to_string());
+        binds.push(min_dur.to_string());
+    }
+    if let Some(max_dur) = body.max_duration_ms {
+        where_clauses.push("duration_ms <= ?".to_string());
+        binds.push(max_dur.to_string());
+    }
+    if let Some(min_rating) = body.min_rating {
+        where_clauses.push("rating >= ?".to_string());
+        binds.push(min_rating.to_string());
+    }
+
+    let where_str = where_clauses.join(" AND ");
+    let sql = format!(
+        "SELECT * FROM tracks WHERE {} ORDER BY RANDOM() LIMIT {}",
+        where_str, count
+    );
+
+    let mut q = sqlx::query_as::<_, Track>(&sql);
+    for bind in &binds {
+        q = q.bind(bind);
+    }
+    let tracks = match q.fetch_all(&data.db).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("generate_playlist fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "No tracks match the specified criteria".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    // Create the playlist
+    let id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO playlists (id, name, description, library_id) VALUES (?, ?, ?, '')",
+    )
+    .bind(&id)
+    .bind(&body.name)
+    .bind(format!("Auto-generated from: {}", body.source))
+    .execute(&data.db)
+    .await
+    {
+        log::error!("generate_playlist insert failed: {}", e);
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": "Database error"}));
+    }
+
+    let track_ids: Vec<String> = tracks.iter().map(|t| t.id.clone()).collect();
+    save_playlist_order(&data.db, &id, &track_ids).await;
+
+    let total_duration: i64 = tracks.iter().map(|t| t.duration_ms).sum();
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Generated '{}' with {} tracks", body.name, tracks.len()),
+        playlist_id: Some(id),
+        affected_tracks: Some(tracks.len() as i32),
+        details: Some(serde_json::json!({
+            "name": body.name,
+            "source": body.source,
+            "track_count": tracks.len(),
+            "total_duration_ms": total_duration,
+        })),
+    })
+}
+
+pub async fn share_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<SharePlaylistRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+
+    let tracks = match get_playlist_tracks_full(&data.db, &playlist_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("share_playlist fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    if tracks.is_empty() {
+        return HttpResponse::Ok().json(PlaylistToolResult {
+            success: false,
+            message: "Playlist is empty or not found".to_string(),
+            playlist_id: None,
+            affected_tracks: None,
+            details: None,
+        });
+    }
+
+    let include_meta = body.include_metadata.unwrap_or(true);
+
+    let playlist_data = serde_json::json!({
+        "name": body.name,
+        "description": body.description,
+        "track_count": tracks.len(),
+        "tracks": tracks.iter().map(|t| {
+            let mut obj = serde_json::json!({
+                "title": t.title,
+                "artist": t.artist,
+                "album": t.album,
+                "duration_ms": t.duration_ms,
+            });
+            if include_meta {
+                obj["genre"] = serde_json::json!(t.genre);
+                obj["year"] = serde_json::json!(t.year);
+                obj["format"] = serde_json::json!(t.format);
+            }
+            obj
+        }).collect::<Vec<_>>(),
+    });
+
+    let encoded = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        playlist_data.to_string().as_bytes(),
+    );
+
+    let share_url = format!("resonance://playlist/{}", encoded);
+
+    HttpResponse::Ok().json(PlaylistToolResult {
+        success: true,
+        message: format!("Created shareable playlist with {} tracks", tracks.len()),
+        playlist_id: Some(playlist_id),
+        affected_tracks: Some(tracks.len() as i32),
+        details: Some(serde_json::json!({
+            "share_url": share_url,
+            "track_count": tracks.len(),
+            "total_duration_ms": tracks.iter().map(|t| t.duration_ms).sum::<i64>(),
+        })),
+    })
+}
+
+pub async fn playlist_stats(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = path.into_inner();
+    let tracks = match get_playlist_tracks_full(&data.db, &playlist_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("playlist_stats fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    if tracks.is_empty() {
+        return HttpResponse::NotFound().json(serde_json::json!({"error": "Playlist not found"}));
+    }
+
+    let total_duration: i64 = tracks.iter().map(|t| t.duration_ms).sum();
+    let total_size: i64 = tracks.iter().map(|t| t.file_size).sum();
+
+    let mut artists: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut albums: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut genres: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut formats: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut avg_rating = 0.0;
+    let mut rated_count = 0;
+
+    for track in &tracks {
+        *artists.entry(track.artist.clone()).or_insert(0) += 1;
+        *albums.entry(track.album.clone()).or_insert(0) += 1;
+        if let Some(ref g) = track.genre {
+            if !g.is_empty() {
+                *genres.entry(g.clone()).or_insert(0) += 1;
+            }
+        }
+        *formats.entry(track.format.clone()).or_insert(0) += 1;
+        if let Some(r) = track.rating {
+            avg_rating += r as f64;
+            rated_count += 1;
+        }
+    }
+
+    if rated_count > 0 {
+        avg_rating /= rated_count as f64;
+    }
+
+    let mut top_artists: Vec<_> = artists.into_iter().collect();
+    top_artists.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+    top_artists.truncate(5);
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "track_count": tracks.len(),
+        "total_duration_ms": total_duration,
+        "total_size_bytes": total_size,
+        "avg_rating": (avg_rating * 10.0).round() / 10.0,
+        "unique_artists": top_artists.len(),
+        "unique_albums": albums.len(),
+        "top_artists": top_artists,
+        "genres": genres,
+        "formats": formats,
+    }))
+}
+
+// ── Batch Operations ─────────────────────────────────────────────
+
+pub async fn batch_delete_tracks(
+    data: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let ids = body.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let ids: Vec<String> = ids.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    if ids.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+    }
+    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+    let query = format!("DELETE FROM tracks WHERE id IN ({})", placeholders.join(","));
+    let mut q = sqlx::query(&query);
+    for id in &ids { q = q.bind(id); }
+    match q.execute(&data.db).await {
+        Ok(r) => HttpResponse::Ok().json(serde_json::json!({"deleted": r.rows_affected()})),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn batch_update_rating(
+    data: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let ids = body.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let rating = body.get("rating").and_then(|v| v.as_i64());
+    let ids: Vec<String> = ids.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    let rating = match rating {
+        Some(r) if (0..=5).contains(&r) => r as i32,
+        _ => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid rating (0-5)"})),
+    };
+    if ids.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+    }
+    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+    let query = format!("UPDATE tracks SET rating = ? WHERE id IN ({})", placeholders.join(","));
+    let mut q = sqlx::query(&query).bind(rating);
+    for id in &ids { q = q.bind(id); }
+    match q.execute(&data.db).await {
+        Ok(r) => HttpResponse::Ok().json(serde_json::json!({"updated": r.rows_affected()})),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+// ── Helper functions ──────────────────────────────────────────────
+
+async fn get_playlist_track_ids(
+    db: &SqlitePool,
+    playlist_id: &str,
+) -> Result<Vec<(String, i32)>, sqlx::Error> {
+    sqlx::query_as::<_, (String, i32)>(
+        "SELECT pt.track_id, t.play_count FROM playlist_tracks pt JOIN tracks t ON pt.track_id = t.id WHERE pt.playlist_id = ? ORDER BY pt.position",
+    )
+    .bind(playlist_id)
+    .fetch_all(db)
+    .await
+}
+
+async fn get_playlist_tracks_full(db: &SqlitePool, playlist_id: &str) -> Result<Vec<Track>, sqlx::Error> {
+    sqlx::query_as::<_, Track>(
+        "SELECT t.* FROM tracks t JOIN playlist_tracks pt ON t.id = pt.track_id WHERE pt.playlist_id = ? ORDER BY pt.position"
+    )
+    .bind(playlist_id)
+    .fetch_all(db)
+    .await
+}
+
+async fn get_artist_for_track(db: &SqlitePool, track_id: &str) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar::<_, String>("SELECT artist FROM tracks WHERE id = ?")
+        .bind(track_id)
+        .fetch_one(db)
+        .await
+}
+
+async fn save_playlist_order(db: &SqlitePool, playlist_id: &str, track_ids: &[String]) {
+    let mut tx = match db.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            log::error!("save_playlist_order transaction begin failed: {}", e);
+            return;
+        }
+    };
+
+    let _ = sqlx::query("DELETE FROM playlist_tracks WHERE playlist_id = ?")
+        .bind(playlist_id)
+        .execute(&mut *tx)
+        .await;
+
+    for (i, track_id) in track_ids.iter().enumerate() {
+        let _ = sqlx::query(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES (?, ?, ?, datetime('now'))"
+        )
+        .bind(playlist_id)
+        .bind(track_id)
+        .bind(i as i32)
+        .execute(&mut *tx)
+        .await;
+    }
+
+    let _ = sqlx::query(
+        "UPDATE playlists SET track_count = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(track_ids.len() as i32)
+    .bind(playlist_id)
+    .execute(&mut *tx)
+    .await;
+
+    let _ = tx.commit().await;
+}
+
+fn cmp_with_order(a: &str, b: &str, order: &str) -> std::cmp::Ordering {
+    if order == "desc" {
+        b.to_lowercase().cmp(&a.to_lowercase())
+    } else {
+        a.to_lowercase().cmp(&b.to_lowercase())
+    }
+}
+
+fn cmp_with_order_num(a: i64, b: i64, order: &str) -> std::cmp::Ordering {
+    if order == "desc" {
+        b.cmp(&a)
+    } else {
+        a.cmp(&b)
+    }
+}
+
+fn cmp_with_order_opt(a: Option<i32>, b: Option<i32>, order: &str) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(x), Some(y)) => {
+            if order == "desc" {
+                y.cmp(&x)
+            } else {
+                x.cmp(&y)
+            }
+        }
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct BrowseQuery {
+    pub path: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct BrowseEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+}
+
+pub async fn browse_directory(
+    data: web::Data<AppState>,
+    query: web::Query<BrowseQuery>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+
+    let path_str = query.path.as_deref().unwrap_or("/");
+    let path = PathBuf::from(path_str);
+
+    let canonical = match path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Path does not exist or is not accessible"}));
+        }
+    };
+
+    if !canonical.is_dir() {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Path is not a directory"}));
+    }
+
+    // Restrict browsing to configured library paths
+    let libraries = match sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+        .fetch_all(&data.db)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("browse_libraries fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let allowed = path_within_libraries(&libraries, &canonical);
+    if !allowed {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Path is outside configured libraries"}));
+    }
+
+    let mut entries: Vec<BrowseEntry> = Vec::new();
+
+    if let Some(parent) = canonical.parent() {
+        entries.push(BrowseEntry {
+            name: "..".to_string(),
+            path: parent.to_string_lossy().to_string(),
+            is_dir: true,
+        });
+    }
+
+    if let Ok(read_dir) = std::fs::read_dir(&canonical) {
+        for entry in read_dir.flatten() {
+            let metadata = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if metadata.is_dir() {
+                let entry_path = entry.path().to_string_lossy().to_string();
+                entries.push(BrowseEntry {
+                    name,
+                    path: entry_path,
+                    is_dir: true,
+                });
+            }
+        }
+    }
+
+    if entries.len() > 1 {
+        entries[1..].sort_by_key(|a| a.name.to_lowercase());
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "current": canonical.to_string_lossy(),
+        "entries": entries,
+    }))
+}
+
+pub async fn get_scrobbling_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let config = scrobble::get_scrobbling_config(&data.db).await;
+    HttpResponse::Ok().json(config)
+}
+
+pub async fn update_scrobbling_settings(
+    data: web::Data<AppState>,
+    body: web::Json<UpdateScrobblingRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let mut config = scrobble::get_scrobbling_config(&data.db).await;
+
+    if let Some(ref lastfm) = body.lastfm {
+        config.lastfm = lastfm.clone();
+    }
+    if let Some(ref listenbrainz) = body.listenbrainz {
+        config.listenbrainz = listenbrainz.clone();
+    }
+
+    scrobble::save_scrobbling_config(&data.db, &config).await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "config": config,
+    }))
+}
+
+pub async fn test_scrobbling(
+    data: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let service_name = query.get("service").map(|s| s.as_str()).unwrap_or("all");
+    let config = scrobble::get_scrobbling_config(&data.db).await;
+    let service = ScrobbleService::new();
+    let mut results = serde_json::Map::new();
+
+    if service_name == "all" || service_name == "lastfm" {
+        if !config.lastfm.enabled {
+            results.insert(
+                "lastfm".to_string(),
+                serde_json::json!({
+                    "connected": false,
+                    "error": "Last.fm is disabled",
+                }),
+            );
+        } else {
+            match service.test_lastfm_connection(&config.lastfm).await {
+                Ok(username) => {
+                    results.insert(
+                        "lastfm".to_string(),
+                        serde_json::json!({
+                            "connected": true,
+                            "username": username,
+                        }),
+                    );
+                }
+                Err(e) => {
+                    results.insert(
+                        "lastfm".to_string(),
+                        serde_json::json!({
+                            "connected": false,
+                            "error": e.to_string(),
+                        }),
+                    );
+                }
+            }
+        }
+    }
+
+    if service_name == "all" || service_name == "listenbrainz" {
+        if !config.listenbrainz.enabled {
+            results.insert(
+                "listenbrainz".to_string(),
+                serde_json::json!({
+                    "connected": false,
+                    "error": "ListenBrainz is disabled",
+                }),
+            );
+        } else {
+            match service.test_listenbrainz_connection(&config.listenbrainz).await {
+                Ok(username) => {
+                    results.insert(
+                        "listenbrainz".to_string(),
+                        serde_json::json!({
+                            "connected": true,
+                            "username": username,
+                        }),
+                    );
+                }
+                Err(e) => {
+                    results.insert(
+                        "listenbrainz".to_string(),
+                        serde_json::json!({
+                            "connected": false,
+                            "error": e.to_string(),
+                        }),
+                    );
+                }
+            }
+        }
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "services": results,
+    }))
+}
+
+pub async fn get_lyrics(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await;
+
+    match track {
+        Ok(Some(track)) => {
+            let lyrics_content = track.lyrics.unwrap_or_default();
+            let synced = if lyrics::is_lrc(&lyrics_content) {
+                Some(lyrics_content.clone())
+            } else {
+                None
+            };
+            let plain = if lyrics::is_lrc(&lyrics_content) {
+                lyrics::extract_plain_from_lrc(&lyrics_content)
+            } else {
+                lyrics_content
+            };
+            HttpResponse::Ok().json(serde_json::json!({
+                "plain": plain,
+                "synced": synced,
+            }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+        Err(_) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": "Database error"}))
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpdateLyricsRequest {
+    pub lyrics: String,
+}
+
+pub async fn update_lyrics(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<UpdateLyricsRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let result = sqlx::query("UPDATE tracks SET lyrics = ? WHERE id = ?")
+        .bind(&body.lyrics)
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        Err(_) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": "Failed to update lyrics"})),
+    }
+}
+
+pub async fn fetch_lyrics(data: web::Data<AppState>, path: web::Path<String>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&data.db)
+        .await;
+
+    let track = match track {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"}))
+        }
+        Err(_) => {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}))
+        }
+    };
+
+    let client = reqwest::Client::new();
+    let result = lyrics::fetch_from_lrclib(
+        &client,
+        &track.artist,
+        &track.title,
+        &track.album,
+        track.duration_ms,
+    )
+    .await;
+
+    match result {
+        Some(lyrics_result) => {
+            let content = lyrics_result.synced.unwrap_or(lyrics_result.plain);
+            let _ = sqlx::query("UPDATE tracks SET lyrics = ? WHERE id = ?")
+                .bind(&content)
+                .bind(&id)
+                .execute(&data.db)
+                .await;
+
+            let has_synced = lyrics::is_lrc(&content);
+            let plain = if has_synced {
+                lyrics::extract_plain_from_lrc(&content)
+            } else {
+                content.clone()
+            };
+            let synced = if has_synced { Some(content) } else { None };
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "plain": plain,
+                "synced": synced,
+            }))
+        }
+        None => HttpResponse::Ok().json(serde_json::json!({
+            "plain": "",
+            "synced": null,
+        })),
+    }
+}
+
+pub async fn get_updater_status(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let status = updater::get_updater_status(&data.db).await;
+    HttpResponse::Ok().json(status)
+}
+
+pub async fn check_for_updates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    match updater::check_for_updates(&data.db).await {
+        Ok(status) => HttpResponse::Ok().json(status),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": e,
+        })),
+    }
+}
+
+pub async fn apply_update(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    match updater::apply_update(&data.db).await {
+        Ok(message) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "message": message,
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": e,
+        })),
+    }
+}
+
+pub async fn get_updater_config(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let config = updater::get_updater_config(&data.db).await;
+    HttpResponse::Ok().json(config)
+}
+
+pub async fn update_updater_config(
+    data: web::Data<AppState>,
+    body: web::Json<updater::UpdaterConfig>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    if body.check_interval_hours < 1 {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "check_interval_hours must be at least 1"
+        }));
+    }
+    updater::save_updater_config(&data.db, &body).await;
+    let config = updater::get_updater_config(&data.db).await;
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "config": config,
+    }))
+}
+
+pub async fn preview_import(
+    data: web::Data<AppState>,
+    body: web::Json<ImportPreviewRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let mut preview = match body.platform.as_str() {
+        "spotify" => match crate::importer::parse_spotify(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "youtube_music" => match crate::importer::parse_youtube_music(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "apple_music" => match crate::importer::parse_apple_music(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "soundcloud" => match crate::importer::parse_soundcloud(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "m3u" => match crate::importer::parse_m3u(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        "xspf" => match crate::importer::parse_xspf(&body.content) {
+            Ok(p) => p,
+            Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+        },
+        _ => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Unsupported platform"}))
+        }
+    };
+
+    crate::importer::match_tracks(&data.db, &mut preview).await;
+    HttpResponse::Ok().json(preview)
+}
+
+pub async fn confirm_import(
+    data: web::Data<AppState>,
+    body: web::Json<ImportConfirmRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist_id = uuid::Uuid::new_v4().to_string();
+
+    let result = sqlx::query(
+        "INSERT INTO playlists (id, name, description, is_smart, smart_filter, parent_id, library_id, source_platform) VALUES (?, ?, NULL, FALSE, NULL, NULL, '', ?)"
+    )
+    .bind(&playlist_id)
+    .bind(&body.playlist_name)
+    .bind(&body.platform)
+    .execute(&data.db)
+    .await;
+
+    if let Err(e) = result {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": e.to_string()}));
+    }
+
+    let mut added = 0;
+    for (pos, track) in body.tracks.iter().enumerate() {
+        let track_id = if let Some(id) = &track.track_id {
+            id.clone()
+        } else {
+            continue;
+        };
+
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)"
+        )
+        .bind(&playlist_id)
+        .bind(&track_id)
+        .bind(pos as i32)
+        .execute(&data.db)
+        .await;
+
+        match result {
+            Ok(r) => {
+                if r.rows_affected() > 0 {
+                    added += 1;
+                }
+            }
+            Err(e) => {
+                log::error!("confirm_import track insert failed: {}", e);
+            }
+        }
+    }
+
+    let _ = sqlx::query("UPDATE playlists SET track_count = ? WHERE id = ?")
+        .bind(added)
+        .bind(&playlist_id)
+        .execute(&data.db)
+        .await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "playlist_id": playlist_id,
+        "tracks_added": added,
+    }))
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+pub struct DeviceTrack {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_ms: Option<i64>,
+    pub year: Option<i32>,
+    pub track_number: Option<i32>,
+    pub file_name: String,
+    pub mime_type: Option<String>,
+    pub file_size: Option<i64>,
+    pub date_added: Option<i64>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct DeviceScanRequest {
+    pub library_id: Option<String>,
+    pub tracks: Vec<DeviceTrack>,
+}
+
+pub async fn import_device_music(
+    data: web::Data<AppState>,
+    body: web::Json<DeviceScanRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let library_id = if let Some(id) = &body.library_id {
+        id.clone()
+    } else {
+        let id = uuid::Uuid::new_v4().to_string();
+        let _ =
+            sqlx::query("INSERT INTO libraries (id, name, path) VALUES (?, 'Device Music', '')")
+                .bind(&id)
+                .execute(&data.db)
+                .await;
+        id
+    };
+
+    let mut added = 0;
+    let mut skipped = 0;
+
+    for track in &body.tracks {
+        if track.path.is_empty() {
+            skipped += 1;
+            continue;
+        }
+
+        let existing = sqlx::query_scalar::<_, String>("SELECT id FROM tracks WHERE file_path = ?")
+            .bind(&track.path)
+            .fetch_optional(&data.db)
+            .await;
+
+        match existing {
+            Ok(Some(_)) => {
+                skipped += 1;
+                continue;
+            }
+            Err(e) => {
+                log::error!("import_device_music existing check failed: {}", e);
+                skipped += 1;
+                continue;
+            }
+            _ => {}
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let folder = std::path::Path::new(&track.path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let format = track
+            .mime_type
+            .as_deref()
+            .unwrap_or("audio/mpeg")
+            .replace("audio/", "");
+
+        let result = sqlx::query(
+            r#"INSERT OR IGNORE INTO tracks (
+                id, title, artist, album, album_artist, genre, year, track_number,
+                disc_number, duration_ms, file_path, file_name, file_size, file_modified,
+                format, sample_rate, bit_depth, bitrate, channels, codec, composer,
+                lyricist, mood, bpm, rating, play_count, skip_count, last_played,
+                date_added, has_artwork, artwork_hash, lyrics, comment, grouping,
+                copyright, custom_tags, folder, library_id, fingerprint, waveform_peaks
+            ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, datetime('now'), FALSE, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, '', NULL)"#
+        )
+        .bind(&id)
+        .bind(&track.title)
+        .bind(&track.artist)
+        .bind(&track.album)
+        .bind(track.year)
+        .bind(track.track_number)
+        .bind(track.duration_ms.unwrap_or(0))
+        .bind(&track.path)
+        .bind(&track.file_name)
+        .bind(track.file_size.unwrap_or(0))
+        .bind(format)
+        .bind(&folder)
+        .bind(&library_id)
+        .execute(&data.db)
+        .await;
+
+        match result {
+            Ok(_) => added += 1,
+            Err(e) => {
+                log::warn!("Failed to insert track {}: {}", track.path, e);
+                skipped += 1;
+            }
+        }
+    }
+
+    let _ = sqlx::query(
+        "UPDATE libraries SET track_count = (SELECT COUNT(*) FROM tracks WHERE library_id = ?), last_scan = datetime('now') WHERE id = ?"
+    )
+    .bind(&library_id)
+    .bind(&library_id)
+    .execute(&data.db)
+    .await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "library_id": library_id,
+        "tracks_added": added,
+        "tracks_skipped": skipped,
+        "total_scanned": body.tracks.len(),
+    }))
+}
+
+pub async fn get_import_formats(req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    HttpResponse::Ok().json(serde_json::json!({
+        "formats": [
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "description": "Export from Spotify account data (JSON)",
+                "extensions": ["json"],
+                "example": "Go to Spotify Privacy > Account Data > Download. Look for 'YourPlaylists' or playlist JSON files."
+            },
+            {
+                "id": "youtube_music",
+                "name": "YouTube Music",
+                "description": "Export from Google Takeout (JSON)",
+                "extensions": ["json"],
+                "example": "Go to Google Takeout > YouTube and YouTube Music > Export. Select 'playlists' and download the ZIP."
+            },
+            {
+                "id": "apple_music",
+                "name": "Apple Music",
+                "description": "Apple Music playlist export (JSON)",
+                "extensions": ["json"],
+                "example": "Use a third-party tool or export from Music app XML library."
+            },
+            {
+                "id": "soundcloud",
+                "name": "SoundCloud",
+                "description": "SoundCloud likes/playlists export (JSON)",
+                "extensions": ["json"],
+                "example": "Export from SoundCloud or use a third-party tool to export your likes."
+            },
+            {
+                "id": "m3u",
+                "name": "M3U/M3U8",
+                "description": "Standard M3U playlist format",
+                "extensions": ["m3u", "m3u8"],
+                "example": "Most music players can export to M3U format."
+            },
+            {
+                "id": "xspf",
+                "name": "XSPF",
+                "description": "XML Shareable Playlist Format",
+                "extensions": ["xspf"],
+                "example": "VLC, Clementine, and other players support XSPF export."
+            }
+        ]
+    }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ExportRequest {
+    pub playlist_id: String,
+    pub target_platform: String,
+}
+
+pub async fn export_playlist(
+    data: web::Data<AppState>,
+    body: web::Json<ExportRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let playlist =
+        sqlx::query_as::<_, (String, String)>("SELECT id, name FROM playlists WHERE id = ?")
+            .bind(&body.playlist_id)
+            .fetch_optional(&data.db)
+            .await;
+
+    let playlist = match playlist {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "Playlist not found"}))
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": e.to_string()}))
+        }
+    };
+
+    let tracks = match crate::importer::get_playlist_export_tracks(&data.db, &body.playlist_id)
+        .await
+    {
+        Ok(t) => t,
+        Err(e) => return HttpResponse::InternalServerError().json(serde_json::json!({"error": e})),
+    };
+
+    if tracks.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Playlist is empty"}));
+    }
+
+    let (content, filename, content_type) = match body.target_platform.as_str() {
+        "spotify" => (
+            crate::importer::export_to_spotify_csv(&tracks, &playlist.1),
+            format!("{}.csv", playlist.1),
+            "text/csv".to_string(),
+        ),
+        "youtube_music" => (
+            crate::importer::export_to_youtube_music_text(&tracks),
+            format!("{}.txt", playlist.1),
+            "text/plain".to_string(),
+        ),
+        "apple_music" => (
+            crate::importer::export_to_apple_music_m3u(&tracks, &playlist.1),
+            format!("{}.m3u", playlist.1),
+            "audio/x-mpegurl".to_string(),
+        ),
+        "soundcloud" => (
+            crate::importer::export_to_soundcloud_text(&tracks),
+            format!("{}.txt", playlist.1),
+            "text/plain".to_string(),
+        ),
+        "m3u" => (
+            crate::importer::export_to_m3u(&tracks, &playlist.1),
+            format!("{}.m3u", playlist.1),
+            "audio/x-mpegurl".to_string(),
+        ),
+        "xspf" => (
+            crate::importer::export_to_xspf(&tracks, &playlist.1),
+            format!("{}.xspf", playlist.1),
+            "application/xspf+xml".to_string(),
+        ),
+        _ => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Unsupported target platform"}))
+        }
+    };
+
+    let safe_name = filename.replace(['"', '\n', '\r'], "");
+    HttpResponse::Ok()
+        .insert_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", safe_name),
+        ))
+        .insert_header(("Content-Type", content_type))
+        .body(content)
+}
+
+pub async fn get_transfer_platforms(req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    HttpResponse::Ok().json(serde_json::json!({
+        "platforms": [
+            {
+                "id": "spotify",
+                "name": "Spotify",
+                "export_formats": ["csv"],
+                "import_formats": ["csv"],
+                "description": "Transfer to/from Spotify",
+                "color": "#1DB954"
+            },
+            {
+                "id": "youtube_music",
+                "name": "YouTube Music",
+                "export_formats": ["txt"],
+                "import_formats": ["txt"],
+                "description": "Transfer to/from YouTube Music",
+                "color": "#FF0000"
+            },
+            {
+                "id": "apple_music",
+                "name": "Apple Music",
+                "export_formats": ["m3u"],
+                "import_formats": ["m3u"],
+                "description": "Transfer to/from Apple Music",
+                "color": "#FC3C44"
+            },
+            {
+                "id": "soundcloud",
+                "name": "SoundCloud",
+                "export_formats": ["txt"],
+                "import_formats": ["txt"],
+                "description": "Transfer to/from SoundCloud",
+                "color": "#FF5500"
+            }
+        ]
+    }))
+}
+
+pub async fn update_track_rating(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<UpdateRatingRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let rating = if let Some(r) = body.rating {
+        if !(0..=5).contains(&r) {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Rating must be between 0 and 5"}));
+        }
+        Some(r)
+    } else {
+        None
+    };
+
+    let result = sqlx::query("UPDATE tracks SET rating = ? WHERE id = ?")
+        .bind(rating)
+        .bind(&id)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => {
+            let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&data.db)
+                .await;
+            match track {
+                Ok(t) => HttpResponse::Ok().json(t),
+                Err(e) => HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": e.to_string()})),
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn evaluate_smart_playlist(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let playlist = sqlx::query_as::<_, Playlist>("SELECT * FROM playlists WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    let playlist = match playlist {
+        Ok(p) => p,
+        Err(_) => {
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "Playlist not found"}))
+        }
+    };
+
+    let filter_json = match &playlist.smart_filter {
+        Some(f) if !f.is_empty() => f.clone(),
+        _ => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": "Playlist has no smart filter defined"}))
+        }
+    };
+
+    let config: SmartPlaylistConfig = match serde_json::from_str(&filter_json) {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": format!("Invalid filter JSON: {}", e)}))
+        }
+    };
+
+    if config.rules.is_empty() {
+        return HttpResponse::Ok().json(Vec::<Track>::new());
+    }
+
+    let mut where_clauses = Vec::new();
+    let mut bind_values = Vec::new();
+
+    for rule in &config.rules {
+        let (clause, val) = match rule.field.as_str() {
+            "play_count" => {
+                let num_val: i64 = match rule.value.parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let op = match rule.op.as_str() {
+                    "eq" => "=",
+                    "neq" => "<>",
+                    "gt" => ">",
+                    "lt" => "<",
+                    "gte" => ">=",
+                    "lte" => "<=",
+                    _ => continue,
+                };
+                (format!("play_count {} ?", op), Some(num_val.to_string()))
+            }
+            "rating" => {
+                let num_val: i64 = match rule.value.parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let op = match rule.op.as_str() {
+                    "eq" => "=",
+                    "neq" => "<>",
+                    "gt" => ">",
+                    "lt" => "<",
+                    "gte" => ">=",
+                    "lte" => "<=",
+                    _ => continue,
+                };
+                (format!("rating {} ?", op), Some(num_val.to_string()))
+            }
+            "year" => {
+                let num_val: i64 = match rule.value.parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let op = match rule.op.as_str() {
+                    "eq" => "=",
+                    "neq" => "<>",
+                    "gt" => ">",
+                    "lt" => "<",
+                    "gte" => ">=",
+                    "lte" => "<=",
+                    _ => continue,
+                };
+                (format!("year {} ?", op), Some(num_val.to_string()))
+            }
+            "duration_ms" => {
+                let num_val: i64 = match rule.value.parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let op = match rule.op.as_str() {
+                    "eq" => "=",
+                    "neq" => "<>",
+                    "gt" => ">",
+                    "lt" => "<",
+                    "gte" => ">=",
+                    "lte" => "<=",
+                    _ => continue,
+                };
+                (format!("duration_ms {} ?", op), Some(num_val.to_string()))
+            }
+            "last_played" => {
+                let op = match rule.op.as_str() {
+                    "before" => "<",
+                    "after" => ">",
+                    "eq" => "=",
+                    "neq" => "<>",
+                    _ => continue,
+                };
+                (format!("last_played {} ?", op), Some(rule.value.clone()))
+            }
+            "date_added" => {
+                let op = match rule.op.as_str() {
+                    "before" => "<",
+                    "after" => ">",
+                    "eq" => "=",
+                    "neq" => "<>",
+                    _ => continue,
+                };
+                (format!("date_added {} ?", op), Some(rule.value.clone()))
+            }
+            "genre" => {
+                match rule.op.as_str() {
+                    "eq" => ("genre = ?".to_string(), Some(rule.value.clone())),
+                    "neq" => ("genre <> ?".to_string(), Some(rule.value.clone())),
+                    "contains" => (
+                        "genre LIKE ?".to_string(),
+                        Some(format!("%{}%", rule.value)),
+                    ),
+                    "not_contains" => (
+                        "genre NOT LIKE ?".to_string(),
+                        Some(format!("%{}%", rule.value)),
+                    ),
+                    _ => continue,
+                }
+            }
+            "artist" => {
+                match rule.op.as_str() {
+                    "eq" => ("artist = ?".to_string(), Some(rule.value.clone())),
+                    "neq" => ("artist <> ?".to_string(), Some(rule.value.clone())),
+                    "contains" => (
+                        "artist LIKE ?".to_string(),
+                        Some(format!("%{}%", rule.value)),
+                    ),
+                    "not_contains" => (
+                        "artist NOT LIKE ?".to_string(),
+                        Some(format!("%{}%", rule.value)),
+                    ),
+                    _ => continue,
+                }
+            }
+            "album" => {
+                match rule.op.as_str() {
+                    "eq" => ("album = ?".to_string(), Some(rule.value.clone())),
+                    "neq" => ("album <> ?".to_string(), Some(rule.value.clone())),
+                    "contains" => (
+                        "album LIKE ?".to_string(),
+                        Some(format!("%{}%", rule.value)),
+                    ),
+                    "not_contains" => (
+                        "album NOT LIKE ?".to_string(),
+                        Some(format!("%{}%", rule.value)),
+                    ),
+                    _ => continue,
+                }
+            }
+            _ => continue,
+        };
+
+        where_clauses.push(clause);
+        if let Some(val) = val {
+            bind_values.push(val);
+        }
+    }
+
+    if where_clauses.is_empty() {
+        return HttpResponse::Ok().json(Vec::<Track>::new());
+    }
+
+    let joiner = if config.match_all { " AND " } else { " OR " };
+    let where_str = where_clauses.join(joiner);
+    let sql = format!("SELECT * FROM tracks WHERE {} ORDER BY date_added DESC", where_str);
+
+    let mut query = sqlx::query_as::<_, Track>(&sql);
+    for val in &bind_values {
+        query = query.bind(val);
+    }
+
+    let tracks = match query.fetch_all(&data.db).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_smart_playlist_tracks fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    HttpResponse::Ok().json(tracks)
+}
+
+pub async fn update_smart_playlist_rules(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<SmartPlaylistConfig>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let playlist = sqlx::query_as::<_, Playlist>("SELECT * FROM playlists WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    if playlist.is_err() {
+        return HttpResponse::NotFound()
+            .json(serde_json::json!({"error": "Playlist not found"}));
+    }
+
+    let filter_json = match serde_json::to_string(&body.into_inner()) {
+        Ok(j) => j,
+        Err(e) => {
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({"error": format!("Failed to serialize rules: {}", e)}))
+        }
+    };
+
+    let result = sqlx::query(
+        "UPDATE playlists SET is_smart = TRUE, smart_filter = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(&filter_json)
+    .bind(&id)
+    .execute(&data.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            let playlist = sqlx::query_as::<_, Playlist>("SELECT * FROM playlists WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&data.db)
+                .await;
+            match playlist {
+                Ok(p) => HttpResponse::Ok().json(p),
+                Err(e) => HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": e.to_string()})),
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
+        }
+    }
+}
+
+pub async fn get_transcode_settings(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let result = sqlx::query_as::<_, SettingRow>("SELECT key, value FROM settings WHERE key LIKE 'transcode_%'")
+        .fetch_all(&data.db)
+        .await;
+
+    let settings = match result {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("get_transcode_settings fetch failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    let enabled = settings.iter().find(|s| s.key == "transcode_enabled")
+        .map(|s| s.value == "true").unwrap_or(false);
+    let format = settings.iter().find(|s| s.key == "transcode_format")
+        .map(|s| s.value.clone()).unwrap_or_else(|| "aac".to_string());
+    let bitrate = settings.iter().find(|s| s.key == "transcode_bitrate")
+        .and_then(|s| s.value.parse().ok()).unwrap_or(192);
+
+    HttpResponse::Ok().json(TranscodeConfig { enabled, format, bitrate })
+}
+
+pub async fn update_transcode_settings(
+    data: web::Data<AppState>,
+    body: web::Json<TranscodeConfig>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    if !["aac", "opus", "ogg"].contains(&body.format.as_str()) {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Unsupported transcode format"}));
+    }
+    if !(32..=320).contains(&body.bitrate) {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Transcode bitrate must be 32-320 kbps"}));
+    }
+    let settings = [
+        ("transcode_enabled", body.enabled.to_string()),
+        ("transcode_format", body.format.clone()),
+        ("transcode_bitrate", body.bitrate.to_string()),
+    ];
+
+    for (key, value) in &settings {
+        sqlx::query("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))")
+            .bind(key)
+            .bind(value)
+            .execute(&data.db)
+            .await
+            .ok();
+    }
+
+    HttpResponse::Ok().json(body.into_inner())
+}
+
+pub async fn stream_track_transcoded(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+
+    let transcode_enabled = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_enabled'")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or_else(|_| "false".to_string()) == "true";
+
+    if !transcode_enabled {
+        return stream_track_raw(&data.db, &id, &req).await;
+    }
+
+    let format = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_format'")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or_else(|_| "aac".to_string());
+
+    let bitrate = sqlx::query_scalar::<_, String>("SELECT value FROM settings WHERE key = 'transcode_bitrate'")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or_else(|_| "192".to_string())
+        .parse::<i32>()
+        .unwrap_or(192);
+
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&data.db)
+        .await;
+
+    match track {
+        Ok(t) => {
+            // Validate the file path is within a configured library directory
+            let file_path = std::path::Path::new(&t.file_path);
+            match file_path.canonicalize() {
+                Ok(canonical) => {
+                    let libraries = match sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+                        .fetch_all(&data.db)
+                        .await
+                    {
+                        Ok(rows) => rows,
+                        Err(e) => {
+                            log::error!(
+                                "stream transcoded path-validation libraries fetch failed: {}",
+                                e
+                            );
+                            return HttpResponse::InternalServerError()
+                                .json(serde_json::json!({"error": "Database error"}));
+                        }
+                    };
+                    let allowed = path_within_libraries(&libraries, &canonical);
+                    if !allowed {
+                        log::warn!("Stream transcoded: path outside libraries: {}", t.file_path);
+                        return HttpResponse::Forbidden()
+                            .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+                    }
+                }
+                Err(_) => {
+                    return HttpResponse::NotFound()
+                        .json(serde_json::json!({"error": "File not found"}));
+                }
+            }
+
+            let output_format = match format.as_str() {
+                "aac" => "aac",
+                "opus" => "libopus",
+                "ogg" => "libvorbis",
+                _ => "aac",
+            };
+
+            let child = std::process::Command::new("ffmpeg")
+                .args([
+                    "-hide_banner", "-loglevel", "error",
+                    "--",
+                    "-i", &t.file_path,
+                    "-c:a", output_format,
+                    "-b:a", &format!("{}k", bitrate),
+                    "-f", "adts",
+                    "pipe:1",
+                ])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+
+            match child {
+                Ok(mut proc) => {
+                    let stdout = match proc.stdout.take() {
+                        Some(s) => s,
+                        None => {
+                            log::error!("stream transcoded: stdout missing");
+                            return HttpResponse::InternalServerError()
+                                .json(serde_json::json!({"error": "Transcode failed"}));
+                        }
+                    };
+                    let stream = match actix_web::web::block(move || {
+                        let mut data = Vec::new();
+                        use std::io::Read;
+                        let mut reader = std::io::BufReader::new(stdout);
+                        if let Err(e) = reader.read_to_end(&mut data) {
+                            log::error!("stream transcoded: read failed: {}", e);
+                        }
+                        data
+                    }).await {
+                        Ok(data) => data,
+                        Err(e) => {
+                            log::error!("stream transcoded: worker join failed: {}", e);
+                            return HttpResponse::InternalServerError()
+                                .json(serde_json::json!({"error": "Transcode failed"}));
+                        }
+                    };
+                    if let Err(e) = proc.wait() {
+                        log::error!("stream transcoded: ffmpeg wait failed: {}", e);
+                    }
+
+                    let content_type = match format.as_str() {
+                        "aac" => "audio/aac",
+                        "opus" => "audio/opus",
+                        "ogg" => "audio/ogg",
+                        _ => "audio/aac",
+                    };
+
+                    HttpResponse::Ok()
+                        .content_type(content_type)
+                        .append_header(("Accept-Ranges", "bytes"))
+                        .body(stream)
+                }
+                Err(_) => {
+                    stream_track_raw(&data.db, &id, &req).await
+                }
+            }
+        }
+        Err(_) => HttpResponse::NotFound().json(serde_json::json!({"error": "Track not found"})),
+    }
+}
+
+async fn stream_track_raw(db: &SqlitePool, id: &str, req: &HttpRequest) -> HttpResponse {
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(id)
+        .fetch_one(db)
+        .await;
+
+    let track = match track {
+        Ok(t) => t,
+        Err(_) => {
+            return HttpResponse::NotFound().finish();
+        }
+    };
+
+    let file_path = std::path::Path::new(&track.file_path);
+
+    // Validate the file path is within a configured library directory
+    match file_path.canonicalize() {
+        Ok(canonical) => {
+            let libraries = match sqlx::query_as::<_, Library>("SELECT * FROM libraries")
+                .fetch_all(db)
+                .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    log::error!("stream raw path-validation libraries fetch failed: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .json(serde_json::json!({"error": "Database error"}));
+                }
+            };
+            let allowed = path_within_libraries(&libraries, &canonical);
+            if !allowed {
+                log::warn!("Stream raw: path outside libraries: {}", track.file_path);
+                return HttpResponse::Forbidden()
+                    .json(serde_json::json!({"error": "File path is outside configured libraries"}));
+            }
+        }
+        Err(_) => {
+            return HttpResponse::NotFound().finish();
+        }
+    }
+
+    if !file_path.exists() {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let mime = get_mime_type(&track.format);
+
+    match actix_files::NamedFile::open(file_path) {
+        Ok(f) => {
+            let mut response = f.into_response(req);
+            response.headers_mut().insert(
+                HeaderName::from_static("accept-ranges"),
+                HeaderValue::from_static("bytes"),
+            );
+            response.headers_mut().insert(
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_str(mime)
+                    .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+            );
+            response
+        }
+        Err(_) => HttpResponse::NotFound().finish(),
+    }
+}
+
+pub async fn health_check(data: web::Data<AppState>) -> HttpResponse {
+    let db_ok = sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(&data.db)
+        .await
+        .is_ok();
+    
+    let track_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let library_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM libraries")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(0);
+    
+    let scanning = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM libraries WHERE is_scanning = 1)")
+        .fetch_one(&data.db)
+        .await
+        .unwrap_or(false);
+
+    let version = env!("CARGO_PKG_VERSION");
+    
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": if db_ok { "ok" } else { "degraded" },
+        "version": version,
+        "database": if db_ok { "connected" } else { "disconnected" },
+        "tracks": track_count,
+        "libraries": library_count,
+        "users": user_count,
+        "scanning": scanning,
+    }))
+}
+
+pub async fn get_database_stats(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    
+    let total_size: i64 = match sqlx::query_scalar("SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_database_stats total_size failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    
+    let total_plays: i64 = match sqlx::query_scalar("SELECT COALESCE(SUM(play_count), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_database_stats total_plays failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    
+    let total_duration: i64 = match sqlx::query_scalar("SELECT COALESCE(SUM(duration_ms), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_database_stats total_duration failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    
+    let total_size_bytes: i64 = match sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM tracks")
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("get_database_stats total_size_bytes failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+    
+    HttpResponse::Ok().json(serde_json::json!({
+        "database_size_bytes": total_size,
+        "total_plays": total_plays,
+        "total_duration_ms": total_duration,
+        "total_size_bytes": total_size_bytes,
+    }))
+}
+
+// ── Cast Target Handlers ──────────────────────────────────────────
+
+pub async fn list_cast_targets(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let targets = data.cast_targets.lock();
+    let list: Vec<&CastTarget> = targets.values().collect();
+    HttpResponse::Ok().json(list)
+}
+
+pub async fn register_cast_target(
+    data: web::Data<AppState>,
+    body: web::Json<CastTarget>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let target = body.into_inner();
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut targets = data.cast_targets.lock();
+
+    let entry = CastTarget {
+        id: id.clone(),
+        name: target.name,
+        host: target.host,
+        port: target.port,
+        protocol: target.protocol,
+        is_connected: false,
+        current_track_id: None,
+        volume: target.volume,
+    };
+
+    targets.insert(id, entry.clone());
+    HttpResponse::Created().json(entry)
+}
+
+pub async fn unregister_cast_target(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let id = path.into_inner();
+    let mut targets = data.cast_targets.lock();
+    match targets.remove(&id) {
+        Some(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        None => HttpResponse::NotFound().json(serde_json::json!({"error": "Cast target not found"})),
+    }
+}
+
+#[allow(clippy::await_holding_lock)]
+pub async fn cast_play(
+    data: web::Data<AppState>,
+    body: web::Json<CastPlayRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let req = body.into_inner();
+    let mut targets = data.cast_targets.lock();
+
+    let target = match targets.get_mut(&req.target_id) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "Cast target not found"}))
+        }
+    };
+
+    target.is_connected = true;
+    target.current_track_id = Some(req.track_id.clone());
+
+    let stream_url = format!("/api/tracks/{}/stream", req.track_id);
+
+    let target_info = target.clone();
+    drop(targets);
+
+    // Attempt HTTP push to the cast target
+    let target_url = format!("http://{}:{}/cast", target_info.host, target_info.port);
+    let payload = serde_json::json!({
+        "action": "load",
+        "url": stream_url,
+        "track_id": req.track_id,
+        "title": "",
+        "content_type": "audio/mpeg",
+    });
+
+    match reqwest::Client::new()
+        .post(&target_url)
+        .timeout(std::time::Duration::from_secs(5))
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "target": target_info,
+                    "stream_url": stream_url,
+                }))
+            } else {
+                log::warn!(
+                    "Cast target {} returned status {}",
+                    target_info.name,
+                    resp.status()
+                );
+                HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "target": target_info,
+                    "stream_url": stream_url,
+                    "warning": format!("Target returned status {}", resp.status()),
+                }))
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "Failed to reach cast target {} at {}:{}: {}",
+                target_info.name,
+                target_info.host,
+                target_info.port,
+                e
+            );
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "target": target_info,
+                "stream_url": stream_url,
+                "warning": format!("Could not reach target: {}", e),
+            }))
+        }
+    }
+}
+
+#[allow(clippy::await_holding_lock)]
+pub async fn cast_control(
+    data: web::Data<AppState>,
+    body: web::Json<CastControlRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    let req = body.into_inner();
+    let mut targets = data.cast_targets.lock();
+
+    let target = match targets.get_mut(&req.target_id) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "Cast target not found"}))
+        }
+    };
+
+    match req.action.as_str() {
+        "stop" => {
+            target.current_track_id = None;
+            target.is_connected = false;
+        }
+        "volume" => {
+            if let Some(v) = req.value {
+                target.volume = v.clamp(0.0, 1.0);
+            }
+        }
+        _ => {}
+    }
+
+    let target_info = target.clone();
+    drop(targets);
+
+    let target_url = format!("http://{}:{}/cast", target_info.host, target_info.port);
+    let payload = serde_json::json!({
+        "action": req.action,
+        "value": req.value,
+    });
+
+    match reqwest::Client::new()
+        .post(&target_url)
+        .timeout(std::time::Duration::from_secs(5))
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(_) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "target": target_info,
+            }))
+        }
+        Err(e) => {
+            log::warn!(
+                "Failed to send control to cast target {}: {}",
+                target_info.name,
+                e
+            );
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "target": target_info,
+                "warning": format!("Could not reach target: {}", e),
+            }))
+        }
+    }
+}
+
+// ── Duplicate Detection ───────────────────────────────────────────
+
+pub async fn find_duplicates(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let duplicates = match sqlx::query_as::<_, Track>(
+        "SELECT t1.* FROM tracks t1 INNER JOIN (SELECT fingerprint, COUNT(*) as cnt FROM tracks WHERE fingerprint IS NOT NULL GROUP BY fingerprint HAVING cnt > 1) t2 ON t1.fingerprint = t2.fingerprint ORDER BY t1.fingerprint LIMIT 1000"
+    )
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("find_duplicates failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let mut groups: std::collections::HashMap<String, Vec<Track>> = std::collections::HashMap::new();
+    for track in duplicates {
+        if let Some(ref fp) = track.fingerprint {
+            groups.entry(fp.clone()).or_default().push(track);
+        }
+    }
+
+    let total_duplicates: usize = groups.values().map(|g| g.len()).sum();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "groups": groups.len(),
+        "total_duplicates": total_duplicates,
+        "duplicates": groups,
+    }))
+}
+
+pub async fn find_similar_tracks(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let duplicates = match sqlx::query_as::<_, (String, i64)>(
+        "SELECT LOWER(title || '|||' || artist), COUNT(*) as cnt FROM tracks GROUP BY LOWER(title || '|||' || artist) HAVING cnt > 1 ORDER BY cnt DESC LIMIT 100"
+    )
+    .fetch_all(&data.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("find_similar_tracks failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    };
+
+    let mut results = Vec::new();
+    for (key, count) in duplicates {
+        let parts: Vec<&str> = key.split("|||").collect();
+        if parts.len() == 2 {
+            let tracks = match sqlx::query_as::<_, Track>(
+                "SELECT * FROM tracks WHERE LOWER(title) = ?1 AND LOWER(artist) = ?2"
+            )
+            .bind(parts[0])
+            .bind(parts[1])
+            .fetch_all(&data.db)
+            .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    log::error!("find_similar_tracks group fetch failed: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .json(serde_json::json!({"error": "Database error"}));
+                }
+            };
+
+            results.push(serde_json::json!({
+                "title": parts[0],
+                "artist": parts[1],
+                "count": count,
+                "tracks": tracks,
+            }));
+        }
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "groups": results.len(),
+        "duplicates": results,
+    }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct DeleteDuplicatesRequest {
+    pub track_ids: Vec<String>,
+}
+
+pub async fn delete_duplicates_batch(
+    data: web::Data<AppState>,
+    body: web::Json<DeleteDuplicatesRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    auth_guard!(req);
+    if body.track_ids.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "No track IDs provided"}));
+    }
+
+    let mut deleted = 0;
+    for id in &body.track_ids {
+        let result = sqlx::query("DELETE FROM tracks WHERE id = ?")
+            .bind(id)
+            .execute(&data.db)
+            .await;
+        if result.is_ok() {
+            deleted += 1;
+        }
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "deleted": deleted,
+        "message": format!("Deleted {} duplicate tracks", deleted),
+    }))
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
+
+fn hash_password(password: &str) -> Result<String, String> {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    match argon2.hash_password(password.as_bytes(), &salt) {
+        Ok(hash) => Ok(hash.to_string()),
+        Err(e) => Err(format!("Password hashing failed: {}", e)),
+    }
+}
+
+pub fn verify_password(password: &str, hash: &str) -> bool {
+    let parsed_hash = match PasswordHash::new(hash) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok()
+}
+
+fn is_https(req: &HttpRequest) -> bool {
+    if req.connection_info().scheme() == "https" {
+        return true;
+    }
+    req.headers()
+        .get("X-Forwarded-Proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("https"))
+        .unwrap_or(false)
+}
+
+pub fn require_auth(req: &HttpRequest) -> Result<UserInfo, HttpResponse> {
+    let token = req.cookie("auth_token")
+        .map(|c| c.value().to_string())
+        .or_else(|| {
+            req.headers().get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|v| v.to_string())
+        });
+
+    match token.and_then(|t| crate::auth::validate_token(&t)) {
+        Some(user) => Ok(user),
+        None => Err(HttpResponse::Unauthorized().json(serde_json::json!({"error": "Authentication required"}))),
+    }
+}
+
+pub async fn login_handler(
+    data: web::Data<AppState>,
+    body: web::Json<LoginRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
+        return HttpResponse::TooManyRequests()
+            .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&data.db)
+        .await;
+
+    let user = match user {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({"error": "Invalid username or password"}))
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": e.to_string()}))
+        }
+    };
+
+    if !verify_password(&body.password, &user.password_hash) {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Invalid username or password"}));
+    }
+
+    let _ = sqlx::query("UPDATE users SET last_login = datetime('now') WHERE id = ?")
+        .bind(&user.id)
+        .execute(&data.db)
+        .await;
+
+    let user_info = UserInfo {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+    };
+    let token = crate::auth::create_token(&user_info);
+
+    let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
+        .path("/")
+        .http_only(true)
+        .secure(is_https(&req))
+        .max_age(actix_web::cookie::time::Duration::days(7))
+        .same_site(actix_web::cookie::SameSite::Lax)
+        .finish();
+
+    HttpResponse::Ok()
+        .cookie(cookie)
+        .json(LoginResponse {
+            token,
+            user: user_info,
+        })
+}
+
+pub async fn logout_handler(req: HttpRequest) -> HttpResponse {
+    let cookie = actix_web::cookie::Cookie::build("auth_token", "")
+        .path("/")
+        .http_only(true)
+        .secure(is_https(&req))
+        .max_age(actix_web::cookie::time::Duration::seconds(-1))
+        .same_site(actix_web::cookie::SameSite::Lax)
+        .finish();
+
+    HttpResponse::Ok()
+        .cookie(cookie)
+        .json(serde_json::json!({"success": true}))
+}
+
+pub async fn get_current_user(req: HttpRequest) -> HttpResponse {
+    match require_auth(&req) {
+        Ok(user) => HttpResponse::Ok().json(user),
+        Err(e) => e,
+    }
+}
+
+pub async fn create_user(
+    data: web::Data<AppState>,
+    body: web::Json<CreateUserRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let admin = match require_auth(&req) {
+        Ok(u) => u,
+        Err(e) => return e,
+    };
+
+    if admin.role != "admin" {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Admin access required"}));
+    }
+
+    if body.username.len() < 3 {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Username must be at least 3 characters"}));
+    }
+    if body.password.len() < 4 {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Password must be at least 4 characters"}));
+    }
+
+    let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&data.db)
+        .await;
+
+    if let Ok(Some(_)) = existing {
+        return HttpResponse::Conflict()
+            .json(serde_json::json!({"error": "Username already exists"}));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let password_hash = match hash_password(&body.password) {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("{}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Password hashing failed"}));
+        }
+    };
+    let role = body.role.as_deref().unwrap_or("user");
+
+    if !["user", "admin", "guest"].contains(&role) {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Invalid role. Must be one of: user, admin, guest"}));
+    }
+
+    let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&body.username)
+        .bind(&password_hash)
+        .bind(role)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => {
+            let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+                .bind(&id)
+                .fetch_one(&data.db)
+                .await;
+            match user {
+                Ok(u) => HttpResponse::Created().json(UserInfo {
+                    id: u.id,
+                    username: u.username,
+                    role: u.role,
+                }),
+                Err(e) => HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": e.to_string()})),
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn list_users(data: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    let admin = match require_auth(&req) {
+        Ok(u) => u,
+        Err(e) => return e,
+    };
+
+    if admin.role != "admin" {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Admin access required"}));
+    }
+
+    let users = sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY created_at")
+        .fetch_all(&data.db)
+        .await;
+
+    match users {
+        Ok(users) => {
+            let infos: Vec<UserInfo> = users.into_iter().map(|u| UserInfo {
+                id: u.id,
+                username: u.username,
+                role: u.role,
+            }).collect();
+            HttpResponse::Ok().json(infos)
+        }
+        Err(e) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn delete_user(
+    data: web::Data<AppState>,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let admin = match require_auth(&req) {
+        Ok(u) => u,
+        Err(e) => return e,
+    };
+
+    if admin.role != "admin" {
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"error": "Admin access required"}));
+    }
+
+    let user_id = path.into_inner();
+
+    if user_id == admin.id {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({"error": "Cannot delete your own account"}));
+    }
+
+    let result = sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(&user_id)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() == 0 {
+                HttpResponse::NotFound().json(serde_json::json!({"error": "User not found"}))
+            } else {
+                HttpResponse::Ok().json(serde_json::json!({"success": true}))
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn register_handler(
+    data: web::Data<AppState>,
+    body: web::Json<CreateUserRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
+        return HttpResponse::TooManyRequests()
+            .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
+    if body.username.trim().is_empty() || body.username.len() < 3 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Username must be at least 3 characters"}));
+    }
+    if body.username.len() > 50 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Username must be 50 characters or fewer"}));
+    }
+    if body.password.is_empty() || body.password.len() < 4 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Password must be at least 4 characters"}));
+    }
+    if body.password.len() > 128 {
+        return HttpResponse::BadRequest().json(serde_json::json!({"error": "Password must be 128 characters or fewer"}));
+    }
+    let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
+        .bind(&body.username)
+        .fetch_optional(&data.db)
+        .await;
+
+    if let Ok(Some(_)) = existing {
+        return HttpResponse::Conflict()
+            .json(serde_json::json!({"error": "Username already exists"}));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let password_hash = match hash_password(&body.password) {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("{}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Password hashing failed"}));
+        }
+    };
+
+    let result = sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'user')")
+        .bind(&id)
+        .bind(&body.username)
+        .bind(&password_hash)
+        .execute(&data.db)
+        .await;
+
+    match result {
+        Ok(_) => {
+            let user_info = UserInfo {
+                id,
+                username: body.username.clone(),
+                role: "user".to_string(),
+            };
+            let token = crate::auth::create_token(&user_info);
+
+            let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
+                .path("/")
+                .http_only(true)
+                .secure(is_https(&req))
+                .max_age(actix_web::cookie::time::Duration::days(7))
+                .same_site(actix_web::cookie::SameSite::Lax)
+                .finish();
+
+            HttpResponse::Created()
+                .cookie(cookie)
+                .json(LoginResponse {
+                    token,
+                    user: user_info,
+                })
+        }
+        Err(e) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+pub async fn guest_login_handler(
+    data: web::Data<AppState>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_else(|| "unknown".to_string());
+    if !crate::ratelimit::check_rate_limit(&ip, 10, 60) {
+        return HttpResponse::TooManyRequests()
+            .json(serde_json::json!({"error": "Too many requests. Please try again later."}));
+    }
+    let guest_username = "guest";
+    let guest_id = "guest";
+
+    // Check if guest user exists; create if not
+    let existing = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE username = ?")
+        .bind(guest_username)
+        .fetch_optional(&data.db)
+        .await;
+
+    match existing {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            if let Err(e) = sqlx::query("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, '', 'guest')")
+                .bind(guest_id)
+                .bind(guest_username)
+                .execute(&data.db)
+                .await
+            {
+                log::error!("guest_login create user failed: {}", e);
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": "Database error"}));
+            }
+        }
+        Err(e) => {
+            log::error!("guest_login lookup failed: {}", e);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Database error"}));
+        }
+    }
+
+    let user_info = UserInfo {
+        id: guest_id.to_string(),
+        username: guest_username.to_string(),
+        role: "guest".to_string(),
+    };
+    let token = crate::auth::create_guest_token();
+
+    let cookie = actix_web::cookie::Cookie::build("auth_token", &token)
+        .path("/")
+        .http_only(true)
+        .secure(is_https(&req))
+        .max_age(actix_web::cookie::time::Duration::hours(24))
+        .same_site(actix_web::cookie::SameSite::Lax)
+        .finish();
+
+    HttpResponse::Ok()
+        .cookie(cookie)
+        .json(LoginResponse {
+            token,
+            user: user_info,
+        })
+}
+
+pub fn register_routes(cfg: &mut web::ServiceConfig) {
+    cfg.configure(crate::subsonic::configure)
+        .route("/api/auth/login", web::post().to(login_handler))
+        .route("/api/auth/logout", web::post().to(logout_handler))
+        .route("/api/auth/me", web::get().to(get_current_user))
+        .route("/api/auth/register", web::post().to(register_handler))
+        .route("/api/auth/guest", web::post().to(guest_login_handler))
+        .route("/api/auth/users", web::get().to(list_users))
+        .route("/api/auth/users", web::post().to(create_user))
+        .route("/api/auth/users/{id}", web::delete().to(delete_user))
+        .route("/api/libraries", web::get().to(get_libraries))
+        .route("/api/libraries", web::post().to(create_library))
+        .route(
+            "/api/libraries/{id}",
+            web::delete().to(delete_library),
+        )
+        .route(
+            "/api/libraries/{id}/scan",
+            web::post().to(scan_library),
+        )
+        .route(
+            "/api/libraries/{id}/scan/progress",
+            web::get().to(get_scan_progress),
+        )
+        .route("/api/tracks", web::get().to(get_tracks))
+        .route("/api/tracks/{id}", web::get().to(get_track))
+        .route("/api/tracks/{id}", web::put().to(update_track))
+        .route(
+            "/api/tracks/{id}/play",
+            web::post().to(play_track),
+        )
+        .route(
+            "/api/tracks/{id}/stream",
+            web::get().to(stream_track),
+        )
+        .route(
+            "/api/tracks/{id}/artwork",
+            web::get().to(get_artwork),
+        )
+        .route(
+            "/api/tracks/{id}/artwork",
+            web::put().to(upload_artwork),
+        )
+        .route(
+            "/api/tracks/{id}/artwork",
+            web::delete().to(delete_artwork),
+        )
+        .route(
+            "/api/tracks/{id}/waveform",
+            web::get().to(get_waveform),
+        )
+        .route(
+            "/api/tracks/{id}/gain",
+            web::get().to(get_track_gain),
+        )
+        .route(
+            "/api/tracks/{id}/gain/compute",
+            web::post().to(compute_track_gain),
+        )
+        .route(
+            "/api/settings/replaygain",
+            web::get().to(get_replaygain_settings),
+        )
+        .route(
+            "/api/settings/replaygain",
+            web::put().to(update_replaygain_settings),
+        )
+        .route("/api/albums", web::get().to(get_albums))
+        .route("/api/artists", web::get().to(get_artists))
+        .route("/api/genres", web::get().to(get_genres))
+        .route("/api/folders", web::get().to(get_folders))
+        .route("/api/search", web::get().to(search))
+        .route("/api/tracks/recently-played", web::get().to(get_recently_played))
+        .route("/api/tracks/most-played", web::get().to(get_most_played))
+        .route("/api/stats", web::get().to(get_stats))
+        .route("/api/history", web::get().to(get_listening_history))
+        .route(
+            "/api/tracks/{id}/play/record",
+            web::post().to(record_play),
+        )
+        .route("/api/playlists", web::get().to(get_playlists))
+        .route("/api/playlists", web::post().to(create_playlist))
+        .route(
+            "/api/playlists/{id}",
+            web::delete().to(delete_playlist),
+        )
+        .route(
+            "/api/playlists/{id}/tracks",
+            web::get().to(get_playlist_tracks),
+        )
+        .route(
+            "/api/playlists/{id}/tracks",
+            web::post().to(add_track_to_playlist),
+        )
+        .route(
+            "/api/playlists/{id}/shuffle",
+            web::post().to(shuffle_playlist),
+        )
+        .route(
+            "/api/playlists/{id}/sort",
+            web::post().to(sort_playlist),
+        )
+        .route(
+            "/api/playlists/{id}/dedupe",
+            web::post().to(dedupe_playlist),
+        )
+        .route(
+            "/api/playlists/{id}/stats",
+            web::get().to(playlist_stats),
+        )
+        .route(
+            "/api/playlists/{id}/share",
+            web::post().to(share_playlist),
+        )
+        .route(
+            "/api/playlists/generate",
+            web::post().to(generate_playlist),
+        )
+        .route(
+            "/api/settings/transcode",
+            web::get().to(get_transcode_settings),
+        )
+        .route(
+            "/api/settings/transcode",
+            web::put().to(update_transcode_settings),
+        )
+        .route(
+            "/api/tracks/{id}/stream/transcoded",
+            web::get().to(stream_track_transcoded),
+        )
+        .route("/api/browse", web::get().to(browse_directory))
+        .route(
+            "/api/settings/scrobbling",
+            web::get().to(get_scrobbling_settings),
+        )
+        .route(
+            "/api/settings/scrobbling",
+            web::put().to(update_scrobbling_settings),
+        )
+        .route(
+            "/api/settings/scrobbling/test",
+            web::post().to(test_scrobbling),
+        )
+        .route(
+            "/api/tracks/{id}/lyrics",
+            web::get().to(get_lyrics),
+        )
+        .route(
+            "/api/tracks/{id}/lyrics",
+            web::put().to(update_lyrics),
+        )
+        .route(
+            "/api/tracks/{id}/lyrics/fetch",
+            web::post().to(fetch_lyrics),
+        )
+        .route(
+            "/api/updater/status",
+            web::get().to(get_updater_status),
+        )
+        .route(
+            "/api/updater/check",
+            web::post().to(check_for_updates),
+        )
+        .route(
+            "/api/updater/update",
+            web::post().to(apply_update),
+        )
+        .route(
+            "/api/updater/config",
+            web::get().to(get_updater_config),
+        )
+        .route(
+            "/api/updater/config",
+            web::put().to(update_updater_config),
+        )
+        .route(
+            "/api/import/preview",
+            web::post().to(preview_import),
+        )
+        .route(
+            "/api/import/confirm",
+            web::post().to(confirm_import),
+        )
+        .route(
+            "/api/import/formats",
+            web::get().to(get_import_formats),
+        )
+        .route(
+            "/api/import/device",
+            web::post().to(import_device_music),
+        )
+        .route(
+            "/api/transfer/export",
+            web::post().to(export_playlist),
+        )
+        .route(
+            "/api/transfer/platforms",
+            web::get().to(get_transfer_platforms),
+        )
+        .route(
+            "/api/tracks/{id}/rating",
+            web::put().to(update_track_rating),
+        )
+        .route(
+            "/api/playlists/{id}/smart/evaluate",
+            web::get().to(evaluate_smart_playlist),
+        )
+        .route(
+            "/api/playlists/{id}/smart/rules",
+            web::put().to(update_smart_playlist_rules),
+        )
+        .route("/api/tracks/batch-delete", web::post().to(batch_delete_tracks))
+        .route("/api/tracks/batch-rating", web::put().to(batch_update_rating))
+        .route(
+            "/api/tracks/duplicates",
+            web::get().to(find_duplicates),
+        )
+        .route(
+            "/api/tracks/similar",
+            web::get().to(find_similar_tracks),
+        )
+        .route(
+            "/api/tracks/duplicates/delete",
+            web::post().to(delete_duplicates_batch),
+        )
+        .route("/api/cast/targets", web::get().to(list_cast_targets))
+        .route("/api/cast/targets", web::post().to(register_cast_target))
+        .route(
+            "/api/cast/targets/{id}",
+            web::delete().to(unregister_cast_target),
+        )
+        .route("/api/cast/play", web::post().to(cast_play))
+        .route("/api/cast/control", web::post().to(cast_control))
+        .route("/api/license/status", web::get().to(crate::license_handlers::get_license_status))
+        .route("/api/license/activate", web::post().to(crate::license_handlers::activate_license))
+        .route("/api/license/deactivate", web::post().to(crate::license_handlers::deactivate_license))
+        .route("/api/license/features/{tier}", web::get().to(crate::license_handlers::get_tier_features))
+        .route("/api/license/generate/{tier}", web::post().to(crate::license_handlers::generate_license_key))
+        .route("/api/health", web::get().to(health_check))
+        .route("/api/stats/database", web::get().to(get_database_stats))
+        .route("/api/ws", web::get().to(crate::ws::ws_handler));
+}

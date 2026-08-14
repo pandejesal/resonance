@@ -1,0 +1,89 @@
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { api } from '../lib/api';
+import { AlbumCard } from '../components/Cards';
+import ErrorState from '../components/ErrorState';
+import type { Album, PaginatedResponse } from '../types';
+
+export default function AlbumsPage() {
+  const [data, setData] = useState<PaginatedResponse<Album> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState('date_added');
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    api.albums.list({ page, per_page: 24, sort, order: 'DESC' })
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load albums'))
+      .finally(() => setLoading(false));
+  }, [page, sort, reload]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-primary">Albums</h1>
+          <p className="text-sm text-secondary">
+            {data ? `${data.total} albums` : 'Loading...'}
+          </p>
+        </div>
+
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          className="input-field w-auto"
+        >
+          <option value="date_added">Recently Added</option>
+          <option value="title">Title</option>
+          <option value="artist">Artist</option>
+          <option value="year">Year</option>
+          <option value="track_count">Track Count</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => setReload((r) => r + 1)} />
+      ) : data && data.items.length > 0 ? (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {data.items.map((album) => (
+              <AlbumCard key={album.id} album={album} />
+            ))}
+          </div>
+
+          {data.total_pages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <button
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+                className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-secondary">
+                Page {page} of {data.total_pages}
+              </span>
+              <button
+                onClick={() => setPage(Math.min(data.total_pages, page + 1))}
+                disabled={page === data.total_pages}
+                className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-center py-12 text-secondary">No albums found</div>
+      )}
+    </div>
+  );
+}
