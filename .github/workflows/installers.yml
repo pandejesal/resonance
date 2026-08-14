@@ -1,0 +1,266 @@
+name: Installers
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows x64 installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: win-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: win-cargo-
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble release dir
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release\static | Out-Null
+          Copy-Item backend\target\release\resonance-backend.exe release\
+          Copy-Item frontend\dist\* release\static\ -Recurse
+          Copy-Item VERSION release\
+
+      - name: Compile installer
+        working-directory: installer
+        run: iscc windows.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-windows
+          path: installer/installer_output/*.exe
+
+  linux:
+    name: Linux amd64 deb + AppImage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: lin-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: lin-cargo-
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble release dir
+        run: |
+          mkdir -p release/static
+          cp backend/target/release/resonance-backend release/
+          cp -r frontend/dist/* release/static/
+          cp VERSION release/
+
+      - name: Build .deb
+        working-directory: installer
+        run: ./build-deb.sh
+
+      - name: Build AppImage
+        working-directory: installer
+        run: ./build-appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-linux
+          path: |
+            installer/*.deb
+            installer/*.AppImage
+
+  macos-x64:
+    name: macOS x86_64 dmg + pkg
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: mac-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: mac-x64-cargo-
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble release dir
+        run: |
+          mkdir -p release/static
+          cp backend/target/release/resonance-backend release/
+          cp -r frontend/dist/* release/static/
+          cp VERSION release/
+
+      - name: Build DMG
+        working-directory: installer
+        env:
+          ARCH: x86_64
+        run: ./build-dmg.sh
+
+      - name: Build PKG
+        working-directory: installer
+        env:
+          ARCH: x86_64
+        run: ./build-pkg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-macos-x64
+          path: installer/resonance-*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-macos-x64-pkg
+          path: installer/resonance-*.pkg
+
+  macos-arm64:
+    name: macOS arm64 dmg + pkg
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: mac-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: mac-arm64-cargo-
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble release dir
+        run: |
+          mkdir -p release/static
+          cp backend/target/release/resonance-backend release/
+          cp -r frontend/dist/* release/static/
+          cp VERSION release/
+
+      - name: Build DMG
+        working-directory: installer
+        env:
+          ARCH: arm64
+        run: ./build-dmg.sh
+
+      - name: Build PKG
+        working-directory: installer
+        env:
+          ARCH: arm64
+        run: ./build-pkg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-macos-arm64
+          path: installer/resonance-*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-macos-arm64-pkg
+          path: installer/resonance-*.pkg
+
+  release:
+    name: Attach artifacts to release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, macos-x64, macos-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          generate_release_notes: true

@@ -1,15 +1,18 @@
 #!/bin/bash
 set -e
 
-# Resonance macOS DMG Builder
+# Resonance macOS DMG Builder (v0.8.0)
 # Requires: create-dmg (brew install create-dmg)
+# Usage: ARCH=x86_64|arm64 ./build-dmg.sh  (defaults: uname -m)
+# Expects `release/` containing resonance-backend, static/, VERSION.
 
 APP_NAME="Resonance"
-APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.7.0")"
+APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.8.0")"
+ARCH="${ARCH:-$(uname -m)}"
 APP_DIR="Resonance.app"
-DMG_NAME="resonance-${APP_VERSION}-macos.dmg"
+DMG_NAME="resonance-${APP_VERSION}-macos-${ARCH}.dmg"
 
-echo "== Building Resonance macOS DMG =="
+echo "== Building Resonance macOS DMG ${APP_VERSION} (${ARCH}) =="
 
 # Check for create-dmg
 if ! command -v create-dmg &>/dev/null; then
@@ -20,7 +23,10 @@ fi
 # Check for release files
 if [ ! -f "release/resonance-backend" ]; then
   echo "Error: release/resonance-backend not found."
-  echo "Run the build first: cargo build --release -p resonance-backend"
+  exit 1
+fi
+if [ ! -d "release/static" ]; then
+  echo "Error: release/static not found (copy frontend/dist)."
   exit 1
 fi
 
@@ -30,11 +36,9 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-# Copy backend
+# Copy backend + static (backend resolves static next to the exe)
 cp release/resonance-backend "$APP_DIR/Contents/MacOS/"
-
-# Frontend is embedded in the binary (include_dir!), migrations embedded (sqlx migrate!)
-# Copy VERSION
+cp -r release/static "$APP_DIR/Contents/MacOS/static"
 cp ../VERSION "$APP_DIR/Contents/Resources/"
 
 # Create launcher script
@@ -44,10 +48,46 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$HOME/Library/Application Support/Resonance"
 mkdir -p "$DATA_DIR"
 export DATABASE_URL="sqlite:$DATA_DIR/resonance.db"
-pkill -f resonance-backend 2>/dev/null || true
-nohup "$DIR/resonance-backend" > /dev/null 2>&1 &
+
+# Per-user login autostart (LaunchAgent, created on first run)
+LA="$HOME/Library/LaunchAgents/com.resonance.server.plist"
+if [ "$1" != "--start" ] && [ ! -f "$LA" ]; then
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$LA" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.resonance.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$DIR/resonance</string>
+    <string>--start</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+PLIST
+  launchctl load "$LA" 2>/dev/null || true
+fi
+
+# Start the backend if not already running
+pgrep -f "$DIR/resonance-backend" >/dev/null 2>&1 || nohup "$DIR/resonance-backend" > /dev/null 2>&1 &
+
+if [ "$1" = "--start" ]; then
+  exit 0
+fi
+
 sleep 2
-open http://127.0.0.1:8080
+# App-mode browser window (Chrome/Edge), fallback to default browser
+for b in "Google Chrome" "Microsoft Edge" "Chromium"; do
+  if [ -d "/Applications/$b.app" ]; then
+    open -a "$b" --args --app=http://127.0.0.1:8080 2>/dev/null &
+    exit 0
+  fi
+done
+open http://127.0.0.1:8080 2>/dev/null || true
+echo "Resonance running on http://127.0.0.1:8080"
 LAUNCHER
 chmod +x "$APP_DIR/Contents/MacOS/resonance"
 
@@ -64,7 +104,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.resonance.app</string>
+    <string>com.pandejesal.resonance</string>
     <key>CFBundleVersion</key>
     <string>$APP_VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -79,6 +119,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <false/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleIconFile</key>
+    <string>$APP_NAME</string>
 </dict>
 </plist>
 PLIST
@@ -88,7 +130,6 @@ echo "[*] Creating app icon..."
 ICONSET="$APP_NAME.iconset"
 mkdir -p "$ICONSET"
 
-# Use the SVG to create icon sizes
 if command -v rsvg-convert &>/dev/null; then
   for size in 16 32 64 128 256 512; do
     rsvg-convert -w $size -h $size frontend/public/favicon.svg -o "$ICONSET/icon_${size}x${size}.png"
