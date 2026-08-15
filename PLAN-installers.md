@@ -154,6 +154,28 @@ macOS x86_64). Findings fixed in one commit:
 - **Docs**: README roadmap + autostart wording corrected (AppImage name now
   matches what CI produces; autostart registered from fixed install paths only).
 
+### Second audit results (2026-08-16)
+
+6 reviewer lanes re-audited the fixed state (4 platform lanes + 2 re-dispatched
+after a tooling abort). All prior findings verified fixed with file:line evidence.
+Residual findings from the second pass, all resolved in `8d73da2`:
+
+- `Depends: libssl3` dropped -> `libc6` only (backend links rustls, no OpenSSL —
+  verified against Cargo.toml reqwest rustls-tls and zero openssl in the dep graph).
+- linuxdeploy PATH/cwd inconsistency fixed: build now resolves
+  `command -v linuxdeploy || echo ./linuxdeploy` and invokes the resolved binary.
+- `wscript.exe` dropped from `CloseApplicationsFilter` (generic WSH processes
+  should not be force-closed; the VBS wrapper exits immediately anyway).
+- DMG `qlmanage` fallback now generates the full 10-file iconset via `sips`
+  resizing (single-size iconset silently failed `iconutil`).
+- Launcher pidfile guards now also probe port 8080 (covers PID-reuse and
+  stale-pid cases; still self-healing when curl is absent).
+- "Run: resonance" hint corrected to the real path `/opt/resonance/bin/resonance`.
+- Accepted as documented residuals: cmd.exe race leaving an empty `{app}` dir on
+  uninstall (cosmetic; uninstaller completes), postrm removing autostart on
+  upgrade (recreated on next run), AppImage autostart baking the file path at
+  first run (inherent to the stable-path design).
+
 ## 4. Non-goals
 
 - Tauri packaging (deferred)
