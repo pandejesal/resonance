@@ -264,7 +264,10 @@ impl ScrobbleService {
             .session_key
             .as_deref()
             .ok_or("Last.fm session key not set")?;
-        let api_secret = config.api_secret.as_deref().ok_or("Last.fm API secret not set")?;
+        let api_secret = config
+            .api_secret
+            .as_deref()
+            .ok_or("Last.fm API secret not set")?;
 
         let mut params = BTreeMap::new();
         params.insert("method", "user.getInfo");

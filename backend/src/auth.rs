@@ -17,12 +17,10 @@ fn get_secret() -> &'static str {
         }
 
         // 2. Try loading from persistent file
-        let secret_path = std::env::var("RESONANCE_SECRET_PATH")
-            .unwrap_or_else(|_| {
-                let dir = std::env::var("RESONANCE_DATA_DIR")
-                    .unwrap_or_else(|_| ".".to_string());
-                format!("{}/.resonance_hmac_secret", dir)
-            });
+        let secret_path = std::env::var("RESONANCE_SECRET_PATH").unwrap_or_else(|_| {
+            let dir = std::env::var("RESONANCE_DATA_DIR").unwrap_or_else(|_| ".".to_string());
+            format!("{}/.resonance_hmac_secret", dir)
+        });
 
         if let Ok(existing) = std::fs::read_to_string(&secret_path) {
             let trimmed = existing.trim().to_string();
@@ -39,10 +37,16 @@ fn get_secret() -> &'static str {
             .collect();
 
         if let Err(e) = std::fs::write(&secret_path, &secret) {
-            eprintln!("[auth] Failed to persist HMAC secret to {}: {}", secret_path, e);
+            eprintln!(
+                "[auth] Failed to persist HMAC secret to {}: {}",
+                secret_path, e
+            );
             eprintln!("[auth] Tokens will not survive restart.");
         } else {
-            eprintln!("[auth] Generated and persisted HMAC secret to {}", secret_path);
+            eprintln!(
+                "[auth] Generated and persisted HMAC secret to {}",
+                secret_path
+            );
         }
 
         secret

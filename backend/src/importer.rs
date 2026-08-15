@@ -608,8 +608,9 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
 
     // Index DB tracks once: exact (normalized title, artist) pairs, plus a
     // title-only fallback map. Replaces the previous O(n×m) nested loop.
-    let mut by_pair: HashMap<(String, String), Vec<(String, String, String)>> = HashMap::new();
-    let mut by_title: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
+    type TrackRefs = Vec<(String, String, String)>;
+    let mut by_pair: HashMap<(String, String), TrackRefs> = HashMap::new();
+    let mut by_title: HashMap<String, TrackRefs> = HashMap::new();
     for (id, db_title, db_artist, _db_album) in &db_tracks {
         let norm_db_title = normalize(db_title);
         let norm_db_artist = normalize(db_artist);
@@ -620,10 +621,11 @@ pub async fn match_tracks(pool: &SqlitePool, preview: &mut ImportPreview) {
             .entry((norm_db_title.clone(), norm_db_artist.clone()))
             .or_default()
             .push((id.clone(), norm_db_title.clone(), norm_db_artist.clone()));
-        by_title
-            .entry(norm_db_title.clone())
-            .or_default()
-            .push((id.clone(), norm_db_title, norm_db_artist));
+        by_title.entry(norm_db_title.clone()).or_default().push((
+            id.clone(),
+            norm_db_title,
+            norm_db_artist,
+        ));
     }
 
     let mut matched = Vec::new();

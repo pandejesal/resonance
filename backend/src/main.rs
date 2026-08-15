@@ -1,22 +1,3 @@
-mod auth;
-mod compute_gain;
-mod db;
-mod dodo_handlers;
-mod dodo_webhook;
-mod handlers;
-mod importer;
-mod license;
-mod license_handlers;
-mod lyrics;
-mod models;
-mod ratelimit;
-mod scanner;
-mod scrobble;
-mod subsonic;
-mod updater;
-mod watcher;
-mod ws;
-
 use log::info;
 
 fn default_data_dir() -> std::path::PathBuf {
@@ -32,8 +13,7 @@ fn default_data_dir() -> std::path::PathBuf {
         .unwrap_or_else(|_| std::path::PathBuf::from(&home).join(".resonance"))
         .join("Resonance");
     #[cfg(target_os = "macos")]
-    let data_dir = std::path::PathBuf::from(&home)
-        .join("Library/Application Support/Resonance");
+    let data_dir = std::path::PathBuf::from(&home).join("Library/Application Support/Resonance");
     #[cfg(all(unix, not(target_os = "macos")))]
     let data_dir = std::env::var("XDG_DATA_HOME")
         .map(std::path::PathBuf::from)

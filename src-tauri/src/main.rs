@@ -94,9 +94,11 @@ fn main() {
             }
 
             let url = format!("http://{}:{}/", host, port);
-            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(
-                url.parse().expect("valid backend URL"),
-            ))
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::External(url.parse().expect("valid backend URL")),
+            )
             .title("Resonance")
             .inner_size(1280.0, 800.0)
             .min_inner_size(900.0, 600.0)

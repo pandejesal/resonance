@@ -48,35 +48,40 @@ pub async fn compute_track_gain(db: &SqlitePool, track_id: &str) -> Result<Track
         }
     }
 
+    if in_flight()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(track_id)
     {
-        let mut guard = in_flight().lock().unwrap_or_else(|e| e.into_inner());
-        if guard.contains(track_id) {
-            return Ok(get_track_gain(db, track_id).await.unwrap_or(TrackGain {
-                track_gain: None,
-                track_peak: None,
-                album_gain: None,
-                album_peak: None,
-                computed: false,
-            }));
-        }
-        guard.insert(track_id.to_string());
+        return Ok(get_track_gain(db, track_id).await.unwrap_or(TrackGain {
+            track_gain: None,
+            track_peak: None,
+            album_gain: None,
+            album_peak: None,
+            computed: false,
+        }));
     }
+    in_flight()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(track_id.to_string());
 
     let result = compute_inner(db, track_id).await;
 
-    in_flight().lock().unwrap_or_else(|e| e.into_inner()).remove(track_id);
+    in_flight()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(track_id);
     result
 }
 
 async fn compute_inner(db: &SqlitePool, track_id: &str) -> Result<TrackGain, String> {
-    let track = sqlx::query_as::<_, Track>(
-        "SELECT * FROM tracks WHERE id = ?",
-    )
-    .bind(track_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| format!("DB error: {}", e))?
-    .ok_or_else(|| "Track not found".to_string())?;
+    let track = sqlx::query_as::<_, Track>("SELECT * FROM tracks WHERE id = ?")
+        .bind(track_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| format!("DB error: {}", e))?
+        .ok_or_else(|| "Track not found".to_string())?;
 
     let path = track.file_path.clone();
 
@@ -136,11 +141,7 @@ fn measure_loudness(file_path: &str) -> Option<(f64, f64)> {
     let track_id = track.id;
 
     let sample_rate = track.codec_params.sample_rate?;
-    let channels = track
-        .codec_params
-        .channels
-        .map(|c| c.count())
-        .unwrap_or(2);
+    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
 
     let mut decoder = symphonia::default::get_codecs()
         .make(&track.codec_params, &DecoderOptions::default())
@@ -202,10 +203,7 @@ async fn maybe_compute_album_gain(db: &SqlitePool, album: &str, artist: &str) {
         / count;
 
     let album_gain = (-10.0 * mean_squared.log10()).clamp(-15.0, 15.0);
-    let album_peak = tracks
-        .iter()
-        .filter_map(|t| t.2)
-        .fold(0.0f64, f64::max);
+    let album_peak = tracks.iter().filter_map(|t| t.2).fold(0.0f64, f64::max);
 
     let _ = sqlx::query(
         "UPDATE tracks SET album_gain = ?, album_peak = ? WHERE album = ? AND artist = ?",
@@ -234,11 +232,13 @@ mod tests {
         let seconds = 5;
 
         let measure = |amplitude: f64| -> f64 {
-            let mut ebur = EbuR128::new(channels, sample_rate, Mode::I | Mode::SAMPLE_PEAK).expect("init ebur128");
+            let mut ebur = EbuR128::new(channels, sample_rate, Mode::I | Mode::SAMPLE_PEAK)
+                .expect("init ebur128");
             let frames = sample_rate * seconds;
             let mut interleaved = Vec::with_capacity((frames * channels) as usize);
             for i in 0..frames {
-                let sample = amplitude * (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / sample_rate as f64).sin();
+                let sample = amplitude
+                    * (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / sample_rate as f64).sin();
                 for _ in 0..channels {
                     interleaved.push(sample as f32);
                 }
@@ -268,11 +268,13 @@ mod tests {
         );
 
         // Peak across channels must equal the sine amplitude.
-        let mut ebur = EbuR128::new(channels, sample_rate, Mode::I | Mode::SAMPLE_PEAK).expect("init ebur128");
+        let mut ebur =
+            EbuR128::new(channels, sample_rate, Mode::I | Mode::SAMPLE_PEAK).expect("init ebur128");
         let frames = sample_rate * seconds;
         let mut interleaved = Vec::with_capacity((frames * channels) as usize);
         for i in 0..frames {
-            let sample = 0.5 * (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / sample_rate as f64).sin();
+            let sample =
+                0.5 * (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / sample_rate as f64).sin();
             for _ in 0..channels {
                 interleaved.push(sample as f32);
             }

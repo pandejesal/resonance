@@ -4,13 +4,13 @@ pub mod compute_gain;
 pub mod db;
 pub mod dodo_handlers;
 pub mod dodo_webhook;
-pub mod ratelimit;
 pub mod handlers;
 pub mod importer;
 pub mod license;
 pub mod license_handlers;
 pub mod lyrics;
 pub mod models;
+pub mod ratelimit;
 pub mod scanner;
 pub mod scrobble;
 pub mod subsonic;
@@ -27,8 +27,8 @@ use log::info;
 use parking_lot::Mutex;
 use scanner::Scanner;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 static FRONTEND_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
 
@@ -261,7 +261,10 @@ pub async fn start_server(
                     .add(("X-Frame-Options", "DENY"))
                     .add(("X-XSS-Protection", "1; mode=block"))
                     .add(("Referrer-Policy", "strict-origin-when-cross-origin"))
-                    .add(("Permissions-Policy", "camera=(), microphone=(), geolocation=()"))
+                    .add((
+                        "Permissions-Policy",
+                        "camera=(), microphone=(), geolocation=()",
+                    )),
             )
             .app_data(state.clone())
             .app_data(static_dir_data)
@@ -371,7 +374,7 @@ pub mod android {
                         .app_data(state.clone())
                         .app_data(static_dir_data)
                         .app_data(index_path_data)
-.configure(handlers::register_routes)
+                        .configure(handlers::register_routes)
                         .app_data(web::Data::new(ws_clients.clone()))
                         .default_service(web::to(spa_fallback))
                 })

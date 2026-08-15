@@ -4,96 +4,104 @@ use sqlx::migrate;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 
+pub struct Database {
+    pub pool: SqlitePool,
+}
 
-
-    pub struct Database {
-        pub pool: SqlitePool,
-    }
-
-    impl Database {
-        pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
-            let file_path = database_url
-                .strip_prefix("sqlite:")
-                .unwrap_or(database_url)
-                .split('?')
-                .next()
-                .unwrap_or(database_url);
-            let db_path = Path::new(file_path);
-            if let Some(parent) = db_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-
-            let pool = SqlitePoolOptions::new()
-                .max_connections(10)
-                .min_connections(2)
-                .connect(database_url)
-                .await?;
-
-            sqlx::query("PRAGMA journal_mode=WAL")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA synchronous=NORMAL")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA busy_timeout=5000")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA cache_size=-64000")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA temp_store=MEMORY")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA mmap_size=268435456")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA optimize").execute(&pool).await?;
-
-            Ok(Self { pool })
+impl Database {
+    pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
+        let file_path = database_url
+            .strip_prefix("sqlite:")
+            .unwrap_or(database_url)
+            .split('?')
+            .next()
+            .unwrap_or(database_url);
+        let db_path = Path::new(file_path);
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent).ok();
         }
 
-        pub async fn run_migrations(&self) -> Result<(), sqlx::Error> {
-            migrate!("./migrations").run(&self.pool).await?;
-            info!("Database migrations completed");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(10)
+            .min_connections(2)
+            .connect(database_url)
+            .await?;
 
-            // Create default admin user if no users exist
-            let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-                .fetch_one(&self.pool)
-                .await?;
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA synchronous=NORMAL")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA busy_timeout=5000")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA cache_size=-64000")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA temp_store=MEMORY")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA mmap_size=268435456")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA optimize").execute(&pool).await?;
 
-            if user_count.0 == 0 {
-                use argon2::{
-                    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
-                    Argon2,
-                };
+        Ok(Self { pool })
+    }
 
-                let salt = SaltString::generate(&mut OsRng);
-                let argon2 = Argon2::default();
-                use rand::Rng;
-                let mut rng = rand::thread_rng();
-                let admin_password: String = (0..16)
-                    .map(|_| {
-                        let idx = rng.gen_range(0..62);
-                        if idx < 10 { (b'0' + idx) as char }
-                        else if idx < 36 { (b'a' + idx - 10) as char }
-                        else { (b'A' + idx - 36) as char }
-                    })
-                    .collect();
-                let password_hash = argon2.hash_password(admin_password.as_bytes(), &salt).unwrap().to_string();
+    pub async fn run_migrations(&self) -> Result<(), sqlx::Error> {
+        migrate!("./migrations").run(&self.pool).await?;
+        info!("Database migrations completed");
 
-                let id = uuid::Uuid::new_v4().to_string();
-                sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, 'admin', ?, 'admin')")
+        // Create default admin user if no users exist
+        let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&self.pool)
+            .await?;
+
+        if user_count.0 == 0 {
+            use argon2::{
+                password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+                Argon2,
+            };
+
+            let salt = SaltString::generate(&mut OsRng);
+            let argon2 = Argon2::default();
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let admin_password: String = (0..16)
+                .map(|_| {
+                    let idx = rng.gen_range(0..62);
+                    if idx < 10 {
+                        (b'0' + idx) as char
+                    } else if idx < 36 {
+                        (b'a' + idx - 10) as char
+                    } else {
+                        (b'A' + idx - 36) as char
+                    }
+                })
+                .collect();
+            let password_hash = argon2
+                .hash_password(admin_password.as_bytes(), &salt)
+                .unwrap()
+                .to_string();
+
+            let id = uuid::Uuid::new_v4().to_string();
+            sqlx::query("INSERT INTO users (id, username, password_hash, role) VALUES (?, 'admin', ?, 'admin')")
                     .bind(&id)
                     .bind(&password_hash)
                     .execute(&self.pool)
                     .await?;
 
-                info!("Created default admin user (username: admin, password: {})", admin_password);
-            }
-
-            Ok(())
+            info!(
+                "Created default admin user (username: admin, password: {})",
+                admin_password
+            );
         }
+
+        Ok(())
     }
+}
 
 #[allow(dead_code)]
 pub fn create_schema() -> String {
