@@ -156,13 +156,13 @@ jobs:
           npm ci
           npm run build
 
-- name: Build backend
-        run: cargo build --release -p resonance-backend --target aarch64-apple-darwin
+      - name: Build backend
+        run: cargo build --release -p resonance-backend --target x86_64-apple-darwin
 
       - name: Assemble release dir
         run: |
           mkdir -p release/static
-          cp target/aarch64-apple-darwin/release/resonance-backend release/
+          cp target/x86_64-apple-darwin/release/resonance-backend release/
           cp -r frontend/dist/* release/static/
           cp VERSION release/
 
@@ -224,12 +224,12 @@ jobs:
           npm run build
 
       - name: Build backend
-        run: cargo build --release -p resonance-backend
+        run: cargo build --release -p resonance-backend --target aarch64-apple-darwin
 
       - name: Assemble release dir
         run: |
           mkdir -p release/static
-          cp target/release/resonance-backend release/
+          cp target/aarch64-apple-darwin/release/resonance-backend release/
           cp -r frontend/dist/* release/static/
           cp VERSION release/
 
