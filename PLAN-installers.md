@@ -97,6 +97,30 @@ Version: 0.7.3 (merged) -> **0.8.0** this milestone.
   out of space during gate (0 bytes free); freed ~5.9 GB via `cargo clean` +
   `npm cache clean --force` before the green cargo check/test.
 
+### CI validation (final, 2026-08-15)
+
+- **CI workflow green** on every push since `07d5a54` (fmt -> frontend ->
+  tsc --noEmit -> clippy -D warnings -> check; frontend built before backend
+  because `include_dir!` at `backend/src/lib.rs:33` panics without
+  `frontend/dist`).
+- **Installers workflow green** (`39b328e`, run 31901601181, 6m37s); artifacts
+  uploaded on all 4 platform jobs:
+  - Windows x64 Inno: `resonance-0.8.0-windows-setup.exe` (~6.9 MB)
+  - Linux deb + AppImage: ~13.8 MB
+  - macOS arm64 dmg + pkg: ~7.0 MB each
+  - macOS x86_64 dmg + pkg: ~7.5 MB each (cross-compiled with
+    `--target x86_64-apple-darwin` on a macos-14 runner; hosted macos-13
+    runners are retired, so the old job sat queued indefinitely)
+- Fixes that got it green (in order): package-lock.json regenerated with
+  `npm@10` (npm 10 requires `esbuild@0.28.2` platform peers that npm 11
+  skipped); assemble step copies from workspace-root `target/release/` (not
+  `backend/target/`); build scripts marked `+x` in git (exit 126); AppImage +
+  DMG scripts use `../release/` (missed in the first pass).
+- Local smokes (Q10): Windows Inno install/uninstall fully verified (app
+  removed, `%APPDATA%\Resonance` data kept); WSL2 deb install/remove mechanics
+  verified (`/opt/resonance` layout + .desktop); runtime leg of the Linux
+  binary covered by CI job runs.
+
 ## 4. Non-goals
 
 - Tauri packaging (deferred)
