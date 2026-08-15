@@ -38,9 +38,6 @@ jobs:
       - name: Check Formatting
         run: cargo fmt --all -- --check
 
-      - name: Check Clippy
-        run: cargo clippy -p resonance-backend -- -D warnings
-
       - name: Build Frontend
         run: |
           cd frontend
@@ -51,6 +48,9 @@ jobs:
         run: |
           cd frontend
           npx tsc --noEmit
+
+      - name: Check Clippy
+        run: cargo clippy -p resonance-backend -- -D warnings
 
       - name: Check Backend
         run: cargo check -p resonance-backend
