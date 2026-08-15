@@ -40,7 +40,7 @@ Section: sound
 Priority: optional
 Architecture: $ARCH
 Maintainer: Jesal Pande <pandejesal@gmail.com>
-Depends: libc6, libssl3
+Depends: libc6
 Description: Self-hosted music archival system
  A premium, self-hosted music library server with a web UI.
  Backend: $PKG-backend, data in ~/.local/share/resonance (or \$XDG_DATA_HOME).

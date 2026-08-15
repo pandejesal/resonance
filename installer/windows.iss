@@ -38,8 +38,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 CloseApplicationsFilter=resonance-backend.exe,wscript.exe
 ; data lives in {userappdata}\Resonance (outside {app}) -> the uninstaller
-; removes {app} but never touches the data dir; delete it manually to
-; remove all traces (an empty data dir is also left in place).
+; removes {app} but never touches non-empty data; Inno also removes the
+; data dir only when it is empty (delete it manually to remove all traces).
 UninstallDisplayName={#MyAppName}
 
 [Languages]
@@ -135,6 +135,9 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     AppDir := ExpandConstant('{app}');
+    // A resonance.bat that is briefly running under cmd.exe (startup poll
+    // loop, max ~20s) may survive this delete; the uninstaller still
+    // completes and the leftover is a cosmetic empty {app} dir only.
     DeleteFile(AppDir + '\resonance.bat');
     DeleteFile(AppDir + '\resonance-launch.vbs');
   end
