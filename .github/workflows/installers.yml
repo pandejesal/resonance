@@ -53,7 +53,10 @@ jobs:
 
       - name: Compile installer
         working-directory: installer
-        run: iscc windows.iss
+        shell: pwsh
+        run: |
+          $ver = (Get-Content ..\VERSION).Trim()
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" windows.iss
 
       - uses: actions/upload-artifact@v4
         with:
@@ -120,7 +123,7 @@ jobs:
 
   macos-x64:
     name: macOS x86_64 dmg + pkg
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -153,13 +156,13 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build backend
-        run: cargo build --release -p resonance-backend --target x86_64-apple-darwin
+- name: Build backend
+        run: cargo build --release -p resonance-backend --target aarch64-apple-darwin
 
       - name: Assemble release dir
         run: |
           mkdir -p release/static
-          cp target/x86_64-apple-darwin/release/resonance-backend release/
+          cp target/aarch64-apple-darwin/release/resonance-backend release/
           cp -r frontend/dist/* release/static/
           cp VERSION release/
 
@@ -177,22 +180,24 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: resonance-macos-x64
+          name: resonance-macos-x86_64
           path: installer/resonance-*.dmg
 
       - uses: actions/upload-artifact@v4
         with:
-          name: resonance-macos-x64-pkg
+          name: resonance-macos-x86_64-pkg
           path: installer/resonance-*.pkg
 
   macos-arm64:
     name: macOS arm64 dmg + pkg
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -262,6 +267,11 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

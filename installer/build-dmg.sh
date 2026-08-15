@@ -7,7 +7,7 @@ set -e
 # Expects `release/` containing resonance-backend, static/, VERSION.
 
 APP_NAME="Resonance"
-APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.8.0")"
+APP_VERSION="$(cat ../VERSION)"
 ARCH="${ARCH:-$(uname -m)}"
 APP_DIR="Resonance.app"
 DMG_NAME="resonance-${APP_VERSION}-macos-${ARCH}.dmg"
@@ -49,10 +49,16 @@ DATA_DIR="$HOME/Library/Application Support/Resonance"
 mkdir -p "$DATA_DIR"
 export DATABASE_URL="sqlite:$DATA_DIR/resonance.db"
 
-# Per-user login autostart (LaunchAgent, created on first run)
+# Per-user login autostart (LaunchAgent) — only when installed into
+# /Applications; a DMG-mount path ($DIR under /Volumes) must never be
+# baked into the plist, it vanishes when the DMG is unmounted.
 LA="$HOME/Library/LaunchAgents/com.resonance.server.plist"
-if [ "$1" != "--start" ] && [ ! -f "$LA" ]; then
+if [ "$1" != "--start" ] && [ ! -f "$LA" ] && [ "${DIR#/Applications/}" != "$DIR" ]; then
   mkdir -p "$HOME/Library/LaunchAgents"
+  # XML-escape the path (safe for & < >)
+  DIR_XML="${DIR//&/&amp;}"
+  DIR_XML="${DIR_XML//</&lt;}"
+  DIR_XML="${DIR_XML//>/&gt;}"
   cat > "$LA" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -61,7 +67,7 @@ if [ "$1" != "--start" ] && [ ! -f "$LA" ]; then
   <key>Label</key><string>com.resonance.server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$DIR/resonance</string>
+    <string>${DIR_XML}/resonance</string>
     <string>--start</string>
   </array>
   <key>RunAtLoad</key><true/>
@@ -71,18 +77,34 @@ PLIST
   launchctl load "$LA" 2>/dev/null || true
 fi
 
-# Start the backend if not already running
-pgrep -f "$DIR/resonance-backend" >/dev/null 2>&1 || nohup "$DIR/resonance-backend" > /dev/null 2>&1 &
+# Start the backend if it is not already running (pidfile guard; the loser
+# of a race fails to bind port 8080 and exits cleanly)
+PIDFILE="$DATA_DIR/resonance.pid"
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  :
+else
+  nohup "$DIR/resonance-backend" >/dev/null 2>&1 &
+  echo $! > "$PIDFILE"
+fi
 
 if [ "$1" = "--start" ]; then
   exit 0
 fi
 
-sleep 2
-# App-mode browser window (Chrome/Edge), fallback to default browser
+# Wait for the server to accept connections (max ~20s)
+if command -v curl >/dev/null 2>&1; then
+  for i in $(seq 1 20); do
+    curl -sf -o /dev/null http://127.0.0.1:8080/ && break
+    sleep 1
+  done
+fi
+
+# App-mode browser window (Chrome/Edge), fallback to default browser.
+# Launch the binary directly so the app-mode flag is honored even when the
+# browser is already running (open -a would just focus the existing window).
 for b in "Google Chrome" "Microsoft Edge" "Chromium"; do
-  if [ -d "/Applications/$b.app" ]; then
-    open -a "$b" --args --app=http://127.0.0.1:8080 2>/dev/null &
+  if [ -x "/Applications/$b.app/Contents/MacOS/$b" ]; then
+    "/Applications/$b.app/Contents/MacOS/$b" --app=http://127.0.0.1:8080 >/dev/null 2>&1 &
     exit 0
   fi
 done
@@ -137,9 +159,10 @@ if command -v rsvg-convert &>/dev/null; then
   done
   iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns"
   rm -rf "$ICONSET"
-elif command -v sips &>/dev/null; then
-  # Fallback to sips (macOS built-in)
-  sips -s format png ../frontend/public/favicon.svg --out "$ICONSET/icon_512x512.png" 2>/dev/null || true
+elif command -v qlmanage &>/dev/null; then
+  # Fallback to qlmanage (macOS built-in; sips cannot read SVG)
+  qlmanage -t -s 512 -o "$ICONSET" ../frontend/public/favicon.svg >/dev/null 2>&1 || true
+  mv "$ICONSET/favicon.svg.png" "$ICONSET/icon_512x512.png" 2>/dev/null || true
   iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns" 2>/dev/null || true
   rm -rf "$ICONSET"
 fi

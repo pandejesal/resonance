@@ -8,7 +8,7 @@ set -e
 # Run AFTER build-dmg.sh (reuses Resonance.app) or build the bundle directly.
 
 APP_NAME="Resonance"
-APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.8.0")"
+APP_VERSION="$(cat ../VERSION)"
 ARCH="${ARCH:-$(uname -m)}"
 APP_DIR="Resonance.app"
 PKG_NAME="resonance-${APP_VERSION}-macos-${ARCH}.pkg"

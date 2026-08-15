@@ -68,7 +68,8 @@ Version: 0.7.3 (merged) -> **0.8.0** this milestone.
 6. **CI** (`.github/workflows/installers.yml`)
    - windows-latest: build backend + frontend, Inno Setup (choco), upload .exe
    - ubuntu-latest: build deb + AppImage, upload both
-   - macos-13 (x86_64) + macos-14 (arm64): build dmg + pkg per arch
+   - macos-15 (both arches; x86_64 cross-compiled on the arm64 runner): build
+     dmg + pkg per arch
    - artifacts on every run; release attach on `v*` tags
 7. **Docs**: README install section (download links, per-OS install steps,
    autostart, data dirs), PLAN-roadmap checkbox
@@ -120,6 +121,38 @@ Version: 0.7.3 (merged) -> **0.8.0** this milestone.
   removed, `%APPDATA%\Resonance` data kept); WSL2 deb install/remove mechanics
   verified (`/opt/resonance` layout + .desktop); runtime leg of the Linux
   binary covered by CI job runs.
+
+### Second audit fixes (2026-08-16)
+
+Full 4-lane audit of the v0.8.0 artifacts (Windows / Linux / macOS arm64 /
+macOS x86_64). Findings fixed in one commit:
+
+- **Windows (`windows.iss`)**: real AppId GUID (was template placeholder);
+  `VersionInfoVersion` added (exe had no version resource); `CloseApplications=yes`
+  + filter so uninstall closes the running backend instead of failing on the
+  locked exe; version injected via `/DMyAppVersion=` from VERSION (no hardcode);
+  `--launch` param removed from shortcuts (dead); bat now health-polls port 8080
+  with curl instead of a fixed 2s sleep; comments corrected (data-dir guarantee).
+- **Linux deb (`build-deb.sh`)**: `Depends: libc6, libssl3`; standard Maintainer;
+  new `DEBIAN/postrm` removes per-user autostart on uninstall; launcher uses a
+  pidfile guard (was pgrep) and health-polls instead of `sleep 2`.
+- **AppImage (`build-appimage.sh`)**: linuxdeploy pinned to
+  `1-alpha-20251107-1` (was unpinned `continuous`) with a version sanity check;
+  output named `resonance-<version>-x86_64.AppImage` via the `OUTPUT` env var
+  (was linuxdeploy default `Resonance-x86_64.AppImage`); autostart now writes
+  `$APPIMAGE` (stable file path) instead of the transient FUSE mount `$BIN_DIR`
+  (was broken after reboot); dead manual fallback branch removed.
+- **macOS (`build-dmg.sh`)**: runner migrated macos-14 -> macos-15 on both mac
+  jobs; LaunchAgent only created when the app is inside `/Applications` (a DMG
+  mount path must not be baked into the plist); plist path XML-escaped; browser
+  launched by direct binary exec (app-mode honored even when already running);
+  dead `sips` SVG fallback replaced with `qlmanage`; pidfile guard + health poll.
+- **CI (`installers.yml`)**: arm64 job now builds with an explicit
+  `--target aarch64-apple-darwin`; ISCC invoked by full path with the version
+  define; artifact names unified to `resonance-macos-x86_64`; release job adds a
+  `SHA256SUMS` file.
+- **Docs**: README roadmap + autostart wording corrected (AppImage name now
+  matches what CI produces; autostart registered from fixed install paths only).
 
 ## 4. Non-goals
 

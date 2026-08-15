@@ -5,7 +5,9 @@
 ;   release\resonance-backend.exe  release\static\*  release\VERSION
 
 #define MyAppName "Resonance"
+#ifndef MyAppVersion
 #define MyAppVersion "0.8.0"
+#endif
 #define MyAppPublisher "Resonance"
 #define MyAppURL "https://github.com/pandejesal/resonance"
 #define MyAppExeName "resonance.bat"
@@ -13,9 +15,10 @@
 #define MyDataDir "{userappdata}\Resonance"
 
 [Setup]
-AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+AppId={{0E127E6D-9CA1-474D-973C-DA71C0DB5656}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}.0
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
@@ -32,8 +35,11 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-CloseApplications=no
-; data lives in {userappdata}\Resonance (outside {app}) -> uninstaller keeps it
+CloseApplications=yes
+CloseApplicationsFilter=resonance-backend.exe,wscript.exe
+; data lives in {userappdata}\Resonance (outside {app}) -> the uninstaller
+; removes {app} but never touches the data dir; delete it manually to
+; remove all traces (an empty data dir is also left in place).
 UninstallDisplayName={#MyAppName}
 
 [Languages]
@@ -59,9 +65,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   Flags: uninsdeletevalue; Tasks: autostart
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--launch"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--launch"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppVbsName}"; Description: "Launch Resonance now"; Flags: nowait postinstall skipifsilent
@@ -84,8 +90,12 @@ begin
     BatFile.Add('set DATABASE_URL=sqlite:' + DataDir + '\resonance.db');
     BatFile.Add('if not exist "' + DataDir + '" mkdir "' + DataDir + '"');
     BatFile.Add('rem Start the server if it is not already running');
+    BatFile.Add('rem (best-effort check; if two instances race, the loser');
+    BatFile.Add('rem  fails to bind port 8080 and exits cleanly)');
     BatFile.Add('tasklist /fi "imagename eq resonance-backend.exe" 2>nul | find /i "resonance-backend.exe" >nul || start /b "" "' + AppDir + '\resonance-backend.exe" > nul 2>&1');
-    BatFile.Add('timeout /t 2 /nobreak > nul');
+    BatFile.Add('rem Wait for the server to accept connections (max ~20s)');
+    BatFile.Add('for /l %%i in (1,1,20) do (curl -s -o nul http://127.0.0.1:8080/ && goto :ready & timeout /t 1 /nobreak > nul)');
+    BatFile.Add(':ready');
     BatFile.Add('rem Open the app-mode browser window (Edge/Chrome), fallback to default browser');
     BatFile.Add('set "BROWSER="');
     BatFile.Add('if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"');

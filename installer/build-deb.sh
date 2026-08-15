@@ -9,7 +9,7 @@ set -e
 # Expects `release/` containing resonance-backend, static/, VERSION.
 
 APP_NAME="Resonance"
-APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.8.0")"
+APP_VERSION="$(cat ../VERSION)"
 PKG="resonance"
 ARCH="amd64"
 STAGING="$(mktemp -d)"
@@ -39,7 +39,8 @@ Version: $APP_VERSION
 Section: sound
 Priority: optional
 Architecture: $ARCH
-Maintainer: Resonance <https://github.com/pandejesal/resonance>
+Maintainer: Jesal Pande <pandejesal@gmail.com>
+Depends: libc6, libssl3
 Description: Self-hosted music archival system
  A premium, self-hosted music library server with a web UI.
  Backend: $PKG-backend, data in ~/.local/share/resonance (or \$XDG_DATA_HOME).
@@ -58,7 +59,9 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/resonance"
 mkdir -p "$DATA_DIR"
 export DATABASE_URL="sqlite:$DATA_DIR/resonance.db"
 
-# Per-user login autostart (created on first run)
+# Per-user login autostart (created on first run from a stable path).
+# $APPIMAGE (set by the AppImage runtime) is the stable AppImage file path;
+# for the deb install $APP_DIR is already stable and used as the fallback.
 AUTOSTART_DIR="$HOME/.config/autostart"
 if [ "$1" != "--start" ] && [ ! -f "$AUTOSTART_DIR/resonance.desktop" ]; then
   mkdir -p "$AUTOSTART_DIR"
@@ -67,19 +70,33 @@ if [ "$1" != "--start" ] && [ ! -f "$AUTOSTART_DIR/resonance.desktop" ]; then
 Type=Application
 Name=Resonance
 Comment=Self-hosted music archival system
-Exec=$APP_DIR/bin/resonance --start
+Exec=${APPIMAGE:-$APP_DIR/bin/resonance} --start
 X-GNOME-Autostart-enabled=true
 EOF
 fi
 
-# Start the backend if not already running
-pgrep -f "$APP_DIR/resonance-backend" >/dev/null 2>&1 || nohup "$APP_DIR/resonance-backend" > /dev/null 2>&1 &
+# Start the backend if it is not already running (pidfile guard; the loser
+# of a race fails to bind port 8080 and exits cleanly)
+PIDFILE="$DATA_DIR/resonance.pid"
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  :
+else
+  nohup "$APP_DIR/resonance-backend" >/dev/null 2>&1 &
+  echo $! > "$PIDFILE"
+fi
 
 if [ "$1" = "--start" ]; then
   exit 0
 fi
 
-sleep 2
+# Wait for the server to accept connections (max ~20s)
+if command -v curl >/dev/null 2>&1; then
+  for i in $(seq 1 20); do
+    curl -sf -o /dev/null http://127.0.0.1:8080/ && break
+    sleep 1
+  done
+fi
+
 # App-mode browser window (Chrome/Chromium/Edge), fallback to default browser
 for b in google-chrome google-chrome-stable chromium chromium-browser microsoft-edge msedge; do
   if command -v "$b" &>/dev/null; then
@@ -118,7 +135,18 @@ else
   echo "Warning: No SVG converter found; skipping icon."
 fi
 
-# postinst: nothing needed (per-user autostart handled by the app)
+# postrm: remove the per-user autostart entries created by the app
+cat > "$STAGING/DEBIAN/postrm" <<'POSTRM'
+#!/bin/sh
+set -e
+for h in /home/* /root; do
+  if [ -f "$h/.config/autostart/resonance.desktop" ]; then
+    rm -f "$h/.config/autostart/resonance.desktop"
+  fi
+done
+exit 0
+POSTRM
+chmod 755 "$STAGING/DEBIAN/postrm"
 
 dpkg-deb --build --root-owner-group "$STAGING" "resonance_${APP_VERSION}_${ARCH}.deb"
 
@@ -126,4 +154,4 @@ echo ""
 echo "deb created: resonance_${APP_VERSION}_${ARCH}.deb"
 echo "Install: sudo apt install ./resonance_${APP_VERSION}_${ARCH}.deb"
 echo "Run: resonance"
-echo "Uninstall keeps your data (~/.local/share/resonance, ~/.config/autostart)."
+echo "Uninstall keeps your data (~/.local/share/resonance)."

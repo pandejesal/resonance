@@ -6,16 +6,17 @@ set -e
 # Expects `release/` containing resonance-backend, static/, VERSION.
 
 APP_NAME="Resonance"
-APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.8.0")"
+APP_VERSION="$(cat ../VERSION)"
 APPDIR="AppDir"
 
 echo "== Building Resonance Linux AppImage ${APP_VERSION} =="
 
 # Check for linuxdeploy
 if ! command -v linuxdeploy &>/dev/null && [ ! -f linuxdeploy ]; then
-  echo "Downloading linuxdeploy..."
-  curl -L -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+  echo "Downloading linuxdeploy (pinned: 1-alpha-20251107-1)..."
+  curl -L -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
   chmod +x linuxdeploy
+  APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy --version
 fi
 
 # Check for release files
@@ -50,7 +51,9 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/resonance"
 mkdir -p "$DATA_DIR"
 export DATABASE_URL="sqlite:$DATA_DIR/resonance.db"
 
-# Per-user login autostart (created on first run)
+# Per-user login autostart (created on first run from a stable path).
+# Inside the AppImage runtime $APPIMAGE is the stable file path; the
+# transient FUSE mount ($BIN_DIR) must never be written into autostart.
 AUTOSTART_DIR="$HOME/.config/autostart"
 if [ "$1" != "--start" ] && [ ! -f "$AUTOSTART_DIR/resonance.desktop" ]; then
   mkdir -p "$AUTOSTART_DIR"
@@ -59,19 +62,33 @@ if [ "$1" != "--start" ] && [ ! -f "$AUTOSTART_DIR/resonance.desktop" ]; then
 Type=Application
 Name=Resonance
 Comment=Self-hosted music archival system
-Exec=$BIN_DIR/resonance --start
+Exec=${APPIMAGE:-$BIN_DIR/resonance} --start
 X-GNOME-Autostart-enabled=true
 EOF
 fi
 
-# Start the backend if not already running
-pgrep -f "$BIN_DIR/resonance-backend" >/dev/null 2>&1 || nohup "$BIN_DIR/resonance-backend" > /dev/null 2>&1 &
+# Start the backend if it is not already running (pidfile guard; the loser
+# of a race fails to bind port 8080 and exits cleanly)
+PIDFILE="$DATA_DIR/resonance.pid"
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  :
+else
+  nohup "$BIN_DIR/resonance-backend" >/dev/null 2>&1 &
+  echo $! > "$PIDFILE"
+fi
 
 if [ "$1" = "--start" ]; then
   exit 0
 fi
 
-sleep 2
+# Wait for the server to accept connections (max ~20s)
+if command -v curl >/dev/null 2>&1; then
+  for i in $(seq 1 20); do
+    curl -sf -o /dev/null http://127.0.0.1:8080/ && break
+    sleep 1
+  done
+fi
+
 # App-mode browser window (Chrome/Chromium/Edge), fallback to default browser
 for b in google-chrome google-chrome-stable chromium chromium-browser microsoft-edge msedge; do
   if command -v "$b" &>/dev/null; then
@@ -118,18 +135,12 @@ DESKTOP
 cp "$APPDIR/usr/share/applications/resonance.desktop" "$APPDIR/resonance.desktop"
 
 # Build AppImage
-echo "[*] Building AppImage..."
-if [ -f linuxdeploy ]; then
-  ./linuxdeploy --appdir "$APPDIR" --output appimage
-else
-  # Fallback: create manually
-  curl -L -o runtime "https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-x86_64"
-  chmod +x runtime
-  mksquashfs "$APPDIR" squashfs-root -comp gzip -noappend
-  cat runtime squashfs-root > "resonance-${APP_VERSION}-x86_64.AppImage"
-  chmod +x "resonance-${APP_VERSION}-x86_64.AppImage"
-  rm -rf runtime squashfs-root
+if [ ! -f linuxdeploy ]; then
+  echo "Error: linuxdeploy missing (auto-download failed)."
+  exit 1
 fi
+echo "[*] Building AppImage..."
+OUTPUT="resonance-${APP_VERSION}-x86_64.AppImage" ./linuxdeploy --appdir "$APPDIR" --output appimage
 
 echo ""
 echo "AppImage created: resonance-${APP_VERSION}-x86_64.AppImage"
