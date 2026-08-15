@@ -75,10 +75,10 @@ X-GNOME-Autostart-enabled=true
 EOF
 fi
 
-# Start the backend if it is not already running (pidfile guard; the loser
-# of a race fails to bind port 8080 and exits cleanly)
+# Start the backend if it is not already running (pidfile + port probe; the
+# loser of a race fails to bind port 8080 and exits cleanly)
 PIDFILE="$DATA_DIR/resonance.pid"
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null && curl -sf -o /dev/null http://127.0.0.1:8080/; then
   :
 else
   nohup "$APP_DIR/resonance-backend" >/dev/null 2>&1 &
@@ -153,5 +153,5 @@ dpkg-deb --build --root-owner-group "$STAGING" "resonance_${APP_VERSION}_${ARCH}
 echo ""
 echo "deb created: resonance_${APP_VERSION}_${ARCH}.deb"
 echo "Install: sudo apt install ./resonance_${APP_VERSION}_${ARCH}.deb"
-echo "Run: resonance"
+echo "Run: /opt/resonance/bin/resonance (or via the Resonance app-menu entry)"
 echo "Uninstall keeps your data (~/.local/share/resonance)."

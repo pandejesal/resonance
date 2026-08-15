@@ -77,10 +77,10 @@ PLIST
   launchctl load "$LA" 2>/dev/null || true
 fi
 
-# Start the backend if it is not already running (pidfile guard; the loser
-# of a race fails to bind port 8080 and exits cleanly)
+# Start the backend if it is not already running (pidfile + port probe; the
+# loser of a race fails to bind port 8080 and exits cleanly)
 PIDFILE="$DATA_DIR/resonance.pid"
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null && curl -sf -o /dev/null http://127.0.0.1:8080/; then
   :
 else
   nohup "$DIR/resonance-backend" >/dev/null 2>&1 &
@@ -160,10 +160,18 @@ if command -v rsvg-convert &>/dev/null; then
   iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns"
   rm -rf "$ICONSET"
 elif command -v qlmanage &>/dev/null; then
-  # Fallback to qlmanage (macOS built-in; sips cannot read SVG)
+  # Fallback: qlmanage converts SVG -> PNG (sips cannot read SVG); sips then
+  # scales the PNG into the standard 10-file iconset.
   qlmanage -t -s 512 -o "$ICONSET" ../frontend/public/favicon.svg >/dev/null 2>&1 || true
-  mv "$ICONSET/favicon.svg.png" "$ICONSET/icon_512x512.png" 2>/dev/null || true
-  iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns" 2>/dev/null || true
+  if [ -f "$ICONSET/favicon.svg.png" ]; then
+    mv "$ICONSET/favicon.svg.png" "$ICONSET/base.png"
+    for size in 16 32 128 256 512; do
+      sips -z $size $size "$ICONSET/base.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null 2>&1 || true
+      sips -z $((size*2)) $((size*2)) "$ICONSET/base.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null 2>&1 || true
+    done
+    rm -f "$ICONSET/base.png"
+    iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns" 2>/dev/null || true
+  fi
   rm -rf "$ICONSET"
 fi
 

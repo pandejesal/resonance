@@ -67,10 +67,10 @@ X-GNOME-Autostart-enabled=true
 EOF
 fi
 
-# Start the backend if it is not already running (pidfile guard; the loser
-# of a race fails to bind port 8080 and exits cleanly)
+# Start the backend if it is not already running (pidfile + port probe; the
+# loser of a race fails to bind port 8080 and exits cleanly)
 PIDFILE="$DATA_DIR/resonance.pid"
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null && curl -sf -o /dev/null http://127.0.0.1:8080/; then
   :
 else
   nohup "$BIN_DIR/resonance-backend" >/dev/null 2>&1 &
@@ -135,12 +135,14 @@ DESKTOP
 cp "$APPDIR/usr/share/applications/resonance.desktop" "$APPDIR/resonance.desktop"
 
 # Build AppImage
-if [ ! -f linuxdeploy ]; then
-  echo "Error: linuxdeploy missing (auto-download failed)."
+# Resolve linuxdeploy (PATH install or local download)
+LD="$(command -v linuxdeploy || echo ./linuxdeploy)"
+if [ ! -x "$LD" ]; then
+  echo "Error: linuxdeploy not found (auto-download failed)."
   exit 1
 fi
 echo "[*] Building AppImage..."
-OUTPUT="resonance-${APP_VERSION}-x86_64.AppImage" ./linuxdeploy --appdir "$APPDIR" --output appimage
+OUTPUT="resonance-${APP_VERSION}-x86_64.AppImage" "$LD" --appdir "$APPDIR" --output appimage
 
 echo ""
 echo "AppImage created: resonance-${APP_VERSION}-x86_64.AppImage"

@@ -36,7 +36,7 @@ PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
-CloseApplicationsFilter=resonance-backend.exe,wscript.exe
+CloseApplicationsFilter=resonance-backend.exe
 ; data lives in {userappdata}\Resonance (outside {app}) -> the uninstaller
 ; removes {app} but never touches non-empty data; Inno also removes the
 ; data dir only when it is empty (delete it manually to remove all traces).
