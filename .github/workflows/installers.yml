@@ -34,14 +34,14 @@ jobs:
           key: win-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: win-cargo-
 
-      - name: Build backend
-        run: cargo build --release -p resonance-backend
-
       - name: Build frontend
         working-directory: frontend
         run: |
           npm ci
           npm run build
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
 
       - name: Assemble release dir
         shell: pwsh
@@ -87,14 +87,14 @@ jobs:
           key: lin-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: lin-cargo-
 
-      - name: Build backend
-        run: cargo build --release -p resonance-backend
-
       - name: Build frontend
         working-directory: frontend
         run: |
           npm ci
           npm run build
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
 
       - name: Assemble release dir
         run: |
@@ -145,14 +145,14 @@ jobs:
           key: mac-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: mac-x64-cargo-
 
-      - name: Build backend
-        run: cargo build --release -p resonance-backend
-
       - name: Build frontend
         working-directory: frontend
         run: |
           npm ci
           npm run build
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
 
       - name: Assemble release dir
         run: |
@@ -210,14 +210,14 @@ jobs:
           key: mac-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: mac-arm64-cargo-
 
-      - name: Build backend
-        run: cargo build --release -p resonance-backend
-
       - name: Build frontend
         working-directory: frontend
         run: |
           npm ci
           npm run build
+
+      - name: Build backend
+        run: cargo build --release -p resonance-backend
 
       - name: Assemble release dir
         run: |
