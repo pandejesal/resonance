@@ -37,8 +37,8 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 # Copy backend + static (backend resolves static next to the exe)
-cp release/resonance-backend "$APP_DIR/Contents/MacOS/"
-cp -r release/static "$APP_DIR/Contents/MacOS/static"
+cp ../release/resonance-backend "$APP_DIR/Contents/MacOS/"
+cp -r ../release/static "$APP_DIR/Contents/MacOS/static"
 cp ../VERSION "$APP_DIR/Contents/Resources/"
 
 # Create launcher script

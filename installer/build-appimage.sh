@@ -37,8 +37,8 @@ mkdir -p "$APPDIR/usr/share/applications"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
 # Copy backend + static (backend resolves static next to the exe)
-cp release/resonance-backend "$APPDIR/usr/bin/"
-cp -r release/static "$APPDIR/usr/bin/static"
+cp ../release/resonance-backend "$APPDIR/usr/bin/"
+cp -r ../release/static "$APPDIR/usr/bin/static"
 mkdir -p "$APPDIR/usr/share/resonance"
 cp ../VERSION "$APPDIR/usr/share/resonance/"
 
