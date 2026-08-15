@@ -12,16 +12,17 @@ APP_NAME="Resonance"
 APP_VERSION="$(cat ../VERSION 2>/dev/null || echo "0.8.0")"
 PKG="resonance"
 ARCH="amd64"
-STAGING="deb-staging"
+STAGING="$(mktemp -d)"
+trap 'rm -rf "$STAGING"' EXIT
 
 echo "== Building Resonance Linux .deb ${APP_VERSION} =="
 
-if [ ! -f "release/resonance-backend" ]; then
-  echo "Error: release/resonance-backend not found."
+if [ ! -f "../release/resonance-backend" ]; then
+  echo "Error: ../release/resonance-backend not found."
   exit 1
 fi
-if [ ! -d "release/static" ]; then
-  echo "Error: release/static not found (copy frontend/dist)."
+if [ ! -d "../release/static" ]; then
+  echo "Error: ../release/static not found (copy frontend/dist)."
   exit 1
 fi
 
@@ -45,8 +46,8 @@ Description: Self-hosted music archival system
 EOF
 
 # payload
-cp release/resonance-backend "$STAGING/opt/resonance/"
-cp -r release/static "$STAGING/opt/resonance/static"
+cp ../release/resonance-backend "$STAGING/opt/resonance/"
+cp -r ../release/static "$STAGING/opt/resonance/static"
 cp ../VERSION "$STAGING/opt/resonance/"
 
 # launcher
@@ -110,9 +111,9 @@ DESKTOP
 
 # icon
 if command -v rsvg-convert &>/dev/null; then
-  rsvg-convert -w 256 -h 256 frontend/public/favicon.svg -o "$STAGING/usr/share/icons/hicolor/256x256/apps/resonance.png"
+  rsvg-convert -w 256 -h 256 ../frontend/public/favicon.svg -o "$STAGING/usr/share/icons/hicolor/256x256/apps/resonance.png"
 elif command -v convert &>/dev/null; then
-  convert frontend/public/favicon.svg -resize 256x256 "$STAGING/usr/share/icons/hicolor/256x256/apps/resonance.png"
+  convert ../frontend/public/favicon.svg -resize 256x256 "$STAGING/usr/share/icons/hicolor/256x256/apps/resonance.png"
 else
   echo "Warning: No SVG converter found; skipping icon."
 fi
@@ -120,7 +121,6 @@ fi
 # postinst: nothing needed (per-user autostart handled by the app)
 
 dpkg-deb --build --root-owner-group "$STAGING" "resonance_${APP_VERSION}_${ARCH}.deb"
-rm -rf "$STAGING"
 
 echo ""
 echo "deb created: resonance_${APP_VERSION}_${ARCH}.deb"

@@ -21,12 +21,12 @@ if ! command -v create-dmg &>/dev/null; then
 fi
 
 # Check for release files
-if [ ! -f "release/resonance-backend" ]; then
-  echo "Error: release/resonance-backend not found."
+if [ ! -f "../release/resonance-backend" ]; then
+  echo "Error: ../release/resonance-backend not found."
   exit 1
 fi
-if [ ! -d "release/static" ]; then
-  echo "Error: release/static not found (copy frontend/dist)."
+if [ ! -d "../release/static" ]; then
+  echo "Error: ../release/static not found (copy frontend/dist)."
   exit 1
 fi
 
@@ -132,14 +132,14 @@ mkdir -p "$ICONSET"
 
 if command -v rsvg-convert &>/dev/null; then
   for size in 16 32 64 128 256 512; do
-    rsvg-convert -w $size -h $size frontend/public/favicon.svg -o "$ICONSET/icon_${size}x${size}.png"
-    rsvg-convert -w $((size*2)) -h $((size*2)) frontend/public/favicon.svg -o "$ICONSET/icon_${size}x${size}@2x.png"
+    rsvg-convert -w $size -h $size ../frontend/public/favicon.svg -o "$ICONSET/icon_${size}x${size}.png"
+    rsvg-convert -w $((size*2)) -h $((size*2)) ../frontend/public/favicon.svg -o "$ICONSET/icon_${size}x${size}@2x.png"
   done
   iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns"
   rm -rf "$ICONSET"
 elif command -v sips &>/dev/null; then
   # Fallback to sips (macOS built-in)
-  sips -s format png frontend/public/favicon.svg --out "$ICONSET/icon_512x512.png" 2>/dev/null || true
+  sips -s format png ../frontend/public/favicon.svg --out "$ICONSET/icon_512x512.png" 2>/dev/null || true
   iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/$APP_NAME.icns" 2>/dev/null || true
   rm -rf "$ICONSET"
 fi

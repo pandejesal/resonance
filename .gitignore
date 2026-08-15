@@ -56,3 +56,13 @@ gradle-*.log
 
 # Debug build scripts (not android/gradlew.bat)
 build*.bat
+release/
+installer/installer_output/
+installer/*.deb
+installer/*.AppImage
+installer/*.dmg
+installer/*.pkg
+installer/Resonance.app/
+installer/linuxdeploy
+installer/AppDir/
+installer/deb-staging/

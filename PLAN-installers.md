@@ -75,13 +75,27 @@ Version: 0.7.3 (merged) -> **0.8.0** this milestone.
 
 ## 3. Gate (Q10)
 
-- `npm run build` (frontend) — green
-- `cargo check -p resonance-backend --lib --bins` — green
-- `cargo test -p resonance-backend --lib` — green
+- `npm run build` (frontend) ? green
+- `cargo check -p resonance-backend --lib --bins` ? green
+- `cargo test -p resonance-backend --lib` ? green
 - Local Windows: Inno compile + install smoke (login screen, port 8080 200,
-  uninstall keeps `%APPDATA%\Resonance`)
-- WSL2 Ubuntu: deb install smoke (service starts, port 8080 200)
-- macOS: CI jobs green + artifacts present (no local machine)
+  uninstall keeps `%APPDATA%\Resonance`) ? PENDING
+- WSL2 Ubuntu: deb install smoke (service starts, port 8080 200) ? PENDING
+- macOS: CI jobs green + artifacts present (no local machine) ? PENDING (CI not
+  run yet: pushing `installers.yml` to main triggers it)
+
+## 5. Status (2026-08-15)
+
+- Tasks 1-6 committed in `b3ac190` and pushed to `origin main` (2db081d..b3ac190).
+- Task 7 (docs) in progress: README install section + env table written; not yet
+  committed.
+- Follow-up fixes after first review pass:
+  - All installer scripts read `../release/` (run from `installer/`), matching
+    `windows.iss` (was `release/` in build-deb/appimage/dmg ? fixed).
+  - macOS CI installs `librsvg` so the SVG->ICNS conversion works.
+- Local smoke (Q10) still open: Windows Inno + WSL2 deb. Local run: C: drive ran
+  out of space during gate (0 bytes free); freed ~5.9 GB via `cargo clean` +
+  `npm cache clean --force` before the green cargo check/test.
 
 ## 4. Non-goals
 

@@ -115,3 +115,22 @@ begin
     CreateLauncher;
   end;
 end;
+
+// Remove the launcher files we generated at install time (they are not part
+// of the Files section, so the uninstaller would otherwise leave them behind).
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  AppDir: string;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    AppDir := ExpandConstant('{app}');
+    DeleteFile(AppDir + '\resonance.bat');
+    DeleteFile(AppDir + '\resonance-launch.vbs');
+  end
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    // Inno already removed its registered files; drop the dir if still empty.
+    RemoveDir(ExpandConstant('{app}'));
+  end;
+end;

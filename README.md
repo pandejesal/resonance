@@ -106,6 +106,24 @@ npm run build
 # Serve the dist/ directory with any web server
 ```
 
+### Installers
+
+Standalone desktop packages for Windows, Linux, and macOS are built from `installer/` and attached to every [GitHub release](https://github.com/pandejesal/resonance/releases) (tag `v*`).
+
+| Platform | Package | Notes |
+|----------|---------|-------|
+| Windows | `resonance-<version>-windows-setup.exe` | Per-user install, no admin rights needed |
+| Linux | `resonance_<version>_amd64.deb` or `resonance-<version>-x86_64.AppImage` | deb for Debian/Ubuntu, AppImage for anything else |
+| macOS | `resonance-<version>-macos-<arch>.dmg` (Intel/Apple Silicon) or `.pkg` | Unsigned: right-click → Open on first launch |
+
+The installer runs a small server (default `http://127.0.0.1:8080`) and opens it in an app-mode browser window (Edge/Chrome). It registers per-user autostart on first run — uninstalling never touches your data:
+
+- Windows: data in `%APPDATA%\Resonance` (uninstaller keeps it), autostart via registry `Run` key (hidden window)
+- Linux: data in `~/.local/share/resonance`, autostart via `~/.config/autostart`
+- macOS: data in `~/Library/Application Support/Resonance`, autostart via a LaunchAgent
+
+Reinstalling or upgrading keeps your library, settings, and scrobbles.
+
 ## Configuration
 
 ### Environment Variables
@@ -113,9 +131,10 @@ npm run build
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RUST_LOG` | `info` | Log level (info, debug, trace) |
-| `DATABASE_URL` | `data/resonance.db` | SQLite database path |
-| `HOST` | `0.0.0.0` | Server bind address |
+| `DATABASE_URL` | Platform data dir | SQLite database path (`%APPDATA%\Resonance` / `~/.local/share/resonance` / `~/Library/Application Support/Resonance`; `RESONANCE_DATA_DIR` overrides) |
+| `HOST` | `127.0.0.1` | Server bind address (installers; Docker sets `0.0.0.0`) |
 | `PORT` | `8080` | Server port |
+| `STATIC_DIR` | next to the binary | Frontend files location (defaults to `<exe>/static` if present, else `./static`) |
 
 ### First Launch
 

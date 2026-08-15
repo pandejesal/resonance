@@ -19,13 +19,13 @@ if ! command -v linuxdeploy &>/dev/null && [ ! -f linuxdeploy ]; then
 fi
 
 # Check for release files
-if [ ! -f "release/resonance-backend" ]; then
-  echo "Error: release/resonance-backend not found."
+if [ ! -f "../release/resonance-backend" ]; then
+  echo "Error: ../release/resonance-backend not found."
   echo "Run the build first: cargo build --release -p resonance-backend"
   exit 1
 fi
-if [ ! -d "release/static" ]; then
-  echo "Error: release/static not found (copy frontend/dist)."
+if [ ! -d "../release/static" ]; then
+  echo "Error: ../release/static not found (copy frontend/dist)."
   exit 1
 fi
 
@@ -90,9 +90,9 @@ chmod +x "$APPDIR/usr/bin/resonance"
 
 # Convert SVG to PNG for icon
 if command -v rsvg-convert &>/dev/null; then
-  rsvg-convert -w 256 -h 256 frontend/public/favicon.svg -o "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png"
+  rsvg-convert -w 256 -h 256 ../frontend/public/favicon.svg -o "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png"
 elif command -v convert &>/dev/null; then
-  convert frontend/public/favicon.svg -resize 256x256 "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png"
+  convert ../frontend/public/favicon.svg -resize 256x256 "$APPDIR/usr/share/icons/hicolor/256x256/apps/resonance.png"
 else
   echo "Warning: No SVG converter found; skipping icon."
 fi
