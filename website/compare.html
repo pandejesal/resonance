@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resonance vs. the rest — Compare</title>
+  <meta name="description" content="An honest comparison of Resonance against Navidrome, Jellyfin, Plex, Roon, and Spotify.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"></span> Resonance
+      </a>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="compare.html" class="active">Compare</a>
+        <a href="download.html">Download</a>
+        <a href="pricing.html">Pricing</a>
+      </nav>
+      <a href="download.html" class="btn btn-primary nav-cta">Get Resonance</a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <h1 class="page-title">Resonance vs. the rest</h1>
+        <p class="page-sub">
+          Self-hosted servers and streaming services each solve part of the problem.
+          Resonance combines local ownership with a polished player — and a library that understands itself.
+          Here's the honest picture as of v0.8.
+        </p>
+
+        <div class="table-wrap">
+          <table class="compare">
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th class="col-res">Resonance</th>
+                <th>Navidrome</th>
+                <th>Jellyfin</th>
+                <th>Plex</th>
+                <th>Roon</th>
+                <th>Spotify</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Self-hosted</td>
+                <td class="col-res">Yes</td>
+                <td>Yes</td>
+                <td>Yes</td>
+                <td>Yes</td>
+                <td>Yes</td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td>Your files stay on your hardware</td>
+                <td class="col-res">Yes</td>
+                <td>Yes</td>
+                <td>Yes</td>
+                <td>Yes</td>
+                <td>Yes</td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td>Local analysis of your library</td>
+                <td class="col-res">Yes — intelligence runs on your server</td>
+                <td>No</td>
+                <td>Metadata only</td>
+                <td>Cloud analysis</td>
+                <td>Yes (proprietary)</td>
+                <td>Cloud only</td>
+              </tr>
+              <tr>
+                <td>Forgotten-gems &amp; rediscovery mixes</td>
+                <td class="col-res">Yes</td>
+                <td>No</td>
+                <td>No</td>
+                <td>Limited</td>
+                <td>Partial</td>
+                <td>Yes (cloud)</td>
+              </tr>
+              <tr>
+                <td>Decade journeys &amp; sound-alikes</td>
+                <td class="col-res">Yes</td>
+                <td>No</td>
+                <td>No</td>
+                <td>No</td>
+                <td>Partial</td>
+                <td>Yes (cloud)</td>
+              </tr>
+              <tr>
+                <td>Import from Spotify / YouTube / Apple Music</td>
+                <td class="col-res">Yes</td>
+                <td>Limited</td>
+                <td>No</td>
+                <td>No</td>
+                <td>No</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>Equalizer, reverb, echo, pitch</td>
+                <td class="col-res">Yes</td>
+                <td>No</td>
+                <td>Limited</td>
+                <td>Partial</td>
+                <td>Yes</td>
+                <td>Limited EQ</td>
+              </tr>
+              <tr>
+                <td>Waveforms &amp; metadata editor</td>
+                <td class="col-res">Yes</td>
+                <td>No</td>
+                <td>Partial</td>
+                <td>Partial</td>
+                <td>Yes</td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td>No telemetry</td>
+                <td class="col-res">Yes</td>
+                <td>Yes</td>
+                <td>Yes (opt-out)</td>
+                <td>No</td>
+                <td>No</td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td>Price</td>
+                <td class="col-res">Free tier · Pro $29/yr · Lifetime $119</td>
+                <td>Free</td>
+                <td>Free</td>
+                <td>Paid</td>
+                <td>$699+</td>
+                <td>Paid</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="page-sub small">
+          Feature claims reflect Resonance v0.8.0 (this release cycle) and the products' publicly documented
+          capabilities as of August 2026. Things change — check each project for the latest.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <span class="logo-mark"></span> Resonance
+        <p class="footer-note">Your music, privately intelligent.</p>
+      </div>
+      <div class="footer-links">
+        <a href="compare.html">Compare</a>
+        <a href="download.html">Download</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="https://github.com/pandejesal/resonance">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/main.js"></script>
+</body>
+</html>

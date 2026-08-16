@@ -46,14 +46,20 @@ pub async fn handle_webhook(
                 let key = crate::license::License::generate_key(tier).await;
                 let id = uuid::Uuid::new_v4().to_string();
                 let max_devices = match tier {
-                    "pro" => 3,
+                    "pro" | "lifetime" => 3,
                     "enterprise" => 999,
                     _ => 1,
                 };
+                // Lifetime keys never expire; annual tiers get +1 year.
+                let expires_at = match tier {
+                    "lifetime" => "NULL".to_string(),
+                    _ => "datetime('now', '+1 year')".to_string(),
+                };
 
-                let _ = sqlx::query(
-                    "INSERT INTO licenses (id, license_key, tier, max_devices, user_id, activated_at, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', '+1 year'))"
-                )
+                let _ = sqlx::query(&format!(
+                    "INSERT INTO licenses (id, license_key, tier, max_devices, user_id, activated_at, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now'), {})",
+                    expires_at
+                ))
                 .bind(id)
                 .bind(key)
                 .bind(tier)

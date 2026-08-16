@@ -46,6 +46,7 @@ impl License {
     pub async fn generate_key(tier: &str) -> String {
         let prefix = match tier {
             "pro" => "RES-PRO",
+            "lifetime" => "RES-LIF",
             "enterprise" => "RES-ENT",
             _ => "RES-FREE",
         };
@@ -90,7 +91,7 @@ impl License {
         }
 
         let max_devices = match license.tier.as_str() {
-            "pro" => 3,
+            "pro" | "lifetime" => 3,
             "enterprise" => 999,
             _ => 1,
         };
@@ -100,7 +101,8 @@ impl License {
                 let exp = chrono::Utc::now() + chrono::Duration::days(365);
                 Some(exp.format("%Y-%m-%d %H:%M:%S").to_string())
             }
-            _ => None, // Free tier never expires
+            // Lifetime and free tiers never expire
+            _ => None,
         };
 
         // Atomic: only increment if device_count < max_devices
@@ -202,5 +204,80 @@ impl License {
                 chrono::NaiveDateTime::parse_from_str(&created, "%Y-%m-%d %H:%M:%S").ok()
             })
             .map(|created| created + chrono::Duration::days(14))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, password_hash, role) VALUES ('u_lif', 'lifetime', 'x', 'user')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn generate_key_lifetime_uses_res_lif_prefix() {
+        let key = License::generate_key("lifetime").await;
+        assert!(key.starts_with("RES-LIF-"), "lifetime keys must use RES-LIF prefix");
+        assert_eq!(key.len(), 24, "RES-LIF- (8) + 16 uppercase hex chars");
+    }
+
+    #[tokio::test]
+    async fn lifetime_license_activates_without_expiry_and_gets_pro_features() {
+        let pool = test_pool().await;
+        // Simulate the webhook: key created with tier lifetime, no expiry.
+        let key = License::generate_key("lifetime").await;
+        sqlx::query(
+            "INSERT INTO licenses (id, license_key, tier, max_devices, user_id, activated_at, expires_at) VALUES ('lic_lif', ?, 'lifetime', 3, NULL, datetime('now'), NULL)",
+        )
+        .bind(&key)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let license = License::activate(&pool, &key, "u_lif").await.unwrap();
+        assert_eq!(license.tier, "lifetime");
+        assert!(license.expires_at.is_none(), "lifetime keys never expire");
+
+        let status = License::get_status(&pool, "u_lif").await;
+        assert_eq!(status.tier, "lifetime");
+        assert!(status.active, "no expiry means always active");
+        assert!(status.expires_at.is_none());
+        // Lifetime gets the full Pro feature set (migration 013 copies pro rows).
+        assert!(
+            status.features.contains(&"intelligence".to_string()),
+            "lifetime must inherit pro features, got {:?}",
+            status.features
+        );
+    }
+
+    #[tokio::test]
+    async fn annual_pro_license_still_expires_after_a_year() {
+        let pool = test_pool().await;
+        let key = License::generate_key("pro").await;
+        sqlx::query(
+            "INSERT INTO licenses (id, license_key, tier, max_devices, user_id, activated_at, expires_at) VALUES ('lic_pro', ?, 'pro', 3, NULL, datetime('now'), datetime('now', '+1 year'))",
+        )
+        .bind(&key)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let license = License::activate(&pool, &key, "u_lif").await.unwrap();
+        assert!(license.expires_at.is_some(), "annual pro keys must expire");
+        assert!(license.expires_at.unwrap().starts_with("2027-"), "activation rewrites expiry to +1 year");
     }
 }

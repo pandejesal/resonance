@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Resonance</title>
+  <meta name="description" content="Download Resonance — native installers for Windows, macOS, and Linux, plus a one-liner Docker install.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"></span> Resonance
+      </a>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="compare.html">Compare</a>
+        <a href="download.html" class="active">Download</a>
+        <a href="pricing.html">Pricing</a>
+      </nav>
+      <a href="download.html" class="btn btn-primary nav-cta">Get Resonance</a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <h1 class="page-title">Download Resonance</h1>
+        <p class="page-sub">
+          Free to use forever. Installers are built from the main branch on every release — grab the
+          latest from the <a href="https://github.com/pandejesal/resonance/releases">GitHub Releases page</a>.
+        </p>
+
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">⊞</div>
+            <h3>Windows</h3>
+            <p>Resonance-Setup-x.x.x.exe installer. Also ships as an MSI artifact on every release build.</p>
+            <a class="btn btn-primary btn-block" href="https://github.com/pandejesal/resonance/releases/latest">Download for Windows</a>
+          </div>
+          <div class="card">
+            <div class="card-icon">◉</div>
+            <h3>macOS</h3>
+            <p>Resonance-x.x.x.dmg for Apple Silicon and Intel. Gatekeeper note: first launch requires right-click → Open.</p>
+            <a class="btn btn-primary btn-block" href="https://github.com/pandejesal/resonance/releases/latest">Download for macOS</a>
+          </div>
+          <div class="card">
+            <div class="card-icon">⌘</div>
+            <h3>Linux</h3>
+            <p>Debian package, AppImage, and RPM build on every release. x86_64 and aarch64.</p>
+            <a class="btn btn-primary btn-block" href="https://github.com/pandejesal/resonance/releases/latest">Download for Linux</a>
+          </div>
+        </div>
+
+        <div class="card code-card">
+          <h3>Docker — one command</h3>
+          <p>The server component (backend + web app) in a single container:</p>
+          <pre><code>docker run -d --name resonance \
+  -p 127.0.0.1:8080:8080 \
+  -v ~/Music:/music:ro \
+  -v resonance-data:/data \
+  ghcr.io/pandejesal/resonance:latest</code></pre>
+          <p class="small">
+            Point the volume at your music directory. First run asks you to create an admin account,
+            then scan your library from Settings. A full
+            <a href="https://github.com/pandejesal/resonance/blob/main/docker/docker-compose.yml">docker-compose.yml</a>
+            lives in the repo.
+          </p>
+        </div>
+
+        <div class="card code-card">
+          <h3>Prefer to build from source?</h3>
+          <pre><code>git clone https://github.com/pandejesal/resonance.git
+cd resonance
+npm --prefix frontend ci && npm --prefix frontend run build
+cargo build --release --manifest-path backend/Cargo.toml</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <span class="logo-mark"></span> Resonance
+        <p class="footer-note">Your music, privately intelligent.</p>
+      </div>
+      <div class="footer-links">
+        <a href="compare.html">Compare</a>
+        <a href="download.html">Download</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="https://github.com/pandejesal/resonance">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/main.js"></script>
+</body>
+</html>

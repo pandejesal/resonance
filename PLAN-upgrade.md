@@ -111,6 +111,14 @@ sound-alike queries cap at 100 candidates / 20 albums).
   `resonance.app/pricing`): Free / Pro $29yr / $119 lifetime / Enterprise
   contact. Feature comparison table from `tier_features`.
 
+  ✅ DONE (2026-08-16): static zero-build site in `website/` — index (hero
+  "Your music, privately intelligent." + feature grid + screenshot placeholder
+  slots), compare (one honest table vs Navidrome/Jellyfin/Plex/Roon/Spotify),
+  download (installers → GitHub Releases, Docker one-liner, build-from-source),
+  pricing (4 tiers + licensing FAQ). `CNAME` pins resonance.app; GitHub
+  Pages-ready. Screenshot slots + launch checklist tracked in
+  `website/screenshots/README.md` + `website/README.md` (deferred to Phase 5).
+
 ### 2.2 Lifetime license plumbing (backend)
 
 - Dodo: add lifetime product; `dodo_webhook.rs` currently hardcodes
@@ -122,6 +130,17 @@ sound-alike queries cap at 100 candidates / 20 albums).
   — extend to `lifetime` alias of pro if cleaner.
 - Regression: annual keys still expire; device limits unchanged (pro=2, per
   `license.rs`).
+
+  ✅ DONE (2026-08-16): migration `013_lifetime_tier.sql` (lifetime inherits
+  pro `tier_features`), migration `014_license_lifetime_tier.sql` (rebuild
+  `licenses` with CHECK incl. 'lifetime'), `dodo_webhook.rs` lifetime branch
+  (expires_at NULL, max_devices 3), `license.rs` RES-LIF prefix + explicit
+  no-expiry activation, `dodo_handlers.rs` env-driven product IDs
+  (DODO_PRODUCT_PRO/LIFETIME/ENTERPRISE) + lifetime tier. UpgradePage rebuilt:
+  real 4-tier pricing, buy buttons call `api.dodo.checkout('pro'|'lifetime')`,
+  success-URL param handling, honest copy (no "AI-powered", no cloud-sync
+  claims). Backend tests 10/10 green. Disk-full incident during rebuild (3x) —
+  full `cargo clean` required before `cargo test`; watch free space.
 
 ### 2.3 Acceptance (Phase 2)
 

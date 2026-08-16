@@ -386,4 +386,11 @@ export const api = {
     rediscover: (limit?: number) =>
       fetchJson<{ mixes: RediscoverMix[] }>(`/intelligence/rediscover${limit ? `?limit=${limit}` : ''}`),
   },
+
+  dodo: {
+    checkout: (tier: string) =>
+      fetchJson<{ id: string; url: string }>(`/dodo/checkout/${tier}`, {
+        method: 'POST',
+      }),
+  },
 };

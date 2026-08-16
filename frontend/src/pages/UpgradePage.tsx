@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
 import { useLicenseStore } from '../stores';
@@ -24,16 +25,15 @@ const plans: PricingPlan[] = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 5,
-    period: 'month',
+    price: 29,
+    period: 'year',
     highlighted: true,
     features: [
       'Everything in Free',
-      'Cloud sync across devices',
-      'AI-powered recommendations',
-      'Audio effects (reverb, echo, pitch)',
+      'Resonance Intelligence',
       'Metadata editor',
       'Advanced analytics',
+      'Audio effects (reverb, echo, pitch)',
       'Custom themes',
       'Up to 3 devices',
       'Priority support',
@@ -41,18 +41,29 @@ const plans: PricingPlan[] = [
     ],
   },
   {
+    id: 'lifetime',
+    name: 'Lifetime',
+    price: 119,
+    period: 'once',
+    features: [
+      'Everything in Pro',
+      'Pay once, keep forever',
+      'Never expires',
+      'Same 3 devices',
+      'No subscription to cancel',
+    ],
+  },
+  {
     id: 'enterprise',
     name: 'Enterprise',
-    price: 15,
-    period: 'month',
+    price: 0,
+    period: 'contact',
     features: [
       'Everything in Pro',
       'Unlimited devices',
       'API access',
       'White-label options',
-      'Custom integrations',
       'Dedicated support',
-      'SLA guarantee',
     ],
   },
 ];
@@ -61,6 +72,36 @@ export default function UpgradePage() {
   const { status: license, fetchStatus } = useLicenseStore();
   const [activating, setActivating] = useState(false);
   const [licenseKey, setLicenseKey] = useState('');
+  const [checkoutTier, setCheckoutTier] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('success') === 'true') {
+      const tier = searchParams.get('tier') || 'pro';
+      toast.success(`Payment received — ${tier} license activated!`);
+      fetchStatus();
+      searchParams.delete('success');
+      searchParams.delete('tier');
+      searchParams.delete('session_id');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCheckout = async (tier: string) => {
+    setCheckoutTier(tier);
+    try {
+      const session = await api.dodo.checkout(tier);
+      if (session.url) {
+        window.location.href = session.url;
+      } else {
+        toast.error('Checkout is not configured yet — buy at resonance.app/pricing');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to start checkout');
+      setCheckoutTier('');
+    }
+  };
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) return;
@@ -80,10 +121,12 @@ export default function UpgradePage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-5xl mx-auto space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-primary">Upgrade Resonance</h1>
-        <p className="text-secondary mt-2">Unlock premium features. Your music, your way.</p>
+        <p className="text-secondary mt-2">
+          Unlock Resonance Intelligence and the full feature set. Your music stays on your server.
+        </p>
         {license?.trial_remaining_days && license.tier === 'free' && (
           <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-brand-500/10 border border-brand-500/20 rounded-xl text-brand-400 text-sm">
             <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse" />
@@ -92,15 +135,16 @@ export default function UpgradePage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {plans.map((plan) => {
           const isCurrent = license?.tier === plan.id;
+          const isBuyable = plan.id === 'pro' || plan.id === 'lifetime';
           return (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`relative rounded-2xl p-6 border transition-all ${
+              className={`relative rounded-2xl p-6 border transition-all flex flex-col ${
                 plan.highlighted
                   ? 'bg-brand-500/10 border-brand-500/30 shadow-lg shadow-brand-500/10'
                   : 'bg-surface-1 border-white/5'
@@ -113,10 +157,12 @@ export default function UpgradePage() {
               )}
               <h3 className="text-lg font-bold text-primary">{plan.name}</h3>
               <div className="mt-3 mb-4">
-                <span className="text-4xl font-bold text-primary">${plan.price}</span>
+                <span className="text-4xl font-bold text-primary">
+                  {plan.price > 0 ? `$${plan.price}` : 'Free'}
+                </span>
                 <span className="text-secondary text-sm">/{plan.period}</span>
               </div>
-              <ul className="space-y-2 mb-6">
+              <ul className="space-y-2 mb-6 flex-1">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm">
                     <svg className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -134,10 +180,25 @@ export default function UpgradePage() {
                 <div className="w-full py-2 text-center text-sm font-medium text-tertiary bg-surface-2 rounded-xl">
                   Free Forever
                 </div>
+              ) : plan.id === 'enterprise' ? (
+                <a
+                  href="mailto:sales@resonance.app?subject=Enterprise%20Resonance%20license"
+                  className="w-full py-2 text-center text-sm font-medium text-primary bg-white/5 hover:bg-white/10 rounded-xl transition-colors"
+                >
+                  Contact us
+                </a>
               ) : (
-                <div className="text-xs text-tertiary text-center">
-                  Contact us to get a license key
-                </div>
+                <button
+                  onClick={() => handleCheckout(plan.id)}
+                  disabled={checkoutTier === plan.id}
+                  className={`w-full py-2 text-center text-sm font-bold rounded-xl transition-colors ${
+                    plan.highlighted
+                      ? 'bg-brand-500 text-white hover:bg-brand-400 disabled:opacity-50'
+                      : 'bg-white/5 text-primary hover:bg-white/10 disabled:opacity-50'
+                  }`}
+                >
+                  {checkoutTier === plan.id ? 'Opening checkout...' : `Buy ${plan.name} — $${plan.price}`}
+                </button>
               )}
             </motion.div>
           );
@@ -164,7 +225,7 @@ export default function UpgradePage() {
           </button>
         </div>
         <p className="text-xs text-tertiary mt-2">
-          Get your license key at <span className="text-brand-400">resonance.app/pricing</span>
+          Get a license key at <span className="text-brand-400">resonance.app/pricing</span>
         </p>
       </div>
 
