@@ -1,0 +1,39 @@
+# Resonance - Demo Server (production-facing)
+#
+# Stands up the public demo at demo.resonance.app on a VPS.
+# Music volume must contain CC-licensed tracks ONLY (legal first).
+# Manual updates: docker compose -f docker/demo-compose.yml pull && up -d
+
+services:
+  resonance:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: resonance-demo
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8080:8080"
+    volumes:
+      - resonance-demo-data:/app/data
+      # Curated CC-licensed library lives on the VPS here:
+      - /srv/resonance-demo/music:/music:ro
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=/app/data/resonance.db
+      - HOST=0.0.0.0
+      - PORT=8080
+      # Real Dodo product IDs for the demo's purchase buttons:
+      # - DODO_PRODUCT_PRO=pdt_...
+      # - DODO_PRODUCT_LIFETIME=pdt_...
+      # - DODO_PRODUCT_ENTERPRISE=pdt_...
+      # - DODO_WEBHOOK_SECRET=...
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  resonance-demo-data:
+    driver: local

@@ -166,6 +166,13 @@ sound-alike queries cap at 100 candidates / 20 albums).
 - Monitoring: health endpoint + uptime check; budget cap (demo is a funnel,
   not a business).
 
+  ⏸️ CONFIG PREPARED (2026-08-16), VPS purchase deferred by user decision:
+  `docker/demo-compose.yml` (public port, CC music mount, real Dodo env slots),
+  `docker/demo-reset.sh` (wipe data volume + restart), `docker/demo-README.md`
+  (full standup checklist: DNS, firewall, CC library sourcing, first-run,
+  monitoring, load test). Remaining: buy VPS, DNS, deploy, guest/auto-login
+  mode (open question — needs app work).
+
 ### 3.2 Privacy + trust docs
 
 - `/privacy`: the documented no-telemetry promise, with the honest list of
@@ -175,6 +182,16 @@ sound-alike queries cap at 100 candidates / 20 albums).
   phones home" stays the headline.
 - README: same promise, short version. Changelog page per release (human
   voice, not release-note slop).
+
+  ✅ DONE (2026-08-16): `website/privacy.html` — audit-backed (grep of
+  backend/frontend/src-tauri) complete outbound list: updater
+  (`api.github.com`, off by default — verified `auto_check` absent → false),
+  lyrics (`lrclib.net`, on demand), checkout (`api.dodopayments.com`, on
+  purchase), scrobbling (`ws.audioscrobbler.com` / `api.listenbrainz.org`,
+  opt-in), Spotify import (`api.spotify.com`, user's own token), LAN casting
+  (local network only). `website/changelog.html` v0.8.0 entry in human voice.
+  README: honest Pro feature list replaces "Cloud sync / AI-powered" slop +
+  short Privacy section. Footer links (Privacy, Changelog) added across site.
 
 ### 3.3 Acceptance (Phase 3)
 

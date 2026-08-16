@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy — Resonance</title>
+  <meta name="description" content="Resonance's privacy promise, with the complete, audited list of every connection your server ever makes.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"></span> Resonance
+      </a>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="compare.html">Compare</a>
+        <a href="download.html">Download</a>
+        <a href="pricing.html">Pricing</a>
+      </nav>
+      <a href="download.html" class="btn btn-primary nav-cta">Get Resonance</a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container prose">
+        <h1 class="page-title">Privacy</h1>
+        <p class="page-sub">Your server never phones home. Here is the complete, audited list of every connection Resonance can make — and the only things that leave your machine.</p>
+
+        <div class="card promise">
+          <h2>The promise</h2>
+          <ul class="feat-list">
+            <li>No telemetry. There is no analytics beacon in the app or the server, and no account is required to use Resonance.</li>
+            <li>Your library, listening history, ratings, playlists, and analytics are stored on your server and never leave it.</li>
+            <li>Resonance Intelligence runs entirely on your hardware — it analyzes your library locally and sends nothing anywhere.</li>
+            <li>When you pay, you pay directly. Resonance has no payment data of its own; checkout is handled by Dodo Payments.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>The complete list of outbound connections</h2>
+          <p>Audited against the source at v0.8.0 (2026-08-16). This is everything — there is nothing else.</p>
+          <table class="compare single">
+            <thead>
+              <tr><th>When</th><th>Where</th><th>What is sent</th><th>Default</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Update check</td>
+                <td><code>api.github.com</code> — GitHub API for the Resonance repository</td>
+                <td>Your current version tag, to compare against the latest release</td>
+                <td><strong>Off</strong> — you must enable "check for updates" in server settings</td>
+              </tr>
+              <tr>
+                <td>Lyrics lookup</td>
+                <td><code>lrclib.net</code> — the LRC Lib service</td>
+                <td>Artist, title, album, and duration of the track you opened</td>
+                <td>On demand — only when you open a track's lyrics</td>
+              </tr>
+              <tr>
+                <td>Buying a license</td>
+                <td><code>api.dodopayments.com</code> — Dodo Payments checkout</td>
+                <td>Your order (product + success URL). Payment details go only to the payment processor.</td>
+                <td>On demand — only when you purchase</td>
+              </tr>
+              <tr>
+                <td>Scrobbling</td>
+                <td><code>ws.audioscrobbler.com</code> (Last.fm) or <code>api.listenbrainz.org</code></td>
+                <td>Track plays you scrobble, using your own API key</td>
+                <td><strong>Off</strong> — only if you enable and configure it</td>
+              </tr>
+              <tr>
+                <td>Spotify import</td>
+                <td><code>api.spotify.com</code></td>
+                <td>Playlist requests made with your own Spotify token</td>
+                <td>On demand — only when you import a playlist</td>
+              </tr>
+              <tr>
+                <td>Cast / multi-room</td>
+                <td><code>http://&lt;device&gt;:&lt;port&gt;/cast</code></td>
+                <td>Playback commands to cast targets</td>
+                <td>Your local network only — never routed through the internet</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>What never leaves your server</h2>
+          <ul class="feat-list">
+            <li>Your music files and their metadata</li>
+            <li>Your listening history and play counts</li>
+            <li>Your ratings, playlists, and smart playlist rules</li>
+            <li>Your analytics dashboards</li>
+            <li>Password hashes and account data (all local)</li>
+            <li>The analysis behind Resonance Intelligence — forgotten gems, rediscovery mixes, decade journeys, sound-alikes</li>
+          </ul>
+          <p>If this list ever needs to change, the changelog will say so before a release ships.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <span class="logo-mark"></span> Resonance
+        <p class="footer-note">Your music, privately intelligent.</p>
+      </div>
+      <div class="footer-links">
+        <a href="privacy.html">Privacy</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="compare.html">Compare</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="https://github.com/pandejesal/resonance">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/main.js"></script>
+</body>
+</html>

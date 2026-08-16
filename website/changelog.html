@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Changelog — Resonance</title>
+  <meta name="description" content="Resonance changelog — written for humans, not release-note slop.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"></span> Resonance
+      </a>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="compare.html">Compare</a>
+        <a href="download.html">Download</a>
+        <a href="pricing.html">Pricing</a>
+      </nav>
+      <a href="download.html" class="btn btn-primary nav-cta">Get Resonance</a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container prose">
+        <h1 class="page-title">Changelog</h1>
+        <p class="page-sub">Written for humans. If a release changes what data leaves your server, you'll read about it here first.</p>
+
+        <article class="card release">
+          <h2>v0.8.0 — Resonance Intelligence</h2>
+          <p class="release-date">2026-08-16 · <a href="https://github.com/pandejesal/resonance/releases/tag/v0.8.0">GitHub release</a></p>
+          <p>The release where Resonance starts understanding your library instead of just playing it.</p>
+          <h3>New</h3>
+          <ul class="feat-list">
+            <li><strong>Resonance Intelligence</strong> — a new Intelligence page (Pro): forgotten gems, rediscovery mixes for the last year, decade journeys through your albums, and sound-alikes matched on shared musical signals. All of it is computed on your server. Your library never leaves home.</li>
+            <li><strong>Lifetime licenses</strong> — a $119 pay-once tier alongside annual Pro. Lifetime keys never expire; they unlock the same Pro features.</li>
+            <li><strong>Real pricing</strong> — the upgrade page now has honest tiers (Free / Pro $29 a year / Lifetime / Enterprise) with direct checkout. No more placeholder copy.</li>
+            <li><strong>The website</strong> — resonance.app: home, honest comparison table, download page with a Docker one-liner, and a pricing page.</li>
+          </ul>
+          <h3>Fixed</h3>
+          <ul class="feat-list">
+            <li>Database errors now log the actual error instead of a dead generic message.</li>
+            <li>Test seed data corrected for the intelligence queries (play counts and days-since-played were swapped in places).</li>
+          </ul>
+          <h3>Privacy</h3>
+          <ul class="feat-list">
+            <li>Nothing changed — and now it's documented. The <a href="privacy.html">privacy page</a> lists every outbound connection the server can make, audited against the source.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <span class="logo-mark"></span> Resonance
+        <p class="footer-note">Your music, privately intelligent.</p>
+      </div>
+      <div class="footer-links">
+        <a href="privacy.html">Privacy</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="compare.html">Compare</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="https://github.com/pandejesal/resonance">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/main.js"></script>
+</body>
+</html>

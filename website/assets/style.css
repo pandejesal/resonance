@@ -160,6 +160,20 @@ code { background: var(--surface-2); padding: 2px 6px; border-radius: 6px; font-
 .code-card code { background: none; padding: 0; font-size: 13px; }
 .small { font-size: 13px; color: var(--text-tertiary); }
 
+/* Prose pages (privacy, changelog) */
+.prose .card { gap: 12px; margin-bottom: 24px; }
+.prose .card h2 { font-size: 22px; font-weight: 800; }
+.prose .card h3 { margin-top: 12px; }
+.prose .card p { color: var(--text-secondary); font-size: 14px; }
+.prose .promise { border-color: rgba(29, 185, 84, 0.35); background: rgba(29, 185, 84, 0.06); }
+.compare.single { min-width: 0; }
+.compare.single code { background: var(--surface-2); padding: 2px 6px; border-radius: 6px; font-size: 12.5px; }
+.compare.single strong { color: var(--text-primary); }
+.release { border-left: 3px solid var(--brand); }
+.release-date { color: var(--text-tertiary); font-size: 13px; }
+.release .feat-list li { color: var(--text-secondary); font-size: 14px; }
+.release .feat-list li strong { color: var(--text-primary); }
+
 /* Footer */
 .footer { border-top: 1px solid var(--border); padding: 36px 0; }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; }
