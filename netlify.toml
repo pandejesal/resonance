@@ -1,0 +1,9 @@
+[build]
+  publish = "website"
+  functions = "website/netlify/functions"
+
+# Serve the serverless shop under /api/* on the same origin.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
