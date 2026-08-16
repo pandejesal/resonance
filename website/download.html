@@ -35,7 +35,8 @@
         <p class="page-sub">
           Free to use forever. Installers are built from the main branch on every release — grab the
           latest from the <a href="https://github.com/pandejesal/resonance/releases">GitHub Releases page</a>.
-          On a phone? <a href="pwa.html">Install Resonance on iPhone or Android</a> as a full-screen app.
+          On a phone? Install the <a href="#android">Android APK</a> below, or
+          <a href="pwa.html">add Resonance to your home screen</a> as a full-screen app.
         </p>
 
         <div class="grid-3">
@@ -57,6 +58,23 @@
             <p>Debian package, AppImage, and RPM build on every release. x86_64 and aarch64.</p>
             <a class="btn btn-primary btn-block" href="https://github.com/pandejesal/resonance/releases/latest">Download for Linux</a>
           </div>
+        </div>
+
+        <div class="card code-card" id="android">
+          <h3>Android — APK</h3>
+          <p>
+            The native Android app (WebView client with the full backend embedded) ships as a
+            versioned APK on every release. Grab the latest from the
+            <a href="https://github.com/pandejesal/resonance/releases/latest">GitHub Releases page</a> —
+            look for <code>resonance-&lt;version&gt;-android.apk</code>. Sideloading: allow
+            "Install unknown apps" for your browser or file manager, then open the downloaded file.
+          </p>
+          <a class="btn btn-primary btn-block" href="https://github.com/pandejesal/resonance/releases/latest">Download for Android</a>
+          <p class="small" style="margin-top: 0.75rem">
+            Android 10 or newer, arm64 and armv7. No Play Store listing yet — the APK is signed with
+            the debug key, which is fine for sideloading; store-grade signing arrives at launch.
+            On iPhone? <a href="pwa.html">Install the PWA instead</a> (add to home screen).
+          </p>
         </div>
 
         <div class="card code-card">

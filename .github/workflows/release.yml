@@ -257,12 +257,14 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
         run: |
-          cargo ndk --target aarch64-linux-android --platform 29 build --release -p backend
+          cargo ndk -t arm64-v8a -t armeabi-v7a --platform 29 build --release -p resonance-backend
 
       - name: Prepare Android Assets
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
           cp target/aarch64-linux-android/release/libresonance_backend.so android/app/src/main/jniLibs/arm64-v8a/
+          cp target/armv7-linux-androideabi/release/libresonance_backend.so android/app/src/main/jniLibs/armeabi-v7a/
           mkdir -p android/app/src/main/assets/static
           cp -r frontend/dist/* android/app/src/main/assets/static/
 
@@ -284,9 +286,14 @@ jobs:
           chmod +x gradlew
           ./gradlew clean assembleDebug
 
+      - name: Rename APK with version
+        run: |
+          VER=$(cat VERSION)
+          cp android/app/build/outputs/apk/debug/app-debug.apk resonance-$VER-android.apk
+
       - name: Verify APK Exists
         run: |
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APK=resonance-$(cat VERSION)-android.apk
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK not found at $APK"
             exit 1
@@ -295,7 +302,7 @@ jobs:
 
       - name: Verify APK Signature
         run: |
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APK=resonance-$(cat VERSION)-android.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$APK"
           echo "APK signature verified successfully"
 
@@ -303,7 +310,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: resonance-*-android.apk
 
   build-ios-ipa:
     runs-on: macos-latest

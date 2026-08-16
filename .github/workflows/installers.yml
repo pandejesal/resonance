@@ -270,10 +270,99 @@ jobs:
           name: resonance-macos-arm64-pkg
           path: installer/resonance-*.pkg
 
+  android:
+    name: Android APK (arm64 + armv7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust Android Targets
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager "ndk;27.0.12077973"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: android-cargo-
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Build backend for Android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
+        run: |
+          cargo ndk -t arm64-v8a -t armeabi-v7a --platform 29 build --release -p resonance-backend
+
+      - name: Prepare Android assets
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/armeabi-v7a
+          cp target/aarch64-linux-android/release/libresonance_backend.so android/app/src/main/jniLibs/arm64-v8a/
+          cp target/armv7-linux-androideabi/release/libresonance_backend.so android/app/src/main/jniLibs/armeabi-v7a/
+          mkdir -p android/app/src/main/assets/static
+          cp -r frontend/dist/* android/app/src/main/assets/static/
+
+      - name: Setup Android debug keystore
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v -keystore ~/.android/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.5"
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK with version
+        run: |
+          VER=$(cat VERSION)
+          cp android/app/build/outputs/apk/debug/app-debug.apk resonance-$VER-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resonance-android
+          path: resonance-*-android.apk
+
   release:
     name: Attach artifacts to release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux, macos-x64, macos-arm64]
+    needs: [windows, linux, macos-x64, macos-arm64, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
