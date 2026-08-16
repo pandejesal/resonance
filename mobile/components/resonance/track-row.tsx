@@ -12,34 +12,77 @@ function formatDuration(milliseconds: number) {
 export function TrackRow({ track, queue }: { track: Track; queue?: Track[] }) {
   const { currentTrack, isPlaying, playTrack } = useResonancePlayer();
   const active = currentTrack?.id === track.id;
+  const title = track.title || track.file_name;
+  const artist = track.artist || "Unknown artist";
+  const album = track.album || "Unknown album";
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Play ${track.title} by ${track.artist}`}
+      accessibilityLabel={`Play ${title} by ${artist}`}
+      accessibilityHint="Opens this track in the player"
       onPress={() => void playTrack(track, queue)}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View style={[styles.artwork, active && styles.artworkActive]}>
-        <MaterialIcons name={active && isPlaying ? "graphic-eq" : "music-note"} size={22} color={active ? "#0B1210" : "#A3B5AC"} />
+        <MaterialIcons
+          name={active && isPlaying ? "graphic-eq" : "music-note"}
+          size={22}
+          color={active ? "#0B1210" : "#A3B5AC"}
+        />
       </View>
       <View style={styles.copy}>
-        <Text numberOfLines={1} style={[styles.title, active && styles.activeText]}>{track.title || track.file_name}</Text>
-        <Text numberOfLines={1} style={styles.meta}>{track.artist || "Unknown artist"} · {track.album || "Unknown album"}</Text>
+        <Text
+          numberOfLines={1}
+          style={[styles.title, active && styles.activeText]}
+        >
+          {title}
+        </Text>
+        <Text numberOfLines={1} style={styles.meta}>
+          {artist}
+        </Text>
+        <Text numberOfLines={1} style={styles.album}>
+          {album}
+        </Text>
       </View>
-      <Text style={styles.duration}>{formatDuration(track.duration_ms)}</Text>
+      <View style={styles.trailing}>
+        <Text style={styles.duration}>{formatDuration(track.duration_ms)}</Text>
+        <MaterialIcons
+          name={active ? "equalizer" : "play-arrow"}
+          size={17}
+          color={active ? "#5DE1B5" : "#607B6E"}
+        />
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: 68, alignItems: "center", flexDirection: "row", gap: 12, paddingHorizontal: 18, paddingVertical: 8 },
-  rowPressed: { opacity: 0.68 },
-  artwork: { alignItems: "center", backgroundColor: "#1A2A24", borderRadius: 12, height: 44, justifyContent: "center", width: 44 },
+  row: {
+    alignItems: "center",
+    borderBottomColor: "#1D3028",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 78,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  rowPressed: { opacity: 0.68, transform: [{ scale: 0.99 }] },
+  artwork: {
+    alignItems: "center",
+    backgroundColor: "#1A2A24",
+    borderRadius: 14,
+    height: 50,
+    justifyContent: "center",
+    width: 50,
+  },
   artworkActive: { backgroundColor: "#5DE1B5" },
-  copy: { flex: 1, gap: 3, minWidth: 0 },
-  title: { color: "#ECF8F2", fontSize: 15, fontWeight: "600" },
+  copy: { flex: 1, gap: 2, minWidth: 0 },
+  title: { color: "#ECF8F2", fontSize: 15, fontWeight: "700" },
   activeText: { color: "#5DE1B5" },
-  meta: { color: "#A3B5AC", fontSize: 13 },
+  meta: { color: "#A3B5AC", fontSize: 13, marginTop: 1 },
+  album: { color: "#61796C", fontSize: 12 },
+  trailing: { alignItems: "flex-end", gap: 5, justifyContent: "center" },
   duration: { color: "#A3B5AC", fontSize: 12, fontVariant: ["tabular-nums"] },
 });
