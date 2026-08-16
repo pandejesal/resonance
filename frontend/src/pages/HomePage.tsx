@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatDuration, formatDurationLong, formatNumber, getArtworkUrl, cn } from '../lib/utils';
-import { usePlayerStore } from '../stores';
+import { usePlayerStore, useLicenseStore } from '../stores';
 import { AlbumCard } from '../components/Cards';
 import type { Stats, Track, Album } from '../types';
 
@@ -125,10 +125,13 @@ export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [recentAlbums, setRecentAlbums] = useState<Album[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
+  const [gems, setGems] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState('');
   const { playTrack } = usePlayerStore();
+  const { hasFeature } = useLicenseStore();
+  const hasIntelligence = hasFeature('intelligence');
   const navigate = useNavigate();
   const isAndroid = !!(window as any).AndroidBridge;
 
@@ -137,17 +140,19 @@ export default function HomePage() {
       api.stats().catch(() => null),
       api.albums.list({ sort: 'date_added', order: 'DESC', per_page: 12 }).catch(() => ({ items: [], total: 0, page: 1, per_page: 12, total_pages: 1 })),
       api.genres().catch(() => []),
-    ]).then(([statsData, albumsData, genresData]) => {
+      hasIntelligence ? api.intelligence.forgottenGems(6).catch(() => ({ tracks: [] })) : Promise.resolve({ tracks: [] }),
+    ]).then(([statsData, albumsData, genresData, gemsData]) => {
       setStats(statsData);
       setRecentAlbums(albumsData.items);
       setGenres(genresData);
+      setGems(gemsData.tracks);
       setLoading(false);
 
       if (isAndroid && statsData && statsData.total_tracks === 0) {
         handleDeviceScan();
       }
     });
-  }, []);
+  }, [hasIntelligence]);
 
   const handleDeviceScan = async () => {
     if (!(window as any).AndroidBridge) return;
@@ -289,6 +294,77 @@ export default function HomePage() {
         >
           <HorizontalAlbumRow albums={recentAlbums} title="Recently added" viewAllLink="/albums" />
         </motion.div>
+      )}
+
+      {/* Resonance Intelligence — teaser for free users */}
+      {!hasIntelligence && stats && stats.total_tracks > 0 && (
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.22 }}
+          className="surface-card p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+        >
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-brand-500/20">
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-bold text-primary">Resonance Intelligence</h2>
+            <p className="text-xs text-secondary mt-0.5">
+              Forgotten gems, decade mixes, sound alikes and rediscover — computed on your device.
+            </p>
+          </div>
+          <button onClick={() => navigate('/upgrade')} className="btn-primary text-sm flex-shrink-0">
+            Upgrade to Pro
+          </button>
+        </motion.section>
+      )}
+
+      {/* Resonance Intelligence — live preview for Pro users */}
+      {hasIntelligence && gems.length > 0 && (
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.22 }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg sm:text-xl font-bold text-primary">Forgotten Gems</h2>
+            <Link to="/intelligence" className="text-xs font-semibold text-secondary hover:text-primary transition-colors">
+              Open Intelligence
+            </Link>
+          </div>
+          <div className="space-y-1">
+            {gems.slice(0, 5).map((track, i) => (
+              <motion.button
+                key={track.id}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.22 + i * 0.04 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-3 w-full p-2 rounded-xl hover:bg-white/5 transition-colors text-left"
+                onClick={() => playTrack(track, gems)}
+              >
+                <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                  {track.has_artwork ? (
+                    <img src={getArtworkUrl(track.id)} alt={track.album} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-surface-2 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white/20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-primary truncate">{track.title}</p>
+                  <p className="text-xs text-secondary truncate">{track.artist}</p>
+                </div>
+                <span className="text-xs text-tertiary">{track.play_count} plays</span>
+              </motion.button>
+            ))}
+          </div>
+        </motion.section>
       )}
 
       {/* Most Played */}

@@ -4893,6 +4893,22 @@ pub fn register_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/cast/play", web::post().to(cast_play))
         .route("/api/cast/control", web::post().to(cast_control))
         .route(
+            "/api/intelligence/forgotten-gems",
+            web::get().to(crate::intelligence::forgotten_gems),
+        )
+        .route(
+            "/api/intelligence/decade-mixes",
+            web::get().to(crate::intelligence::decade_mixes),
+        )
+        .route(
+            "/api/intelligence/sound-alikes",
+            web::get().to(crate::intelligence::sound_alikes),
+        )
+        .route(
+            "/api/intelligence/rediscover",
+            web::get().to(crate::intelligence::rediscover),
+        )
+        .route(
             "/api/license/status",
             web::get().to(crate::license_handlers::get_license_status),
         )

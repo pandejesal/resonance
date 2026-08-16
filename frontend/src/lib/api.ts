@@ -26,6 +26,9 @@ import type {
   TranscodeConfig,
   ListeningHistoryEntry,
   LicenseStatus,
+  DecadeMix,
+  SoundAlikeResult,
+  RediscoverMix,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -369,5 +372,18 @@ export const api = {
       fetchJson<{ license_key: string }>(`/license/generate/${tier}`, {
         method: 'POST',
       }),
+  },
+
+  intelligence: {
+    forgottenGems: (limit?: number) =>
+      fetchJson<{ tracks: Track[] }>(`/intelligence/forgotten-gems${limit ? `?limit=${limit}` : ''}`),
+    decadeMixes: (limit?: number) =>
+      fetchJson<{ decades: DecadeMix[] }>(`/intelligence/decade-mixes${limit ? `?limit=${limit}` : ''}`),
+    suggestedArtists: () =>
+      fetchJson<{ artists: string[] }>('/intelligence/sound-alikes'),
+    soundAlikes: (artist: string, limit?: number) =>
+      fetchJson<SoundAlikeResult>(`/intelligence/sound-alikes?artist=${encodeURIComponent(artist)}${limit ? `&limit=${limit}` : ''}`),
+    rediscover: (limit?: number) =>
+      fetchJson<{ mixes: RediscoverMix[] }>(`/intelligence/rediscover${limit ? `?limit=${limit}` : ''}`),
   },
 };

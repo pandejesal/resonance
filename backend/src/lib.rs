@@ -6,6 +6,7 @@ pub mod dodo_handlers;
 pub mod dodo_webhook;
 pub mod handlers;
 pub mod importer;
+pub mod intelligence;
 pub mod license;
 pub mod license_handlers;
 pub mod lyrics;

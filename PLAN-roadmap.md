@@ -152,8 +152,10 @@ Per-track metadata editing (title/artist/album/art/year): PUT endpoint + edit UI
   crate, sha2 hash, writes `artwork_cache` + `tracks`/`albums` flags); upload/remove UI in
   `MetadataEditor.tsx`
 - ✅ UI Pro-gated via `metadata_editor` feature key (seeded in `008_license_system.sql`)
-- Next slice (Pro tier): remaining UpgradePage promises (cloud sync, AI recs, audio effects,
-  custom themes)
+- Next slice (Pro tier): remaining UpgradePage promises (cloud sync, AI recs, audio
+  effects, custom themes) — **re-scoped into PLAN-upgrade.md** (2026-08-16):
+  the "download & buy" cycle ships Resonance Intelligence v1 first, then
+  pricing/website/demo/apps/launch.
 
 ### C. Sync/Offline — first slice: Offline playback ✅ DONE
 PWA offline-first shell: service worker caching app assets + streamed tracks (Cache API),

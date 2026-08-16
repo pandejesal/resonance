@@ -348,6 +348,40 @@ export interface LicenseStatus {
   device_count: number;
 }
 
+export interface DecadeMixAlbum {
+  album: string;
+  artist: string;
+  year?: number;
+  track_count: number;
+  plays: number;
+  has_artwork: boolean;
+  artwork_track_id: string;
+}
+
+export interface DecadeMix {
+  decade: string;
+  albums: DecadeMixAlbum[];
+}
+
+export interface SoundAlikeMatch {
+  artist: string;
+  score: number;
+  shared_genres: string[];
+  shared_moods: string[];
+  shared_keys: string[];
+  bpm_match: boolean;
+}
+
+export interface SoundAlikeResult {
+  artist: string;
+  matches: SoundAlikeMatch[];
+}
+
+export interface RediscoverMix {
+  name: string;
+  tracks: Track[];
+}
+
 export interface PricingPlan {
   id: string;
   name: string;

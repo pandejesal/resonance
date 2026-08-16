@@ -30,6 +30,7 @@ import TransferPage from './pages/TransferPage';
 import ImportPage from './pages/ImportPage';
 import HistoryPage from './pages/HistoryPage';
 import UpgradePage from './pages/UpgradePage';
+import IntelligencePage from './pages/IntelligencePage';
 
 function BackButtonHandler() {
   const navigate = useNavigate();
@@ -85,6 +86,7 @@ function AnimatedRoutes() {
           <Route path="/import" element={<ImportPage />} />
           <Route path="/transfer" element={<TransferPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/intelligence" element={<IntelligencePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/upgrade" element={<UpgradePage />} />
         </Routes>
