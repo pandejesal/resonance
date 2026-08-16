@@ -4441,7 +4441,7 @@ dependencies = [
 
 [[package]]
 name = "resonance"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "env_logger",
  "log",
@@ -4456,7 +4456,7 @@ dependencies = [
 
 [[package]]
 name = "resonance-backend"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "actix-cors",
  "actix-files",
