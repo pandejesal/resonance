@@ -231,7 +231,10 @@ mod tests {
     #[tokio::test]
     async fn generate_key_lifetime_uses_res_lif_prefix() {
         let key = License::generate_key("lifetime").await;
-        assert!(key.starts_with("RES-LIF-"), "lifetime keys must use RES-LIF prefix");
+        assert!(
+            key.starts_with("RES-LIF-"),
+            "lifetime keys must use RES-LIF prefix"
+        );
         assert_eq!(key.len(), 24, "RES-LIF- (8) + 16 uppercase hex chars");
     }
 
@@ -278,6 +281,9 @@ mod tests {
 
         let license = License::activate(&pool, &key, "u_lif").await.unwrap();
         assert!(license.expires_at.is_some(), "annual pro keys must expire");
-        assert!(license.expires_at.unwrap().starts_with("2027-"), "activation rewrites expiry to +1 year");
+        assert!(
+            license.expires_at.unwrap().starts_with("2027-"),
+            "activation rewrites expiry to +1 year"
+        );
     }
 }
