@@ -282,6 +282,8 @@ export const api = {
     getStatus: () => fetchJson<UpdateStatus>('/updater/status'),
     check: () => fetchJson<UpdateStatus>('/updater/check', { method: 'POST' }),
     update: () => fetchJson<{ success: boolean; message: string }>('/updater/update', { method: 'POST' }),
+    openDownload: () =>
+      fetchJson<{ success: boolean; url: string }>('/updater/open-download', { method: 'POST' }),
     getConfig: () => fetchJson<UpdaterConfig>('/updater/config'),
     updateConfig: (data: UpdaterConfig) =>
       fetchJson<{ success: boolean; config: UpdaterConfig }>('/updater/config', {

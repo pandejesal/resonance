@@ -2888,6 +2888,32 @@ pub async fn update_updater_config(
     }))
 }
 
+pub async fn open_download_page(req: HttpRequest) -> HttpResponse {
+    auth_guard!(req);
+    let url = std::env::var("RESONANCE_DOWNLOAD_URL")
+        .unwrap_or_else(|_| "https://resonance.app/download".to_string());
+    #[cfg(not(target_os = "android"))]
+    {
+        match webbrowser::open(&url) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "url": url,
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Could not open the browser: {}", e),
+                "url": url,
+            })),
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "url": url,
+        }))
+    }
+}
+
 pub async fn preview_import(
     data: web::Data<AppState>,
     body: web::Json<ImportPreviewRequest>,
@@ -4861,6 +4887,7 @@ pub fn register_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/updater/update", web::post().to(apply_update))
         .route("/api/updater/config", web::get().to(get_updater_config))
         .route("/api/updater/config", web::put().to(update_updater_config))
+        .route("/api/updater/open-download", web::post().to(open_download_page))
         .route("/api/import/preview", web::post().to(preview_import))
         .route("/api/import/confirm", web::post().to(confirm_import))
         .route("/api/import/formats", web::get().to(get_import_formats))

@@ -7,6 +7,7 @@ export default function UpdateBanner() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
 
@@ -50,6 +51,24 @@ export default function UpdateBanner() {
     }
   };
 
+  const handleDownload = async () => {
+    setDownloading(true);
+    setUpdateMessage('');
+    try {
+      const result = await api.updater.openDownload();
+      const bridge = (window as any).AndroidBridge;
+      if (bridge?.openUrl) {
+        bridge.openUrl(result.url);
+      } else if (!result.success) {
+        setUpdateMessage('Could not open the download page');
+      }
+    } catch (e: any) {
+      setUpdateMessage(e.message || 'Could not open the download page');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (!status || !status.update_available || dismissed) return null;
 
   return (
@@ -82,6 +101,15 @@ export default function UpdateBanner() {
                     className="px-3 py-1.5 bg-white text-brand-600 rounded-lg text-sm font-medium hover:bg-white/90 transition-colors disabled:opacity-50"
                   >
                     {updating ? 'Updating...' : 'Update Now'}
+                  </button>
+                )}
+                {!status.docker_socket && (
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className="px-3 py-1.5 bg-white text-brand-600 rounded-lg text-sm font-medium hover:bg-white/90 transition-colors disabled:opacity-50"
+                  >
+                    {downloading ? 'Opening...' : 'Download Update'}
                   </button>
                 )}
                 <button

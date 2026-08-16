@@ -37,6 +37,7 @@ export default function SettingsPage() {
   const [updaterConfig, setUpdaterConfig] = useState<UpdaterConfig>(DEFAULT_UPDATER_CONFIG);
   const [updaterChecking, setUpdaterChecking] = useState(false);
   const [updaterUpdating, setUpdaterUpdating] = useState(false);
+  const [updaterDownloading, setUpdaterDownloading] = useState(false);
   const [updaterMessage, setUpdaterMessage] = useState('');
   const [deviceScanning, setDeviceScanning] = useState(false);
   const [deviceScanResult, setDeviceScanResult] = useState('');
@@ -236,6 +237,24 @@ export default function SettingsPage() {
       setUpdaterMessage(e.message || 'Update failed');
     } finally {
       setUpdaterUpdating(false);
+    }
+  };
+
+  const handleOpenDownload = async () => {
+    setUpdaterDownloading(true);
+    setUpdaterMessage('');
+    try {
+      const result = await api.updater.openDownload();
+      const bridge = (window as any).AndroidBridge;
+      if (bridge?.openUrl) {
+        bridge.openUrl(result.url);
+      } else if (!result.success) {
+        setUpdaterMessage('Could not open the download page');
+      }
+    } catch (e: any) {
+      setUpdaterMessage(e.message || 'Could not open the download page');
+    } finally {
+      setUpdaterDownloading(false);
     }
   };
 
@@ -1208,6 +1227,15 @@ export default function SettingsPage() {
                 className="btn-primary disabled:opacity-50"
               >
                 {updaterUpdating ? 'Updating...' : 'Update Now'}
+              </button>
+            )}
+            {updaterStatus?.update_available && !updaterStatus?.docker_socket && (
+              <button
+                onClick={handleOpenDownload}
+                disabled={updaterDownloading}
+                className="btn-primary disabled:opacity-50"
+              >
+                {updaterDownloading ? 'Opening...' : 'Download Update'}
               </button>
             )}
           </div>

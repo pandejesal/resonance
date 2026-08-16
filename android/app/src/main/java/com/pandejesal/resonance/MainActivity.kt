@@ -468,6 +468,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun openUrl(url: String) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(intent)
+            } catch (_: Exception) {
+            }
+        }
+
+        @JavascriptInterface
         fun getServerMode(): String {
             val url = getPrefs().getString("server_url", "") ?: ""
             return if (url.isNotEmpty()) "remote" else "local"

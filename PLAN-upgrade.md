@@ -282,8 +282,17 @@ deducted from sales).
   - Verified: `cargo ndk --target aarch64-linux-android --platform 29 build
     --release -p resonance-backend` + `gradlew assembleDebug` → BUILD
     SUCCESSFUL (app-debug.apk, arm64-v8a only locally; CI builds both ABIs).
-  - Remaining (Phase 4): desktop updater wiring, store listings, `assembleRelease`
-    signing — deferred to launch.
+  - Remaining (Phase 4): store listings, `assembleRelease` signing — deferred
+    to launch.
+
+  ✅ DONE (2026-08-16) — Desktop updater wiring:
+  - `POST /api/updater/open-download` opens the download page in the system
+    browser (`webbrowser` crate; `cfg`-no-op on Android, URL still returned).
+    URL from `RESONANCE_DOWNLOAD_URL`, default `https://resonance.app/download`.
+  - Settings → Updates and the UpdateBanner show a "Download Update" button
+    when no Docker socket is mounted (docker path keeps "Update Now");
+    Android opens the URL via the new `AndroidBridge.openUrl` intent.
+  - Verified: `cargo check` clean (backend), `npm run build` clean (frontend).
 
 ### Acceptance (Phase 4)
 

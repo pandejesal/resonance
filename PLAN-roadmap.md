@@ -174,7 +174,11 @@ Installable packages (Windows Inno Setup + Linux AppImage + macOS DMG) from `ins
 - ✅ Version read from `../VERSION` (0.7.0) instead of hardcoded 0.1.0
 - ✅ DMG launcher uses `~/Library/Application Support/Resonance` (was inside the .app bundle);
   AppImage launcher resolves paths relative to its own location
-- Next slice (native): update-channel wiring in the installers (backend updater already exists)
+- ✅ Desktop update-channel wiring — `POST /api/updater/open-download` opens the download page in
+  the system browser (via `webbrowser` crate); Settings + UpdateBanner show a "Download Update"
+  button when no Docker socket is mounted; Android opens it through the `AndroidBridge.openUrl`
+  intent. `RESONANCE_DOWNLOAD_URL` overrides the default `https://resonance.app/download`
+- Next slice (native): auto-install via signed update manifests (needs code-signing keys)
 
 ---
 
