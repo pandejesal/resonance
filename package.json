@@ -1,0 +1,9 @@
+{
+  "name": "resonance-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-root dependencies for the resonance.app website and serverless key shop on Netlify.",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
