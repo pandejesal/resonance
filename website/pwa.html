@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resonance on your phone — PWA guide</title>
+  <meta name="description" content="Install Resonance on iPhone and Android as a full-screen app — no store needed, your library stays on your server.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"></span> Resonance
+      </a>
+      <nav class="nav-links" id="nav-links">
+        <a href="index.html">Home</a>
+        <a href="compare.html">Compare</a>
+        <a href="download.html">Download</a>
+        <a href="pricing.html">Pricing</a>
+      </nav>
+      <a href="download.html" class="btn btn-primary nav-cta">Get Resonance</a>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container prose">
+        <h1 class="page-title">Resonance on your phone</h1>
+        <p class="page-sub">Resonance is a progressive web app. On iPhone and Android you install it like a native app — full screen, offline-capable, no store account needed. Your music still lives on your own server.</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>iPhone (iOS Safari)</h2>
+            <ol class="step-list">
+              <li>Open <strong>demo.resonance.app</strong> — or your own server's URL — in Safari.</li>
+              <li>Tap the <strong>Share</strong> button (square with an arrow) in the bottom toolbar.</li>
+              <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+              <li>Tap <strong>Add</strong> in the top right. Resonance appears as a full-screen app icon.</li>
+              <li>Open it from the home screen. It stays signed in to your server.</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h2>Android (Chrome)</h2>
+            <ol class="step-list">
+              <li>Open <strong>demo.resonance.app</strong> — or your own server's URL — in Chrome.</li>
+              <li>Tap the <strong>⋮ menu</strong> (three dots, top right).</li>
+              <li>Tap <strong>Add to Home screen</strong> (or "Install app").</li>
+              <li>Confirm the install. Resonance runs in its own window with its own icon.</li>
+              <li>Done — no Play Store account required.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Notes</h2>
+          <ul class="feat-list">
+            <li><strong>Same license</strong> — install the app on up to 3 of your devices and enter your Pro or Lifetime key once per device. The app itself is free.</li>
+            <li><strong>Same server</strong> — every device points at your server. Playlists, ratings, and history stay in sync automatically because they all live in one place.</li>
+            <li><strong>Offline</strong> — playback needs your server reachable (home Wi-Fi or VPN for your own server). The PWA shell loads from cache so the UI starts instantly.</li>
+            <li><strong>iOS native app</strong> — we're shipping this PWA guide before committing to a native iOS build; revisit after launch data (see the changelog).</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <span class="logo-mark"></span> Resonance
+        <p class="footer-note">Your music, privately intelligent.</p>
+      </div>
+      <div class="footer-links">
+        <a href="privacy.html">Privacy</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="compare.html">Compare</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="https://github.com/pandejesal/resonance">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/main.js"></script>
+</body>
+</html>
