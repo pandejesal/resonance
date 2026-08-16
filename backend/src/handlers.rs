@@ -4887,7 +4887,10 @@ pub fn register_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/updater/update", web::post().to(apply_update))
         .route("/api/updater/config", web::get().to(get_updater_config))
         .route("/api/updater/config", web::put().to(update_updater_config))
-        .route("/api/updater/open-download", web::post().to(open_download_page))
+        .route(
+            "/api/updater/open-download",
+            web::post().to(open_download_page),
+        )
         .route("/api/import/preview", web::post().to(preview_import))
         .route("/api/import/confirm", web::post().to(confirm_import))
         .route("/api/import/formats", web::get().to(get_import_formats))

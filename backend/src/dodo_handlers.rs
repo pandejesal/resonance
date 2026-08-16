@@ -41,7 +41,8 @@ pub async fn create_checkout_session(
     // Dodo hosts test and live APIs on separate domains:
     // https://test.dodopayments.com (test) and https://live.dodopayments.com (live).
     // Default to test mode; switch via DODO_API_BASE when going live.
-    let base = env::var("DODO_API_BASE").unwrap_or_else(|_| "https://test.dodopayments.com".to_string());
+    let base =
+        env::var("DODO_API_BASE").unwrap_or_else(|_| "https://test.dodopayments.com".to_string());
     let res = client.post(format!("{}/payments", base))
         .header("Authorization", format!("Bearer {}", secret_key))
         .json(&serde_json::json!({

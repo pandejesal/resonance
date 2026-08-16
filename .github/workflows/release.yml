@@ -397,6 +397,7 @@ jobs:
           path: frontend/ios/App/build/resonance-ios.ipa
 
   release:
+    if: github.event_name == 'workflow_dispatch'
     needs:
       [
         build-windows-tauri,
