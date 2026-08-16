@@ -202,6 +202,56 @@ sound-alike queries cap at 100 candidates / 20 albums).
 
 ---
 
+## Phase 3b — Founding-50 Key Shop (serverless, $0)
+
+> Decisions (2026-08-16, interview): the first 50 customers pay **full price**
+> (Pro $29/yr, Lifetime $119) with **zero money invested** by us — no VPS, no
+> payment-provider monthly fees, no paid hosting. Customers self-host; the
+> shop runs on free tiers. Founder perks for the first 50: badge, opt-in name
+> in the changelog, priority support. **Hard cap at 50** (automatic counter).
+> Sales start only at the big-bang launch (`SHOP_ENABLED` flag, default off).
+> Payment rail: **Dodo Payments** (already integrated; merchant onboarding
+> deferred by user until closer to launch). Hosting: **Netlify** (new account,
+> never touching the user's burgonomics/safesponsor projects) + **Resend**
+> free tier for key emails.
+
+✅ DONE (2026-08-16) — code complete, dark until launch:
+- `website/netlify/functions/checkout.ts` — `POST /api/checkout`: validates
+  tier/name/email, checks the 50-cap, creates the Dodo payment (env product
+  IDs, same payload shape as `dodo_handlers.rs`), returns the payment link;
+  founder eligibility + spots_left in the response. `SHOP_ENABLED != true` →
+  403 `not_open`.
+- `website/netlify/functions/webhook.ts` — `POST /api/webhook/dodo`: verifies
+  the HMAC-SHA256 `Dodo-Signature` (mirrors `dodo_webhook.rs`), handles only
+  `payment.succeeded`, idempotent per payment_id (Blobs), mints the key
+  (`RES-PRO-`/`RES-LIF-` + 16 uppercase hex — byte-identical format to
+  `backend/src/license.rs`, activates on any self-hosted server), emails it
+  via Resend (with activation steps + founder message), increments the 50
+  counter, records opted-in founders to the `founders` blob.
+- `website/netlify/functions/status.ts` — `GET /api/status`: `{open, total,
+  sold, spots_left}` for the pricing page.
+- `website/netlify.toml` + `website/package.json` — functions dir, `/api/*`
+  redirect, `@netlify/blobs` dependency.
+- Website: pricing buttons → checkout modal (name + email + opt-in founder
+  checkbox) via `assets/main.js`; founder banner with live spots-left;
+  "Available at launch" disabled state when the shop is closed or the site is
+  still on GitHub Pages (no functions); FAQ entry; changelog "Founding 50"
+  section.
+- App: `UpgradePage.tsx` buy buttons now open `resonance.app/pricing` (the
+  in-app Dodo endpoint would need our secret key on every customer's machine —
+  impossible for self-hosted buyers); `api.ts` `dodo` group removed; license
+  activation card unchanged. `npm run build` clean.
+- Docs: `website/README.md` "Key shop" section with the full external setup
+  steps (Netlify/Resend/Dodo accounts, env vars, launch flip).
+
+Remaining (external, at launch): create Netlify + Resend accounts, Dodo
+products + webhook secret, deploy, DNS to Netlify, flip `SHOP_ENABLED=true`.
+After 50 sales the counter stops founder perks automatically; checkout keeps
+running normally. No Dodo fees are ever paid upfront (per-transaction only,
+deducted from sales).
+
+---
+
 ## Phase 4 — Free Apps, Web-Key Unlock
 
 - **Android** (`android/`, JNI): current app + license-aware UI: Pro features

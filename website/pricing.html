@@ -37,6 +37,10 @@
           Licenses are device-based — the app itself stays free for every device you own.
         </p>
 
+        <div class="card founder-banner" id="founder-banner" hidden>
+          <p><strong>Founding 50</strong> — the first <span data-spots>50</span> buyers pay full price and get founder perks: a badge, your name in the changelog (optional), and priority support. Capped at 50, then gone.</p>
+        </div>
+
         <div class="grid-4">
           <div class="card">
             <h3>Free</h3>
@@ -68,7 +72,7 @@
               <li>Priority support</li>
               <li>14-day free trial</li>
             </ul>
-            <a href="https://github.com/pandejesal/resonance/releases" class="btn btn-primary btn-block">Try Pro free for 14 days</a>
+            <button class="btn btn-primary btn-block shop-buy" data-tier="pro" data-price="29">Buy Pro — $29</button>
           </div>
 
           <div class="card">
@@ -81,7 +85,7 @@
               <li>Same 3 devices</li>
               <li>No subscription to cancel</li>
             </ul>
-            <a href="https://github.com/pandejesal/resonance/releases" class="btn btn-ghost btn-block">Buy Lifetime</a>
+            <button class="btn btn-ghost btn-block shop-buy" data-tier="lifetime" data-price="119">Buy Lifetime — $119</button>
           </div>
 
           <div class="card">
@@ -120,10 +124,16 @@
             <h3>Do you collect telemetry?</h3>
             <p>No. There is no analytics beacon in the app or server. We only know what you tell us when you contact support.</p>
           </div>
+          <div class="faq-item">
+            <h3>What are the Founding 50?</h3>
+            <p>The first 50 buyers, capped automatically. They pay the same full price as everyone after them — and in return they get a founder badge, their name in the changelog (if they opt in), and priority support. After 50, the badge is gone for good.</p>
+          </div>
         </div>
       </div>
     </section>
   </main>
+
+  <div id="checkout-modal-root"></div>
 
   <footer class="footer">
     <div class="container footer-inner">

@@ -1,0 +1,13 @@
+{
+  "name": "resonance-shop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serverless key shop for resonance.app (Netlify Functions + Resend).",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

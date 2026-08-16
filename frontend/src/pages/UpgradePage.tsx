@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
 import { useLicenseStore } from '../stores';
@@ -72,35 +71,6 @@ export default function UpgradePage() {
   const { status: license, fetchStatus } = useLicenseStore();
   const [activating, setActivating] = useState(false);
   const [licenseKey, setLicenseKey] = useState('');
-  const [checkoutTier, setCheckoutTier] = useState('');
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  useEffect(() => {
-    if (searchParams.get('success') === 'true') {
-      const tier = searchParams.get('tier') || 'pro';
-      toast.success(`Payment received — ${tier} license activated!`);
-      fetchStatus();
-      searchParams.delete('success');
-      searchParams.delete('tier');
-      searchParams.delete('session_id');
-      setSearchParams(searchParams, { replace: true });
-    }
-  }, []);
-
-  const handleCheckout = async (tier: string) => {
-    setCheckoutTier(tier);
-    try {
-      const session = await api.dodo.checkout(tier);
-      if (session.url) {
-        window.location.href = session.url;
-      } else {
-        toast.error('Checkout is not configured yet — buy at resonance.app/pricing');
-      }
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to start checkout');
-      setCheckoutTier('');
-    }
-  };
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) return;
@@ -187,17 +157,18 @@ export default function UpgradePage() {
                   Contact us
                 </a>
               ) : (
-                <button
-                  onClick={() => handleCheckout(plan.id)}
-                  disabled={checkoutTier === plan.id}
+                <a
+                  href={`https://resonance.app/pricing?tier=${plan.id}`}
+                  target="_blank"
+                  rel="noreferrer"
                   className={`w-full py-2 text-center text-sm font-bold rounded-xl transition-colors ${
                     plan.highlighted
-                      ? 'bg-brand-500 text-white hover:bg-brand-400 disabled:opacity-50'
-                      : 'bg-white/5 text-primary hover:bg-white/10 disabled:opacity-50'
+                      ? 'bg-brand-500 text-white hover:bg-brand-400'
+                      : 'bg-white/5 text-primary hover:bg-white/10'
                   }`}
                 >
-                  {checkoutTier === plan.id ? 'Opening checkout...' : `Buy ${plan.name} — $${plan.price}`}
-                </button>
+                  Buy {plan.name} — ${plan.price}
+                </a>
               )}
             </motion.div>
           );

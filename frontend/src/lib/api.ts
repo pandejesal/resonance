@@ -383,14 +383,7 @@ export const api = {
       fetchJson<{ artists: string[] }>('/intelligence/sound-alikes'),
     soundAlikes: (artist: string, limit?: number) =>
       fetchJson<SoundAlikeResult>(`/intelligence/sound-alikes?artist=${encodeURIComponent(artist)}${limit ? `&limit=${limit}` : ''}`),
-    rediscover: (limit?: number) =>
-      fetchJson<{ mixes: RediscoverMix[] }>(`/intelligence/rediscover${limit ? `?limit=${limit}` : ''}`),
-  },
-
-  dodo: {
-    checkout: (tier: string) =>
-      fetchJson<{ id: string; url: string }>(`/dodo/checkout/${tier}`, {
-        method: 'POST',
-      }),
+rediscover: (limit?: number) =>
+      fetchJson<{ mixes: RediscoverMix[] }>(`/intelligence/rediscover${limit ? `&limit=${limit}` : ''}`),
   },
 };
