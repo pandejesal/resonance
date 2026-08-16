@@ -128,9 +128,11 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return true
-                // Only allow local backend URLs
+                val remote = getPrefs().getString("server_url", "") ?: ""
+                // Only allow the local backend and the user-configured remote server
                 val allowed = url.startsWith("http://127.0.0.1:$PORT") ||
-                              url.startsWith("http://localhost:$PORT")
+                              url.startsWith("http://localhost:$PORT") ||
+                              (remote.isNotEmpty() && url.startsWith(remote))
                 if (!allowed) {
                     Log.w(TAG, "Blocked navigation to: $url")
                     return true
@@ -269,7 +271,8 @@ class MainActivity : AppCompatActivity() {
             onReady = {
                 Log.i(TAG, "Backend ready on port $PORT")
                 runOnUiThread {
-                    webView.loadUrl("http://127.0.0.1:$PORT")
+                    val remote = getPrefs().getString("server_url", "") ?: ""
+                    webView.loadUrl(if (remote.isNotEmpty()) remote else "http://127.0.0.1:$PORT")
                 }
             },
             onError = { msg ->
@@ -462,6 +465,90 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun clearServerUrl() {
             getPrefs().edit().remove("server_url").apply()
+        }
+
+        @JavascriptInterface
+        fun getServerMode(): String {
+            val url = getPrefs().getString("server_url", "") ?: ""
+            return if (url.isNotEmpty()) "remote" else "local"
+        }
+
+        /**
+         * Validates a remote Resonance server (GET /api/stats on a background
+         * thread), stores it, and navigates the WebView to it. The result is
+         * delivered to window.__onConnectResult as JSON.
+         */
+        @JavascriptInterface
+        fun connectToServer(url: String) {
+            Thread {
+                var normalized = url.trim()
+                if (normalized.isEmpty()) {
+                    deliverConnectResult("{\"ok\":false,\"error\":\"Enter a server URL\"}")
+                    return@Thread
+                }
+                if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+                    normalized = "http://$normalized"
+                }
+                normalized = normalized.trimEnd('/')
+                var code = 0
+                try {
+                    val conn = (java.net.URL("$normalized/api/stats").openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 4000
+                        readTimeout = 4000
+                        instanceFollowRedirects = true
+                        requestMethod = "GET"
+                    }
+                    code = conn.responseCode
+                    conn.disconnect()
+                } catch (e: Exception) {
+                    deliverConnectResult("{\"ok\":false,\"error\":\"Cannot reach server: ${safeJson(e.message ?: "connection failed")}\"}")
+                    return@Thread
+                }
+                if (code in 200..299) {
+                    getPrefs().edit().putString("server_url", normalized).apply()
+                    Log.i(TAG, "Connected to remote server: $normalized")
+                    webView.post { webView.loadUrl(normalized) }
+                    deliverConnectResult("{\"ok\":true}")
+                } else {
+                    deliverConnectResult("{\"ok\":false,\"error\":\"Server returned HTTP $code\"}")
+                }
+            }.apply {
+                name = "server-connect"
+                start()
+            }
+        }
+
+        private fun deliverConnectResult(json: String) {
+            webView.post {
+                webView.evaluateJavascript(
+                    "if(window.__onConnectResult) window.__onConnectResult(${org.json.JSONObject.quote(json)});",
+                    null
+                )
+            }
+        }
+
+        private fun safeJson(s: String): String {
+            return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ")
+        }
+
+        @JavascriptInterface
+        fun disconnectFromServer() {
+            getPrefs().edit().remove("server_url").apply()
+            Log.i(TAG, "Disconnected from remote server, returning to local")
+            webView.post { webView.loadUrl("http://127.0.0.1:$PORT") }
+        }
+
+        @JavascriptInterface
+        fun getLanIp(): String {
+            return try {
+                java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+                    .filter { it.isUp && !it.isLoopback }
+                    .flatMap { java.util.Collections.list(it.inetAddresses) }
+                    .firstOrNull { it is java.net.Inet4Address && it.isSiteLocalAddress }
+                    ?.hostAddress ?: ""
+            } catch (e: Exception) {
+                ""
+            }
         }
 
         @JavascriptInterface

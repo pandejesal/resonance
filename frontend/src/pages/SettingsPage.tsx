@@ -58,6 +58,39 @@ export default function SettingsPage() {
   const [newCastName, setNewCastName] = useState('');
   const [newCastHost, setNewCastHost] = useState('');
   const [newCastPort, setNewCastPort] = useState('8008');
+  const bridge = (window as any).AndroidBridge;
+  const [serverMode, setServerMode] = useState<'local' | 'remote' | ''>('');
+  const [remoteUrl, setRemoteUrl] = useState('');
+  const [lanIp, setLanIp] = useState('');
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    if (!bridge) return;
+    setServerMode(bridge.getServerMode() || 'local');
+    setLanIp(bridge.getLanIp() || '');
+    (window as any).__onConnectResult = (res: string) => {
+      setConnecting(false);
+      try {
+        const r = JSON.parse(res);
+        if (r.ok) {
+          toast.success('Connected — switching servers...');
+        } else {
+          toast.error(r.error || 'Failed to connect');
+        }
+      } catch {
+        toast.error('Failed to connect');
+      }
+    };
+    return () => {
+      delete (window as any).__onConnectResult;
+    };
+  }, [bridge]);
+
+  const handleConnectServer = () => {
+    if (!bridge || !remoteUrl.trim()) return;
+    setConnecting(true);
+    bridge.connectToServer(remoteUrl.trim());
+  };
   const [newCastProtocol, setNewCastProtocol] = useState('chromecast');
   const scanPollRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
@@ -349,6 +382,64 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-primary">Settings</h1>
+
+      {/* Server (Android: local backend or a shared remote server) */}
+      {bridge && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-primary">Server</h2>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${serverMode === 'remote' ? 'bg-brand-500/15 text-brand-400' : 'bg-white/5 text-tertiary'}`}>
+              {serverMode === 'remote' ? 'Remote' : 'Local (this device)'}
+            </span>
+          </div>
+          <div className="surface-card p-4 space-y-3">
+            {serverMode === 'remote' ? (
+              <>
+                <p className="text-sm text-secondary">
+                  Connected to a shared server. You're seeing the same library as your other devices.
+                </p>
+                <button
+                  onClick={() => bridge.disconnectFromServer()}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10" />
+                  </svg>
+                  Back to local server
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-secondary">
+                  This device is running its own server. To see the same library as your
+                  Windows/macOS/Linux machines, connect to that machine's Resonance server.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={remoteUrl}
+                    onChange={(e) => setRemoteUrl(e.target.value)}
+                    placeholder="http://192.168.1.100:8080"
+                    className="input-field flex-1 font-mono text-sm"
+                  />
+                  <button
+                    onClick={handleConnectServer}
+                    disabled={connecting || !remoteUrl.trim()}
+                    className="btn-primary whitespace-nowrap"
+                  >
+                    {connecting ? 'Connecting...' : 'Connect'}
+                  </button>
+                </div>
+                {lanIp && (
+                  <p className="text-xs text-tertiary">
+                    Other devices on this network can connect to this phone: <span className="font-mono text-secondary">http://{lanIp}:8080</span>
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Libraries */}
       <section>

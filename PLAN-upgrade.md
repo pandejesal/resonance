@@ -215,6 +215,26 @@ sound-alike queries cap at 100 candidates / 20 albums).
   surface (Plexamp pattern — documented Apple 3.1.1 risk, accepted with web
   checkout as primary).
 
+  ✅ DONE (2026-08-16) — Android ↔ desktop shared library (user request):
+  - Android can connect to any remote Resonance server (e.g. Windows/macOS/Linux
+    host) and browse/stream the SAME library: `MainActivity` stores the remote
+    URL (`server_url` pref), loads it at startup when configured, and the
+    WebView nav whitelist now allows the remote origin; `AndroidBridge`
+    gains `connectToServer(url)` (background validation via `GET /api/stats`,
+    result to `window.__onConnectResult`), `disconnectFromServer()`,
+    `getServerMode()`, `getLanIp()`. The bridge stays injected on remote pages,
+    so device-music import and media-session notifications keep working against
+    the remote server.
+  - Vice versa (phone hosts): native server now binds `0.0.0.0`; Settings →
+    Server shows the LAN URL (`http://<ip>:8080`) other devices can use.
+  - Frontend: Settings gains a Server section (Android only) — local/remote
+    badge, connect input, "Back to local server", LAN hosting hint.
+  - Verified: `cargo ndk --target aarch64-linux-android --platform 29 build
+    --release -p resonance-backend` + `gradlew assembleDebug` → BUILD
+    SUCCESSFUL (app-debug.apk, arm64-v8a only locally; CI builds both ABIs).
+  - Remaining (Phase 4): desktop updater wiring, store listings, `assembleRelease`
+    signing — deferred to launch.
+
 ### Acceptance (Phase 4)
 
 - Android build (`./gradlew assembleRelease`) green; app connects to demo +

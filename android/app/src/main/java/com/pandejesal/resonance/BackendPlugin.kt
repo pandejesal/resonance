@@ -66,11 +66,13 @@ class BackendPlugin(context: Context) {
                 Log.i(TAG, "Starting native server...")
                 Log.i(TAG, "  DB path: $dbPath")
                 Log.i(TAG, "  Static dir: $staticDir")
-                Log.i(TAG, "  Host: 127.0.0.1, Port: $PORT")
+                Log.i(TAG, "  Host: 0.0.0.0, Port: $PORT (LAN hosting enabled)")
                 Log.i(TAG, "  Device: ${Build.MANUFACTURER} ${Build.MODEL}")
                 Log.i(TAG, "  ABI: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}")
 
-                val success = startNative(dbPath, staticDir, "127.0.0.1", PORT)
+                // Bind 0.0.0.0 so other devices on the network can connect to
+                // this phone's library too (see Settings -> Server).
+                val success = startNative(dbPath, staticDir, "0.0.0.0", PORT)
 
                 if (success) {
                     Log.i(TAG, "Server started successfully on port $PORT")
