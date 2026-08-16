@@ -36,6 +36,9 @@ Thumbs.db
 *.db-shm
 *.db-wal
 
+# Swarm agent workspace (local scripts, never commit)
+.swarm/
+
 # Android build artifacts
 android/.gradle/
 android/app/build/

@@ -47,6 +47,22 @@
         </article>
 
         <article class="card release">
+          <h2>v0.8.1 — Downloads that work</h2>
+          <p class="release-date">2026-08-17 · <a href="https://github.com/pandejesal/resonance/releases/tag/v0.8.1">GitHub release</a></p>
+          <p>Every installer is now built and published automatically on release — including the Android APK, which no longer needs a manual upload.</p>
+          <h3>New</h3>
+          <ul class="feat-list">
+            <li><strong>Automated installers</strong> — Windows, macOS (Intel + Apple Silicon), Linux, and Android are all built in CI and attached to the release with checksums. The download page always points at the latest.</li>
+            <li><strong>Android APK in the release</strong> — a real downloadable APK for arm64 and armv7 devices, no side-links required.</li>
+          </ul>
+          <h3>Fixed</h3>
+          <ul class="feat-list">
+            <li>Payment backend now talks to the correct Dodo Payments API endpoint (test mode), configured via the <code>DODO_API_BASE</code> environment variable.</li>
+            <li>Release pipeline no longer races: only the installer workflow publishes tags, so every release has a complete, verified asset set.</li>
+          </ul>
+        </article>
+
+        <article class="card release">
           <h2>v0.8.0 — Resonance Intelligence</h2>
           <p class="release-date">2026-08-16 · <a href="https://github.com/pandejesal/resonance/releases/tag/v0.8.0">GitHub release</a></p>
           <p>The release where Resonance starts understanding your library instead of just playing it.</p>

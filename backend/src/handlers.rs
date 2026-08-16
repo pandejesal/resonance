@@ -2891,7 +2891,7 @@ pub async fn update_updater_config(
 pub async fn open_download_page(req: HttpRequest) -> HttpResponse {
     auth_guard!(req);
     let url = std::env::var("RESONANCE_DOWNLOAD_URL")
-        .unwrap_or_else(|_| "https://resonance.app/download".to_string());
+        .unwrap_or_else(|_| "https://player-resonance.netlify.app/download".to_string());
     #[cfg(not(target_os = "android"))]
     {
         match webbrowser::open(&url) {
