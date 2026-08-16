@@ -85,7 +85,6 @@ export default function UpgradePage() {
       searchParams.delete('session_id');
       setSearchParams(searchParams, { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCheckout = async (tier: string) => {

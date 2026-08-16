@@ -17,10 +17,12 @@ pub async fn create_checkout_session(
     // placeholders as fallbacks until real products are created in Dodo.
     let product_id = match tier.as_str() {
         "pro" => env::var("DODO_PRODUCT_PRO").unwrap_or_else(|_| "pdt_123_pro".to_string()),
-        "lifetime" => env::var("DODO_PRODUCT_LIFETIME")
-            .unwrap_or_else(|_| "pdt_789_lifetime".to_string()),
-        "enterprise" => env::var("DODO_PRODUCT_ENTERPRISE")
-            .unwrap_or_else(|_| "pdt_456_ent".to_string()),
+        "lifetime" => {
+            env::var("DODO_PRODUCT_LIFETIME").unwrap_or_else(|_| "pdt_789_lifetime".to_string())
+        }
+        "enterprise" => {
+            env::var("DODO_PRODUCT_ENTERPRISE").unwrap_or_else(|_| "pdt_456_ent".to_string())
+        }
         _ => return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid tier"})),
     };
 

@@ -160,24 +160,36 @@ pub async fn delete_library(
     auth_guard!(req);
     let id = path.into_inner();
 
-    let lib = sqlx::query_as::<_, Library>("SELECT * FROM libraries WHERE id = ?")
-        .bind(&id)
-        .fetch_one(&data.db)
-        .await;
+    let exists =
+        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM libraries WHERE id = ?)")
+            .bind(&id)
+            .fetch_one(&data.db)
+            .await;
 
-    if let Ok(lib) = lib {
-        if std::fs::remove_dir_all(&lib.path).is_err() {
-            // Directory may not exist or may be in use; continue with DB cleanup
+    match exists {
+        Ok(0) => {
+            return HttpResponse::NotFound()
+                .json(serde_json::json!({"error": "Library not found"}));
+        }
+        Ok(_) => {}
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": e.to_string()}));
         }
     }
 
+    // Library removal only detaches the index. The configured directory belongs
+    // to the user and must never be deleted by an API request.
     let result = sqlx::query("DELETE FROM libraries WHERE id = ?")
         .bind(&id)
         .execute(&data.db)
         .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({"success": true})),
+        Ok(result) if result.rows_affected() == 1 => {
+            HttpResponse::Ok().json(serde_json::json!({"success": true}))
+        }
+        Ok(_) => HttpResponse::NotFound().json(serde_json::json!({"error": "Library not found"})),
         Err(e) => {
             HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()}))
         }

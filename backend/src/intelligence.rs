@@ -7,6 +7,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 const FEATURE_KEY: &str = "intelligence";
 
+type DecadeMixRow = (i64, String, String, Option<i32>, i64, i64, bool, String);
+type TrackAudioProfile = (Option<String>, Option<String>, Option<String>, Option<f64>);
+
 struct IntelligenceGateError {
     tier: String,
     trial_remaining_days: Option<i64>,
@@ -55,8 +58,11 @@ async fn forgotten_gems_query(db: &SqlitePool, limit: i64) -> Result<Vec<Track>,
     .await
 }
 
-async fn decade_mixes_query(db: &SqlitePool, per_decade: i64) -> Result<Vec<serde_json::Value>, sqlx::Error> {
-    let rows: Vec<(i64, String, String, Option<i32>, i64, i64, bool, String)> = sqlx::query_as(
+async fn decade_mixes_query(
+    db: &SqlitePool,
+    per_decade: i64,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+    let rows: Vec<DecadeMixRow> = sqlx::query_as(
         "SELECT (t.year / 10) * 10 AS decade, t.album, t.artist, MAX(t.year) AS year, COUNT(*) AS track_count, SUM(t.play_count) AS plays, MAX(t.has_artwork) AS has_artwork, MAX(t.id) AS artwork_track_id FROM tracks t WHERE t.year IS NOT NULL GROUP BY decade, t.album, t.artist",
     )
     .fetch_all(db)
@@ -64,15 +70,18 @@ async fn decade_mixes_query(db: &SqlitePool, per_decade: i64) -> Result<Vec<serd
 
     let mut by_decade: BTreeMap<i64, Vec<serde_json::Value>> = BTreeMap::new();
     for (decade, album, artist, year, track_count, plays, has_artwork, artwork_track_id) in rows {
-        by_decade.entry(decade).or_default().push(serde_json::json!({
-            "album": album,
-            "artist": artist,
-            "year": year,
-            "track_count": track_count,
-            "plays": plays,
-            "has_artwork": has_artwork,
-            "artwork_track_id": artwork_track_id,
-        }));
+        by_decade
+            .entry(decade)
+            .or_default()
+            .push(serde_json::json!({
+                "album": album,
+                "artist": artist,
+                "year": year,
+                "track_count": track_count,
+                "plays": plays,
+                "has_artwork": has_artwork,
+                "artwork_track_id": artwork_track_id,
+            }));
     }
 
     let mut mixes = Vec::new();
@@ -101,8 +110,13 @@ async fn suggested_artists(db: &SqlitePool, limit: i64) -> Result<Vec<String>, s
 }
 
 fn profile_of(
-    rows: &[(Option<String>, Option<String>, Option<String>, Option<f64>)],
-) -> (HashSet<String>, HashSet<String>, HashSet<String>, Option<f64>) {
+    rows: &[TrackAudioProfile],
+) -> (
+    HashSet<String>,
+    HashSet<String>,
+    HashSet<String>,
+    Option<f64>,
+) {
     let genres: HashSet<String> = rows.iter().filter_map(|(g, _, _, _)| g.clone()).collect();
     let moods: HashSet<String> = rows.iter().filter_map(|(_, m, _, _)| m.clone()).collect();
     let keys: HashSet<String> = rows.iter().filter_map(|(_, _, k, _)| k.clone()).collect();
@@ -123,7 +137,7 @@ async fn sound_alikes_query(
     artist: &str,
     limit: i64,
 ) -> Result<serde_json::Value, sqlx::Error> {
-    let target_rows: Vec<(Option<String>, Option<String>, Option<String>, Option<f64>)> =
+    let target_rows: Vec<TrackAudioProfile> =
         sqlx::query_as("SELECT genre, mood, musical_key, bpm FROM tracks WHERE artist = ?")
             .bind(artist)
             .fetch_all(db)
@@ -144,14 +158,15 @@ async fn sound_alikes_query(
 
     let mut matches = Vec::new();
     for candidate in candidates {
-        let rows: Vec<(Option<String>, Option<String>, Option<String>, Option<f64>)> =
+        let rows: Vec<TrackAudioProfile> =
             sqlx::query_as("SELECT genre, mood, musical_key, bpm FROM tracks WHERE artist = ?")
                 .bind(&candidate)
                 .fetch_all(db)
                 .await?;
         let (c_genres, c_moods, c_keys, c_bpm) = profile_of(&rows);
 
-        let mut shared_genres: Vec<String> = target_genres.intersection(&c_genres).cloned().collect();
+        let mut shared_genres: Vec<String> =
+            target_genres.intersection(&c_genres).cloned().collect();
         let mut shared_moods: Vec<String> = target_moods.intersection(&c_moods).cloned().collect();
         let mut shared_keys: Vec<String> = target_keys.intersection(&c_keys).cloned().collect();
         shared_genres.sort();
@@ -162,7 +177,9 @@ async fn sound_alikes_query(
             (Some(t), Some(c)) => (t - c).abs() <= t * 0.10,
             _ => false,
         };
-        let score = shared_genres.len() * 3 + shared_moods.len() * 2 + shared_keys.len() * 2
+        let score = shared_genres.len() * 3
+            + shared_moods.len() * 2
+            + shared_keys.len() * 2
             + if bpm_match { 2 } else { 0 };
 
         matches.push(serde_json::json!({
@@ -186,7 +203,10 @@ async fn sound_alikes_query(
     Ok(serde_json::json!({ "artist": artist, "matches": matches }))
 }
 
-async fn rediscover_query(db: &SqlitePool, per_mix: i64) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+async fn rediscover_query(
+    db: &SqlitePool,
+    per_mix: i64,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     let tracks: Vec<Track> = sqlx::query_as::<_, Track>(
         "SELECT * FROM tracks WHERE play_count > 0 AND last_played >= datetime('now', '-365 days') AND last_played < datetime('now', '-30 days')",
     )
@@ -339,14 +359,118 @@ mod tests {
         .await
         .unwrap();
 
-        insert_track(&pool, "g1", "Gem One", "Artist A", "Album One", Some("Rock"), Some(1984), Some(120.0), Some(5), 10, Some(90)).await;
-        insert_track(&pool, "g2", "Gem Two", "Artist B", "Album Two", Some("Rock"), Some(1985), Some(121.0), Some(4), 2, None).await;
-        insert_track(&pool, "g3", "Not Gem", "Artist C", "Album Three", Some("Jazz"), Some(1992), Some(90.0), Some(3), 5, Some(10)).await;
-        insert_track(&pool, "g4", "Played Now", "Artist A", "Album One", Some("Rock"), Some(1984), Some(120.0), Some(5), 20, Some(5)).await;
-        insert_track(&pool, "r1", "Rediscover Me", "Artist B", "Album Two", Some("Rock"), Some(1985), Some(121.0), Some(4), 3, Some(100)).await;
-        insert_track(&pool, "r2", "Too Recent", "Artist A", "Album Four", Some("Pop"), Some(2001), Some(110.0), Some(4), 2, Some(20)).await;
-        insert_track(&pool, "r3", "Too Old", "Artist C", "Album Three", Some("Jazz"), Some(1992), Some(90.0), Some(4), 1, Some(400)).await;
-        insert_track(&pool, "p1", "Jazz Played", "Artist C", "Album Five", Some("Jazz"), Some(1992), Some(92.0), Some(5), 8, Some(200)).await;
+        insert_track(
+            &pool,
+            "g1",
+            "Gem One",
+            "Artist A",
+            "Album One",
+            Some("Rock"),
+            Some(1984),
+            Some(120.0),
+            Some(5),
+            10,
+            Some(90),
+        )
+        .await;
+        insert_track(
+            &pool,
+            "g2",
+            "Gem Two",
+            "Artist B",
+            "Album Two",
+            Some("Rock"),
+            Some(1985),
+            Some(121.0),
+            Some(4),
+            2,
+            None,
+        )
+        .await;
+        insert_track(
+            &pool,
+            "g3",
+            "Not Gem",
+            "Artist C",
+            "Album Three",
+            Some("Jazz"),
+            Some(1992),
+            Some(90.0),
+            Some(3),
+            5,
+            Some(10),
+        )
+        .await;
+        insert_track(
+            &pool,
+            "g4",
+            "Played Now",
+            "Artist A",
+            "Album One",
+            Some("Rock"),
+            Some(1984),
+            Some(120.0),
+            Some(5),
+            20,
+            Some(5),
+        )
+        .await;
+        insert_track(
+            &pool,
+            "r1",
+            "Rediscover Me",
+            "Artist B",
+            "Album Two",
+            Some("Rock"),
+            Some(1985),
+            Some(121.0),
+            Some(4),
+            3,
+            Some(100),
+        )
+        .await;
+        insert_track(
+            &pool,
+            "r2",
+            "Too Recent",
+            "Artist A",
+            "Album Four",
+            Some("Pop"),
+            Some(2001),
+            Some(110.0),
+            Some(4),
+            2,
+            Some(20),
+        )
+        .await;
+        insert_track(
+            &pool,
+            "r3",
+            "Too Old",
+            "Artist C",
+            "Album Three",
+            Some("Jazz"),
+            Some(1992),
+            Some(90.0),
+            Some(4),
+            1,
+            Some(400),
+        )
+        .await;
+        insert_track(
+            &pool,
+            "p1",
+            "Jazz Played",
+            "Artist C",
+            "Album Five",
+            Some("Jazz"),
+            Some(1992),
+            Some(92.0),
+            Some(5),
+            8,
+            Some(200),
+        )
+        .await;
     }
 
     async fn insert_track(
@@ -362,8 +486,16 @@ mod tests {
         play_count: i32,
         last_played_days_ago: Option<i64>,
     ) {
-        let mood = if genre == Some("Rock") { Some("Energetic") } else { None };
-        let key = if genre == Some("Rock") { Some("A") } else { None };
+        let mood = if genre == Some("Rock") {
+            Some("Energetic")
+        } else {
+            None
+        };
+        let key = if genre == Some("Rock") {
+            Some("A")
+        } else {
+            None
+        };
         sqlx::query(
             "INSERT INTO tracks (id, title, artist, album, genre, year, mood, musical_key, bpm, rating, play_count, last_played, duration_ms, file_path, file_name, format, folder, library_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE datetime('now', '-' || ? || ' days') END, 200000, ?, ?, 'FLAC', '/music', 'lib1')",
         )
@@ -392,10 +524,21 @@ mod tests {
         let pool = test_pool().await;
         let gems = forgotten_gems_query(&pool, 50).await.unwrap();
         let ids: Vec<&str> = gems.iter().map(|t| t.id.as_str()).collect();
-        assert!(ids.contains(&"g1"), "5-star 90-day-old track should qualify: {:?}", ids);
-        assert!(ids.contains(&"g2"), "4-star never-played track should qualify: {:?}", ids);
+        assert!(
+            ids.contains(&"g1"),
+            "5-star 90-day-old track should qualify: {:?}",
+            ids
+        );
+        assert!(
+            ids.contains(&"g2"),
+            "4-star never-played track should qualify: {:?}",
+            ids
+        );
         assert!(!ids.contains(&"g3"), "3-star track must not qualify");
-        assert!(!ids.contains(&"g4"), "5-star track played 5 days ago must not qualify");
+        assert!(
+            !ids.contains(&"g4"),
+            "5-star track played 5 days ago must not qualify"
+        );
         let pos = |id: &str| ids.iter().position(|&i| i == id).unwrap();
         assert!(pos("g1") < pos("g2"), "5-star gem before 4-star gem");
         assert!(pos("p1") < pos("g2"), "5-star gem before 4-star gem");
@@ -405,7 +548,10 @@ mod tests {
     async fn decade_mixes_groups_albums_by_decade_and_ranks_by_plays() {
         let pool = test_pool().await;
         let mixes = decade_mixes_query(&pool, 20).await.unwrap();
-        let decades: Vec<&str> = mixes.iter().map(|m| m["decade"].as_str().unwrap()).collect();
+        let decades: Vec<&str> = mixes
+            .iter()
+            .map(|m| m["decade"].as_str().unwrap())
+            .collect();
         assert!(decades.contains(&"1980s"));
         assert!(decades.contains(&"1990s"));
         assert!(decades.contains(&"2000s"));
@@ -422,9 +568,16 @@ mod tests {
         let matches = result["matches"].as_array().unwrap();
         let artist_b = matches.iter().find(|m| m["artist"] == "Artist B");
         let artist_c = matches.iter().find(|m| m["artist"] == "Artist C");
-        assert!(artist_b.is_some(), "Artist B shares genre/mood/key/bpm: {:?}", matches);
+        assert!(
+            artist_b.is_some(),
+            "Artist B shares genre/mood/key/bpm: {:?}",
+            matches
+        );
         assert_eq!(artist_b.unwrap()["score"].as_i64().unwrap(), 9);
-        assert!(artist_c.is_none(), "Artist C (Jazz) must not match Rock artist");
+        assert!(
+            artist_c.is_none(),
+            "Artist C (Jazz) must not match Rock artist"
+        );
     }
 
     #[tokio::test]
@@ -436,11 +589,22 @@ mod tests {
             .flat_map(|m| m["tracks"].as_array().unwrap())
             .filter_map(|t| t["id"].as_str())
             .collect();
-        assert!(all_ids.contains(&"r1"), "100-day-old played track should qualify");
-        assert!(!all_ids.contains(&"r2"), "20-day-old track must not qualify");
-        assert!(!all_ids.contains(&"r3"), "400-day-old track must not qualify");
+        assert!(
+            all_ids.contains(&"r1"),
+            "100-day-old played track should qualify"
+        );
+        assert!(
+            !all_ids.contains(&"r2"),
+            "20-day-old track must not qualify"
+        );
+        assert!(
+            !all_ids.contains(&"r3"),
+            "400-day-old track must not qualify"
+        );
         assert!(!all_ids.contains(&"g4"), "5-day-old track must not qualify");
-        let rock = mixes.iter().find(|m| m["name"].as_str().unwrap_or("").contains("Rock"));
+        let rock = mixes
+            .iter()
+            .find(|m| m["name"].as_str().unwrap_or("").contains("Rock"));
         assert!(rock.is_some());
     }
 
