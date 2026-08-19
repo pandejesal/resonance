@@ -121,7 +121,7 @@ export default function MobileBottomNav() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-40"
+              className="fixed inset-x-0 inset-y-0 bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] bg-black/50 z-50"
               onClick={() => setShowMore(false)}
             />
             <motion.div
@@ -129,7 +129,7 @@ export default function MobileBottomNav() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 100 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-14 left-0 right-0 z-50 glass-strong border-t border-white/10 max-h-[70vh] overflow-y-auto"
+              className="fixed bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] left-0 right-0 z-60 glass-strong border-t border-white/10 max-h-[70vh] overflow-y-auto"
             >
               <div className="p-3">
                 <div className="flex items-center justify-between mb-3 px-2">
@@ -172,7 +172,7 @@ export default function MobileBottomNav() {
       </AnimatePresence>
 
       <nav
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 safe-bottom"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 safe-bottom"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >

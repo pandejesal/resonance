@@ -42,19 +42,32 @@ function BackButtonHandler() {
   }, [nowPlayingOpen]);
 
   useEffect(() => {
-    window.history.pushState({ page: 'resonance' }, '', window.location.href);
-
-    const handlePopState = () => {
-      if (nowPlayingOpenRef.current) {
-        toggleNowPlaying();
-      } else {
-        window.history.pushState({ page: 'resonance' }, '', window.location.href);
+    (window as any).__androidBack = () => {
+      const ui = useUIStore.getState();
+      if (ui.nowPlayingOpen) {
+        ui.toggleNowPlaying();
+        return 'handled';
       }
+      if (ui.queueOpen) {
+        ui.toggleQueue();
+        return 'handled';
+      }
+      if (ui.searchOpen) {
+        ui.toggleSearch();
+        return 'handled';
+      }
+      const idx = (window.history.state as any)?.idx ?? 0;
+      if (idx > 0) {
+        navigate(-1);
+        return 'handled';
+      }
+      return 'unhandled';
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [toggleNowPlaying]);
+    return () => {
+      delete (window as any).__androidBack;
+    };
+  }, [navigate, toggleNowPlaying]);
 
   return null;
 }

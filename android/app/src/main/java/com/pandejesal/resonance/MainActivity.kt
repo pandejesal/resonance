@@ -314,11 +314,14 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
+        webView.evaluateJavascript(
+            "(function(){ if (window.__androidBack) return window.__androidBack(); return 'unhandled'; })()"
+        ) { result ->
+            val handled = result?.replace("\"", "") == "handled"
+            if (!handled) {
+                @Suppress("DEPRECATION")
+                super.onBackPressed()
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'resonance-v2';
+const CACHE_NAME = 'resonance-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

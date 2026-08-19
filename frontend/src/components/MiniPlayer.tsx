@@ -193,7 +193,7 @@ export default function MiniPlayer() {
       dragConstraints={{ top: -120, bottom: 0 }}
       dragElastic={0.3}
       onDragEnd={handleDragEnd}
-      className="fixed bottom-14 left-0 right-0 w-full max-w-full overflow-hidden glass-strong border-t border-white/10 touch-pan-y z-40 safe-bottom"
+      className="fixed bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] left-0 right-0 w-full max-w-full overflow-hidden bg-surface-1 border-t border-white/10 touch-pan-y z-30 safe-bottom"
     >
       {/* Progress bar at top */}
       <div

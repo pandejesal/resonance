@@ -1,6 +1,6 @@
 # Resonance - Self-Hosted Music Library
 
-A premium, self-hosted music archival system that prioritizes speed, audio quality, and a beautiful user experience. Built with a Rust backend for maximum performance and a React frontend for a fluid, modern interface.
+A premium, self-hosted music archival system that prioritizes speed, audio quality, and a beautiful user experience. Built with a Rust backend for maximum performance and a React frontend for a fluid, modern interface. Runs natively on Android via JNI.
 
 ## Features
 
@@ -33,7 +33,9 @@ A premium, self-hosted music archival system that prioritizes speed, audio quali
 - **Playlist transfer** - Import playlists from Spotify, YouTube Music, Apple Music,
   SoundCloud; export to CSV, TXT, M3U, or JSON
 - **Offline playback** - PWA service worker caching for queue-while-offline
-- **Native apps** - Android (JNI), iOS (Tauri), Desktop (Tauri/WebView2)
+- **Native Android app** - Rust backend compiled to `.so` via `cargo-ndk`, embedded
+  in a Kotlin/WebView shell with bottom nav, mini player, swipe gestures, and
+  hardware back-button support
 
 ## Roadmap
 
@@ -76,6 +78,12 @@ MP3, FLAC, ALAC, WAV, AIFF, OGG, Opus, AAC, M4A, DSD (optional)
 - **Framer Motion** for buttery-smooth animations
 - **Zustand** for lightweight state management
 - **React Virtuoso** for virtual scrolling
+
+### Android
+- **Kotlin** with Capacitor-style JNI bridge (`BackendPlugin`)
+- **cargo-ndk** cross-compilation (arm64-v8a, armeabi-v7a)
+- **actix-web** serves the embedded SPA from the Rust `.so`
+- **AndroidX WebView** with JS bridge for back-button, notifications, media session
 
 ## Quick Start
 
@@ -135,6 +143,50 @@ The installer runs a small server (default `http://127.0.0.1:8080`) and opens it
 
 Reinstalling or upgrading keeps your library, settings, and scrobbles.
 
+### Android
+
+#### Prerequisites
+- Android Studio (JDK 17+ bundled)
+- Android SDK 34 + NDK 27 (`$ANDROID_HOME/ndk/27.0.12077973`)
+- Rust toolchain with `aarch64-linux-android` target
+- `cargo-ndk` (`cargo install cargo-ndk`)
+- USB debugging enabled on device
+
+#### Build & Install
+
+```bash
+# 1. Build the frontend
+cd frontend && npm install && npm run build && cd ..
+
+# 2. Cross-compile the Rust backend for Android
+#    (embeds frontend/dist via include_dir! at compile time)
+cd backend
+cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build --release
+cd ..
+
+# 3. Build the debug APK
+cd android
+./gradlew assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
+
+# 4. Install on device
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+> **Important:** The backend `.so` embeds `frontend/dist/` at compile time via
+> `include_dir!`. You must rebuild the `.so` after every frontend change — simply
+> copying files to the device has no effect.
+
+The debug build is signed with the platform debug keystore and is fully
+debuggable (`jniDebuggable = true`). The release build enables ProGuard
+minification and resource shrinking.
+
+#### Permissions
+The app requests these at runtime:
+- `READ_MEDIA_AUDIO` — scan device music
+- `POST_NOTIFICATIONS` — now-playing notification
+- `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` — background playback
+
 ## Configuration
 
 ### Environment Variables
@@ -146,6 +198,11 @@ Reinstalling or upgrading keeps your library, settings, and scrobbles.
 | `HOST` | `127.0.0.1` | Server bind address (installers; Docker sets `0.0.0.0`) |
 | `PORT` | `8080` | Server port |
 | `STATIC_DIR` | next to the binary | Frontend files location (defaults to `<exe>/static` if present, else `./static`) |
+
+> **Android note:** `STATIC_DIR` is set by `BackendPlugin.kt` via JNI to the
+> app's `files/static/` directory. However, the compiled `.so` embeds
+> `frontend/dist/` via `include_dir!` and serves those files first — updating
+> `files/static/` alone has no visible effect until the `.so` is rebuilt.
 
 ### First Launch
 
@@ -163,7 +220,7 @@ resonance/
 ├── backend/
 │   ├── src/
 │   │   ├── main.rs          # Server entry point
-│   │   ├── lib.rs           # Route registration, app state
+│   │   ├── lib.rs           # Route registration, app state, include_dir! (embeds frontend/dist)
 │   │   ├── models.rs        # Data models
 │   │   ├── db.rs            # Database layer
 │   │   ├── scanner.rs       # Music file scanner (parallel, incremental)
@@ -189,7 +246,20 @@ resonance/
 │   │   ├── stores/          # Zustand stores
 │   │   ├── lib/             # Utilities & API
 │   │   └── types/           # TypeScript types
+│   ├── public/              # Static assets + service worker
 │   └── package.json
+├── android/
+│   ├── app/
+│   │   ├── src/main/
+│   │   │   ├── java/com/pandejesal/resonance/
+│   │   │   │   ├── MainActivity.kt       # WebView host, JS bridge, media session
+│   │   │   │   └── BackendPlugin.kt      # JNI bridge: loads .so, copies assets
+│   │   │   ├── jniLibs/arm64-v8a/        # cargo-ndk output (libresonance_backend.so)
+│   │   │   ├── assets/static/            # Frontend dist (copied at build time)
+│   │   │   └── AndroidManifest.xml
+│   │   └── build.gradle                  # namespace, versionCode, signing
+│   ├── build.gradle
+│   └── settings.gradle
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
@@ -309,3 +379,15 @@ MIT License
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Troubleshooting
+
+### Android
+
+| Symptom | Fix |
+|---------|-----|
+| "No music files found" after install | Grant `READ_MEDIA_AUDIO` permission: `adb shell pm grant com.pandejesal.resonance android.permission.READ_MEDIA_AUDIO` |
+| Old UI / stale assets after frontend rebuild | The `.so` embeds `frontend/dist/` at compile time. Rebuild with `cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build --release` then reinstall the APK |
+| App shows blank page | Clear WebView cache: `adb shell run-as com.pandejesal.resonance rm -rf app_webview` then relaunch |
+| `pm clear` wipes library | Expected — `pm clear` deletes all app data including the SQLite database. Re-scan after clearing |
+| `assembleRelease` is not debuggable | Use `assembleDebug` for development. Release builds strip symbols and disable JNI debugging |
