@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUIStore, usePlayerStore } from '../stores';
@@ -78,8 +78,7 @@ const moreItems = [
 export default function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { toggleSearch } = useUIStore();
-  const [showMore, setShowMore] = useState(false);
+  const { toggleSearch, moreOpen, toggleMore } = useUIStore();
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
 
@@ -115,14 +114,14 @@ export default function MobileBottomNav() {
     <>
       {/* More menu overlay */}
       <AnimatePresence>
-        {showMore && (
+        {moreOpen && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-x-0 inset-y-0 bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] bg-black/50 z-50"
-              onClick={() => setShowMore(false)}
+              onClick={toggleMore}
             />
             <motion.div
               initial={{ opacity: 0, y: 100 }}
@@ -135,7 +134,7 @@ export default function MobileBottomNav() {
                 <div className="flex items-center justify-between mb-3 px-2">
                   <h3 className="text-sm font-medium text-primary">Menu</h3>
                   <button
-                    onClick={() => setShowMore(false)}
+                    onClick={toggleMore}
                     className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
                   >
                     <svg className="w-5 h-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -149,7 +148,7 @@ export default function MobileBottomNav() {
                       key={item.path}
                       onClick={() => {
                         navigate(item.path);
-                        setShowMore(false);
+                        toggleMore();
                       }}
                       className={cn(
                         'flex flex-col items-center gap-1.5 p-3 rounded-xl transition-colors',
@@ -190,7 +189,7 @@ export default function MobileBottomNav() {
                     if (isSearch) {
                       toggleSearch();
                     } else if (isMore) {
-                      setShowMore(true);
+                      toggleMore();
                     } else {
                       navigate(tab.path);
                     }

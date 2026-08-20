@@ -611,6 +611,7 @@ interface UIStore {
   queueOpen: boolean;
   lyricsOpen: boolean;
   settingsOpen: boolean;
+  moreOpen: boolean;
 
   setTheme: (theme: Theme) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -620,6 +621,7 @@ interface UIStore {
   toggleQueue: () => void;
   toggleLyrics: () => void;
   toggleSettings: () => void;
+  toggleMore: () => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -633,6 +635,7 @@ export const useUIStore = create<UIStore>()(
       queueOpen: false,
       lyricsOpen: false,
       settingsOpen: false,
+      moreOpen: false,
 
       setTheme: (theme) => {
         document.documentElement.className = theme === 'dark' ? '' : theme;
@@ -645,6 +648,7 @@ export const useUIStore = create<UIStore>()(
       toggleQueue: () => set((s) => ({ queueOpen: !s.queueOpen, lyricsOpen: false })),
       toggleLyrics: () => set((s) => ({ lyricsOpen: !s.lyricsOpen, queueOpen: false })),
       toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
+      toggleMore: () => set((s) => ({ moreOpen: !s.moreOpen })),
     }),
     {
       name: 'resonance-ui',

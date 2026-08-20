@@ -56,6 +56,10 @@ function BackButtonHandler() {
         ui.toggleSearch();
         return 'handled';
       }
+      if (ui.moreOpen) {
+        ui.toggleMore();
+        return 'handled';
+      }
       const idx = (window.history.state as any)?.idx ?? 0;
       if (idx > 0) {
         navigate(-1);
